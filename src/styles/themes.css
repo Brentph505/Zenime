@@ -34,26 +34,26 @@
 
 /* Dark Mode  */
 :root.dark-mode {
-  --global-primary-bg: #36393f;
-  --global-primary-bg-tr: rgba(54, 57, 63, 0.9);
-  --global-secondary-bg: #2f3136;
-  --global-tertiary-bg: #202225;
-  --global-div: #2f3136;
-  --global-div-tr: rgba(47, 49, 54, 0.5);
-  --global-border: rgba(255, 255, 255, 0.1);
-  --global-text: #dcddde;
-  --global-text-muted: #72767d;
-  --global-card-bg: #36393f;
-  --global-card-title-bg: #2f3136;
-  --global-card-shadow: rgba(0, 0, 0, 0.6);
-  --global-primary-skeleton: rgba(47, 49, 54, 0.1);
-  --global-secondary-skeleton: rgba(47, 49, 54, 0.3);
-  --global-button-bg: #4f545c;
-  --global-button-hover-bg: #686d73;
-  --global-button-shadow: rgba(0, 0, 0, 0.6);
-  --global-button-text: #dcddde;
-  --global-genre-button-bg: #4f545c;
-  --global-shadow: rgba(0, 0, 0, 0.1);
+  --global-primary-bg: #0d1117;
+  --global-primary-bg-tr: rgba(13, 17, 23, 0.9);
+  --global-secondary-bg: #161b22;
+  --global-tertiary-bg: #21262d;
+  --global-div: #30363d;
+  --global-div-tr: rgba(48, 54, 61, 0.5);
+  --global-border: rgba(240, 246, 252, 0.1);
+  --global-text: #c9d1d9;
+  --global-text-muted: #8b949e;
+  --global-card-bg: #161b22;
+  --global-card-title-bg: #21262d;
+  --global-card-shadow: rgba(1, 4, 9, 0.6);
+  --global-primary-skeleton: rgba(48, 54, 61, 0.1);
+  --global-secondary-skeleton: rgba(48, 54, 61, 0.3);
+  --global-button-bg: #238636;
+  --global-button-hover-bg: #2ea043;
+  --global-button-shadow: rgba(1, 4, 9, 0.6);
+  --global-button-text: #c9d1d9;
+  --global-genre-button-bg: #238636;
+  --global-shadow: rgba(1, 4, 9, 0.1);
   --logo-text-transparent: url('/src/assets/zenime-text-transparent-white.webp');
   --logo-transparent: url('/src/assets/zenime-transparent-white.webp');
 }
