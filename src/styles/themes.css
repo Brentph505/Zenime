@@ -34,26 +34,26 @@
 
 /* Dark Mode  */
 :root.dark-mode {
-  --global-primary-bg: #080808;
-  --global-primary-bg-tr: rgba(8, 8, 8, 0.9);
-  --global-secondary-bg: #141414;
-  --global-tertiary-bg: #222222;
-  --global-div: #141414;
-  --global-div-tr: rgba(20, 20, 20, 0.5);
-  --global-border: rgba(245, 245, 245, 0.1);
-  --global-text: #e8e8e8;
-  --global-text-muted: #696969;
-  --global-card-bg: #181818;
-  --global-card-title-bg: #151515;
+  --global-primary-bg: #36393f;
+  --global-primary-bg-tr: rgba(54, 57, 63, 0.9);
+  --global-secondary-bg: #2f3136;
+  --global-tertiary-bg: #202225;
+  --global-div: #2f3136;
+  --global-div-tr: rgba(47, 49, 54, 0.5);
+  --global-border: rgba(255, 255, 255, 0.1);
+  --global-text: #dcddde;
+  --global-text-muted: #72767d;
+  --global-card-bg: #36393f;
+  --global-card-title-bg: #2f3136;
   --global-card-shadow: rgba(0, 0, 0, 0.6);
-  --global-primary-skeleton: rgba(85, 85, 85, 0.1);
-  --global-secondary-skeleton: rgba(85, 85, 85, 0.3);
-  --global-button-bg: #202020;
-  --global-button-hover-bg: #292929;
+  --global-primary-skeleton: rgba(47, 49, 54, 0.1);
+  --global-secondary-skeleton: rgba(47, 49, 54, 0.3);
+  --global-button-bg: #4f545c;
+  --global-button-hover-bg: #686d73;
   --global-button-shadow: rgba(0, 0, 0, 0.6);
-  --global-button-text: #ebebeb;
-  --global-genre-button-bg: #222222;
-  --global-shadow: rgba(255, 255, 255, 0.08);
+  --global-button-text: #dcddde;
+  --global-genre-button-bg: #4f545c;
+  --global-shadow: rgba(0, 0, 0, 0.1);
   --logo-text-transparent: url('/src/assets/zenime-text-transparent-white.webp');
   --logo-transparent: url('/src/assets/zenime-transparent-white.webp');
 }
