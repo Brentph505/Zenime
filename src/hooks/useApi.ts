@@ -409,7 +409,7 @@ export async function fetchSkipTimes({
 export async function fetchRecentEpisodes(
   page: number = 1,
   perPage: number = 18,
-  provider: string = 'gogoanime',
+  provider: string = 'zoro',
 ) {
   // Construct the URL with query parameters for fetching recent episodes
   const params = new URLSearchParams({
