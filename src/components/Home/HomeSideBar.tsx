@@ -26,9 +26,10 @@ const TitleWithDot = styled.div`
   transition: background 0.2s ease;
 `;
 
-const AnimeCard = styled.div`
+const AnimeCard = styled.div<{ $backgroundImage: string }>`
   display: flex;
-  background-color: var(--global-div);
+  background: linear-gradient(90deg, rgba(20, 20, 20, 0.95) 0%, rgba(40, 40, 40, 0.85) 50%, rgba(60, 60, 60, 0.7) 100%),
+    url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
   border-radius: var(--global-border-radius);
   align-items: center;
   overflow: hidden;
@@ -38,16 +39,19 @@ const AnimeCard = styled.div`
   animation: slideUp 0.5s ease-in-out;
   animation-fill-mode: backwards;
   transition:
-    background-color 0s ease-in-out,
-    margin-left 0.2s ease-in-out 0.1s;
-    box-shadow 0.2s ease-in-out;
+    background-color 0.2s ease-in-out,
+    margin-left 0.2s ease-in-out 0.1s,
+    box-shadow 0.2s ease-in-out,
+    transform 0.2s ease-in-out;
+  position: relative;
+  min-height: 6.5rem;
 
   &:hover,
   &:active,
   &:focus {
-    background-color: var(--global-div-tr);
     margin-left: 0.35rem;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+    transform: translateY(-2px);
   }
 
   @media (max-width: 500px) {
@@ -55,6 +59,7 @@ const AnimeCard = styled.div`
     &:active,
     &:focus {
       margin-left: unset;
+      transform: unset;
     }
   }
 `;
@@ -64,9 +69,17 @@ const AnimeImageStyled = styled.img`
   height: 6rem;
   object-fit: cover;
   border-radius: var(--global-border-radius);
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 `;
 
-const InfoStyled = styled.div``;
+const InfoStyled = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 0.75rem;
+`;
 
 const Title = styled.p`
   top: 0;
@@ -77,12 +90,16 @@ const Title = styled.p`
   overflow: hidden;
   font-size: 0.9rem;
   margin: 0;
+  font-weight: 600;
+  color: var(--global-text);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 `;
 
 const Details = styled.p`
   font-size: 0.75rem;
   margin: 0;
-  color: rgba(102, 102, 102, 0.75);
+  color: rgba(200, 200, 200, 0.8);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   svg {
     margin-left: 0.4rem;
   }
@@ -115,7 +132,7 @@ export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
           aria-label={`Watch ${anime.title.userPreferred}`}
         >
           <AnimeCard
-            key={anime.id}
+            $backgroundImage={anime.image}
             style={{ animationDelay: `${index * 0.1}s` }}
           >
             <AnimeImageStyled
@@ -141,7 +158,7 @@ export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
                   anime.totalEpisodes !== 0 &&
                   anime.totalEpisodes !== 0 && (
                     <>
-                      <TbCards /> {anime.currentEpisode}
+                      <TbCards /> {String(anime.currentEpisode).split('-')[0]}
                       {' / '}
                       {anime.totalEpisodes}
                     </>

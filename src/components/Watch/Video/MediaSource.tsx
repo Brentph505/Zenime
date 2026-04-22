@@ -1,23 +1,21 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
 import {
-  FaMicrophone,
-  FaClosedCaptioning,
   FaBell,
   FaDownload,
   FaShare,
+  FaServer,
 } from 'react-icons/fa';
 
 // Props interface
 interface MediaSourceProps {
   sourceType: string;
   setSourceType: (sourceType: string) => void;
-  language: string;
-  setLanguage: (language: string) => void;
   downloadLink: string;
   episodeId?: string;
   airingTime?: string;
   nextEpisodenumber?: string;
+  availableServers?: string[];
 }
 
 // Adjust the Container for responsive layout
@@ -31,41 +29,40 @@ const UpdatedContainer = styled.div`
   }
 `;
 
-const Table = styled.table`
-  font-size: 0.9rem;
-  border-collapse: collapse;
-  font-weight: bold;
-  margin-left: auto;
-  margin-right: auto;
+const ServerContainer = styled.div`
+  background-color: var(--global-div-tr);
+  padding: 1rem;
+  border-radius: var(--global-border-radius);
 `;
 
-const TableRow = styled.tr``;
-
-const TableCell = styled.td`
-  padding: 0.35rem;
-  @media (max-width: 500px) {
-    text-align: center;
-    font-size: 0.8rem;
-  }
-  svg {
-    margin-bottom: -0.1rem;
-    @media (max-width: 500px) {
-      margin-bottom: 0rem;
-    }
-  }
-`;
-
-const ButtonWrapper = styled.div`
-  width: 90px; // Or a specific pixel width, if preferred
+const ServerTitle = styled.div`
   display: flex;
-  justify-content: center;
+  align-items: center;
   gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: bold;
+  color: var(--global-text);
+  font-size: 0.95rem;
 `;
 
-const ButtonBase = styled.button`
-  flex: 1; // Make the button expand to fill the wrapper
-  padding: 0.5rem;
-  border: none;
+const ServerGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  width: 100%;
+  
+  @media (max-width: 768px) {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  @media (max-width: 500px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+`;
+
+const ServerButton = styled.button`
+  padding: 0.6rem;
+  border: 2px solid transparent;
   font-weight: bold;
   border-radius: var(--global-border-radius);
   cursor: pointer;
@@ -73,21 +70,25 @@ const ButtonBase = styled.button`
   color: var(--global-text);
   transition:
     background-color 0.2s ease,
-    transform 0.2s ease-in-out;
+    border-color 0.2s ease,
+    transform 0.2s ease;
   text-align: center;
-
+  font-size: 0.85rem;
+  white-space: normal;
+  word-break: break-word;
+  
   &:hover {
     background-color: var(--primary-accent);
     transform: scale(1.025);
   }
+  
   &:active {
-    transform: scale(0.975);
+    transform: scale(0.95);
   }
-`;
-
-const Button = styled(ButtonBase)`
+  
   &.active {
     background-color: var(--primary-accent);
+    border-color: var(--primary-accent);
   }
 `;
 
@@ -123,9 +124,9 @@ const DownloadLink = styled.a`
   }
 `;
 
-const ShareButton = styled(ButtonBase)`
-  display: inline-flex; // Align items in a row
-  align-items: center; // Center items vertically
+const ShareButton = styled.button`
+  display: inline-flex;
+  align-items: center;
   margin-left: 0.5rem;
   padding: 0.5rem;
   gap: 0.25rem;
@@ -136,17 +137,14 @@ const ShareButton = styled(ButtonBase)`
   background-color: var(--global-div);
   color: var(--global-text);
   text-decoration: none;
-  svg {
-    font-size: 0.85rem; // Adjust icon size
+  transition: background-color 0.2s ease;
+  
+  &:hover {
+    background-color: var(--primary-accent);
   }
-`;
-
-const ResponsiveTableContainer = styled.div`
-  background-color: var(--global-div-tr);
-  padding: 0.75rem;
-  border-radius: var(--global-border-radius);
-  @media (max-width: 500px) {
-    display: block;
+  
+  svg {
+    font-size: 0.85rem;
   }
 `;
 
@@ -184,13 +182,13 @@ const EpisodeInfoColumn = styled.div`
 export const MediaSource: React.FC<MediaSourceProps> = ({
   sourceType,
   setSourceType,
-  language,
-  setLanguage,
   downloadLink,
   episodeId,
   airingTime,
   nextEpisodenumber,
+  availableServers = [],
 }) => {
+  console.log('MediaSource props:', { sourceType, availableServers });
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShareClick = () => {
@@ -199,6 +197,15 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
     setTimeout(() => {
       setIsCopied(false);
     }, 2000);
+  };
+
+  // Generate server buttons dynamically from availableServers
+  const renderServerButtons = () => {
+    console.log('Rendering server buttons with availableServers:', availableServers);
+    return availableServers.map((server) => ({
+      key: server,
+      label: server.charAt(0).toUpperCase() + server.slice(1),
+    }));
   };
 
   return (
@@ -235,124 +242,27 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
           </>
         )}
       </EpisodeInfoColumn>
-      <ResponsiveTableContainer>
-        <Table>
-          <tbody>
-            <TableRow>
-              <TableCell>
-                <FaClosedCaptioning /> Sub
-              </TableCell>
-              <TableCell>
-                <ButtonWrapper>
-                  <Button
-                    className={
-                      sourceType === 'default' && language === 'sub'
-                        ? 'active'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSourceType('default');
-                      setLanguage('sub');
-                    }}
-                  >
-                    Default
-                  </Button>
-                </ButtonWrapper>
-              </TableCell>
-              <TableCell>
-                <ButtonWrapper>
-                  <Button
-                    className={
-                      sourceType === 'vidstreaming' && language === 'sub'
-                        ? 'active'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSourceType('vidstreaming');
-                      setLanguage('sub');
-                    }}
-                  >
-                    Vidstream
-                  </Button>
-                </ButtonWrapper>
-              </TableCell>
-              <TableCell>
-                <ButtonWrapper>
-                  <Button
-                    className={
-                      sourceType === 'gogo' && language === 'sub'
-                        ? 'active'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSourceType('gogo');
-                      setLanguage('sub');
-                    }}
-                  >
-                    Gogo
-                  </Button>
-                </ButtonWrapper>
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell>
-                <FaMicrophone /> Dub
-              </TableCell>
-              <TableCell>
-                <ButtonWrapper>
-                  <Button
-                    className={
-                      sourceType === 'default' && language === 'dub'
-                        ? 'active'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSourceType('default');
-                      setLanguage('dub');
-                    }}
-                  >
-                    Default
-                  </Button>
-                </ButtonWrapper>
-              </TableCell>
-              <TableCell>
-                <ButtonWrapper>
-                  <Button
-                    className={
-                      sourceType === 'vidstreaming' && language === 'dub'
-                        ? 'active'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSourceType('vidstreaming');
-                      setLanguage('dub');
-                    }}
-                  >
-                    Vidstream
-                  </Button>
-                </ButtonWrapper>
-              </TableCell>
-              <TableCell>
-                <ButtonWrapper>
-                  <Button
-                    className={
-                      sourceType === 'gogo' && language === 'dub'
-                        ? 'active'
-                        : ''
-                    }
-                    onClick={() => {
-                      setSourceType('gogo');
-                      setLanguage('dub');
-                    }}
-                  >
-                    Gogo
-                  </Button>
-                </ButtonWrapper>
-              </TableCell>
-            </TableRow>
-          </tbody>
-        </Table>
-      </ResponsiveTableContainer>
+      <ServerContainer>
+        <ServerTitle>
+          <FaServer /> Server
+        </ServerTitle>
+        <ServerGrid>
+          {renderServerButtons().map((server) => (
+            <ServerButton
+              key={`server-${server.key}`}
+              className={sourceType === server.key ? 'active' : ''}
+              onClick={() => {
+                console.log('Server button clicked:', server.key);
+                console.log('Current sourceType:', sourceType);
+                setSourceType(server.key);
+                console.log('Called setSourceType with:', server.key);
+              }}
+            >
+              {server.label}
+            </ServerButton>
+          ))}
+        </ServerGrid>
+      </ServerContainer>
     </UpdatedContainer>
   );
 };

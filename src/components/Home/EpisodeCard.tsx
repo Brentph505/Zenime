@@ -241,6 +241,9 @@ export const EpisodeCard: React.FC = () => {
         // Conditional title display
         const displayTitle = `${animeTitle}${episode.title ? ` - ${episode.title}` : ''}`;
 
+        // Extract clean episode number from formats like "1-737" or just "1"
+        const cleanEpisodeNumber = String(episode.number).split('-')[0];
+
         const handleRemoveAllEpisodes = (animeId: string) => {
           const updatedEpisodes = JSON.parse(watchedEpisodesData || '{}');
           delete updatedEpisodes[animeId];
@@ -263,7 +266,7 @@ export const EpisodeCard: React.FC = () => {
               </PlayIcon>
               <div className='episode-info'>
                 <p className='episode-title'>{displayTitle}</p>
-                <p className='episode-number'>{`Episode ${episode.number}`}</p>
+                <p className='episode-number'>{`Episode ${cleanEpisodeNumber}`}</p>
               </div>
               <ProgressBar
                 style={{ width: `${Math.max(playbackPercentage, 5)}%` }}

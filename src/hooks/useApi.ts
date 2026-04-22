@@ -118,7 +118,7 @@ function createOptimizedSessionStorageCache(
     },
     set(key: string, value: any) {
       if (cache.size >= maxSize) {
-        const oldestKey = keys.values().next().value;
+        const oldestKey = keys.values().next().value as string;
         cache.delete(oldestKey);
         keys.delete(oldestKey);
       }
@@ -237,11 +237,13 @@ export async function fetchAdvancedSearch(
 // Fetch Anime DATA Function
 export async function fetchAnimeData(
   animeId: string,
-  provider: string = 'gogoanime',
+  provider: string = 'kickassanime',
 ) {
-  const params = new URLSearchParams({ provider });
+  // Ensure provider defaults to kickassanime if undefined is passed
+  const finalProvider = provider || 'kickassanime';
+  const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/data/${animeId}?${params.toString()}`;
-  const cacheKey = generateCacheKey('animeData', animeId, provider);
+  const cacheKey = generateCacheKey('animeData', animeId, finalProvider);
 
   return fetchFromProxy(url, animeDataCache, cacheKey);
 }
@@ -249,11 +251,13 @@ export async function fetchAnimeData(
 // Fetch Anime INFO Function
 export async function fetchAnimeInfo(
   animeId: string,
-  provider: string = 'gogoanime',
+  provider: string = 'kickassanime',
 ) {
-  const params = new URLSearchParams({ provider });
+  // Ensure provider defaults to kickassanime if undefined is passed
+  const finalProvider = provider || 'kickassanime';
+  const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/info/${animeId}?${params.toString()}`;
-  const cacheKey = generateCacheKey('animeInfo', animeId, provider);
+  const cacheKey = generateCacheKey('animeInfo', animeId, finalProvider);
 
   return fetchFromProxy(url, animeInfoCache, cacheKey);
 }
@@ -344,15 +348,20 @@ export const fetchUpcomingSeasons = (page: number, perPage: number) =>
 // Fetch Anime Episodes Function
 export async function fetchAnimeEpisodes(
   animeId: string,
-  provider: string = 'gogoanime',
+  provider: string = 'kickassanime',
   dub: boolean = false,
 ) {
-  const params = new URLSearchParams({ provider, dub: dub ? 'true' : 'false' });
+  // Ensure provider defaults to kickassanime if undefined is passed
+  const finalProvider = provider || 'kickassanime';
+  const params = new URLSearchParams({ 
+    provider: finalProvider, 
+    dub: dub ? 'true' : 'false' 
+  });
   const url = `${BASE_URL}meta/anilist/episodes/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey(
     'animeEpisodes',
     animeId,
-    provider,
+    finalProvider,
     dub ? 'dub' : 'sub',
   );
 
@@ -360,17 +369,33 @@ export async function fetchAnimeEpisodes(
 }
 
 // Fetch Embedded Anime Episodes Servers
-export async function fetchAnimeEmbeddedEpisodes(episodeId: string) {
-  const url = `${BASE_URL}meta/anilist/servers/${episodeId}`;
-  const cacheKey = generateCacheKey('animeEmbeddedServers', episodeId);
+export async function fetchAnimeEmbeddedEpisodes(episodeId: string, provider: string = 'kickassanime') {
+  // Ensure provider defaults to kickassanime if undefined is passed
+  const finalProvider = provider || 'kickassanime';
+  const params = new URLSearchParams({ provider: finalProvider });
+  const url = `${BASE_URL}meta/anilist/servers/${episodeId}?${params.toString()}`;
+  const cacheKey = generateCacheKey('animeEmbeddedServers', episodeId, finalProvider);
 
   return fetchFromProxy(url, fetchAnimeEmbeddedEpisodesCache, cacheKey);
 }
 
 // Function to fetch anime streaming links
-export async function fetchAnimeStreamingLinks(episodeId: string) {
-  const url = `${BASE_URL}meta/anilist/watch/${episodeId}`;
-  const cacheKey = generateCacheKey('animeStreamingLinks', episodeId);
+export async function fetchAnimeStreamingLinks(
+  episodeId: string,
+  provider: string = 'kickassanime',
+  server?: string,
+) {
+  // Ensure provider defaults to kickassanime if undefined is passed
+  const finalProvider = provider || 'kickassanime';
+  const params = new URLSearchParams({ episodeId, provider: finalProvider });
+  
+  // Add server parameter if provided (for kickassanime: vidstreaming, duckstream, birdstream)
+  if (server) {
+    params.append('server', server);
+  }
+  
+  const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
+  const cacheKey = generateCacheKey('animeStreamingLinks', episodeId, finalProvider, server || '');
 
   return fetchFromProxy(url, videoSourcesCache, cacheKey);
 }
@@ -409,7 +434,7 @@ export async function fetchSkipTimes({
 export async function fetchRecentEpisodes(
   page: number = 1,
   perPage: number = 18,
-  provider: string = 'zoro',
+  provider: string = 'kickassanime',
 ) {
   // Construct the URL with query parameters for fetching recent episodes
   const params = new URLSearchParams({

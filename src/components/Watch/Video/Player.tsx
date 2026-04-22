@@ -57,6 +57,7 @@ const Button = styled.button<{ $autoskip?: boolean }>`
 
 type PlayerProps = {
   episodeId: string;
+  episodeNumber?: number;
   banner?: string;
   malId?: string;
   updateDownloadLink: (link: string) => void;
@@ -64,11 +65,26 @@ type PlayerProps = {
   onPrevEpisode: () => void;
   onNextEpisode: () => void;
   animeTitle?: string;
+  sourceType?: string;
 };
 
 type StreamingSource = {
   url: string;
   quality: string;
+  isM3U8?: boolean;
+};
+
+type Subtitle = {
+  url: string;
+  lang: string;
+};
+
+type StreamingResponse = {
+  sources: StreamingSource[];
+  subtitles?: Subtitle[];
+  availableServers?: string[];
+  download?: string;
+  headers?: Record<string, string>;
 };
 
 type SkipTime = {
@@ -85,6 +101,7 @@ type FetchSkipTimesResponse = {
 
 export function Player({
   episodeId,
+  episodeNumber: propEpisodeNumber,
   banner,
   malId,
   updateDownloadLink,
@@ -92,21 +109,28 @@ export function Player({
   onPrevEpisode,
   onNextEpisode,
   animeTitle,
+  sourceType = 'default',
 }: PlayerProps) {
   const player = useRef<MediaPlayerInstance>(null);
   const [src, setSrc] = useState<string>('');
+  const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [vttUrl, setVttUrl] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [skipTimes, setSkipTimes] = useState<SkipTime[]>([]);
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [vttGenerated, setVttGenerated] = useState<boolean>(false);
-  const episodeNumber = getEpisodeNumber(episodeId);
+  const episodeNumber = propEpisodeNumber ? String(propEpisodeNumber) : getEpisodeNumber(episodeId);
   const animeVideoTitle = animeTitle;
 
   const { settings, setSettings } = useSettings();
   const { autoPlay, autoNext, autoSkip } = settings;
 
   useEffect(() => {
+    // Skip fetching if episodeId is not valid
+    if (!episodeId || episodeId === '0') {
+      return;
+    }
+
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
 
     fetchAndSetAnimeSource();
@@ -114,7 +138,7 @@ export function Player({
     return () => {
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
-  }, [episodeId, malId, updateDownloadLink]);
+  }, [episodeId, malId, updateDownloadLink, sourceType]);
 
   useEffect(() => {
     if (autoPlay && player.current) {
@@ -244,15 +268,26 @@ export function Player({
 
   async function fetchAndSetAnimeSource() {
     try {
-      const response = await fetchAnimeStreamingLinks(episodeId);
-      const backupSource = response.sources.find(
-        (source: StreamingSource) => source.quality === 'default',
-      );
-      if (backupSource) {
-        setSrc(backupSource.url);
-        updateDownloadLink(response.download);
+      // Use server parameter only if sourceType is not 'default'
+      const serverParam = sourceType !== 'default' ? sourceType : undefined;
+      const response: StreamingResponse = await fetchAnimeStreamingLinks(episodeId, 'kickassanime', serverParam);
+      
+      if (response.sources && response.sources.length > 0) {
+        // Get the first/best quality source
+        const selectedSource = response.sources[0];
+        setSrc(selectedSource.url);
+        
+        // Set download link if available
+        if (response.download) {
+          updateDownloadLink(response.download);
+        }
       } else {
-        console.error('Backup source not found');
+        console.error('No video sources found in response');
+      }
+      
+      // Set subtitles if available
+      if (response.subtitles && response.subtitles.length > 0) {
+        setSubtitles(response.subtitles);
       }
     } catch (error) {
       console.error('Failed to fetch anime streaming links', error);
@@ -295,7 +330,7 @@ export function Player({
       <MediaPlayer
         className='player'
         title={`${animeVideoTitle} - Episode ${episodeNumber}`}
-        src={`https://goodproxy.goodproxy.workers.dev/fetch?url=${encodeURIComponent(src)}`}
+        src={src}
         autoplay={autoPlay}
         crossorigin
         playsinline
@@ -315,6 +350,17 @@ export function Player({
           <Poster className='vds-poster' src={banner} alt='' />
           {vttUrl && (
             <Track kind='chapters' src={vttUrl} default label='Skip Times' />
+          )}
+          {subtitles && subtitles.length > 0 && (
+            subtitles.map((subtitle, index) => (
+              <Track
+                key={`subtitle-${index}`}
+                kind='subtitles'
+                src={subtitle.url}
+                label={subtitle.lang}
+                default={subtitle.lang === 'English' || index === 0}
+              />
+            ))
           )}
         </MediaProvider>
         <DefaultAudioLayout icons={defaultLayoutIcons} />
