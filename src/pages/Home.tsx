@@ -19,6 +19,7 @@ import {
   Anime,
   Episode,
 } from '../index';
+import AnimeSchedule from '../components/Home/AnimeSchedule';
 
 const SimpleLayout = styled.div`
   gap: 1rem;
@@ -27,6 +28,9 @@ const SimpleLayout = styled.div`
   border-radius: var(--global-border-radius);
   display: flex;
   flex-direction: column;
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
 `;
 
 const ContentSidebarLayout = styled.div`
@@ -350,6 +354,9 @@ const Home = () => {
           <HomeSideBar animeData={state.Upcoming} />
         </div>
       </ContentSidebarLayout>
+      <div style={{ width: '100%', marginTop: '2rem', boxSizing: 'border-box' }}>
+        <AnimeSchedule />
+      </div>
     </SimpleLayout>
   );
 };

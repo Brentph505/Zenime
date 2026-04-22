@@ -30,6 +30,23 @@ const axiosInstance = axios.create({
   },
 });
 
+// Add response interceptor for logging
+axiosInstance.interceptors.response.use(
+  (response) => {
+    console.log(
+      `✅ [Axios] Response - Status: ${response.status}, URL: ${response.config.url}`,
+    );
+    return response;
+  },
+  (error) => {
+    console.error(
+      `❌ [Axios] Error - Status: ${error.response?.status}, URL: ${error.config?.url}, Message: ${error.message}`,
+    );
+    console.error('Full error object:', error);
+    return Promise.reject(error);
+  },
+);
+
 // Error handling function
 // Function to handle errors and throw appropriately
 function handleError(error: any, context: string) {
@@ -168,19 +185,33 @@ const videoSourcesCache = createCache('Video Sources');
 // Function to fetch data from proxy with caching
 async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
   try {
+    console.log(`[Cache Check] Key: ${cacheKey}`);
     // Attempt to retrieve the cached response using the cacheKey
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {
+      console.log(`✅ Cache HIT for: ${cacheKey}`);
       return cachedResponse; // Return the cached response if available
     }
+
+    console.log(`❌ Cache MISS for: ${cacheKey}. Making network request...`);
 
     // Adjust request parameters based on PROXY_URL's availability
     const requestConfig = PROXY_URL
       ? { params: { url } } // If PROXY_URL is defined, send the original URL as a parameter
       : {}; // If PROXY_URL is not defined, make a direct request
 
+    console.log(`🌐 Network Request Details:`);
+    console.log(`   - Final URL: ${PROXY_URL ? '' : url}`);
+    console.log(`   - PROXY_URL: ${PROXY_URL || 'Not set'}`);
+    console.log(`   - Config:`, requestConfig);
+
     // Proceed with the network request
-    const response = await axiosInstance.get(PROXY_URL ? '' : url, requestConfig);
+    const response = await axiosInstance.get(
+      PROXY_URL ? '' : url,
+      requestConfig,
+    );
+
+    console.log(`📥 Response received:`, response.status, response.data);
 
     // After obtaining the response, verify it for errors or empty data
     if (
@@ -189,16 +220,19 @@ async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
     ) {
       const errorMessage = response.data.message || 'Unknown server error';
       throw new Error(
-        `Server error: ${response.data.statusCode || response.status
+        `Server error: ${
+          response.data.statusCode || response.status
         } ${errorMessage}`,
       );
     }
 
     // Assuming response data is valid, store it in the cache
     cache.set(cacheKey, response.data);
+    console.log(`💾 Cached response for: ${cacheKey}`);
 
     return response.data; // Return the newly fetched data
   } catch (error) {
+    console.error(`❌ fetchFromProxy Error:`, error);
     handleError(error, 'data');
     throw error; // Rethrow the error for the caller to handle
   }
@@ -353,9 +387,9 @@ export async function fetchAnimeEpisodes(
 ) {
   // Ensure provider defaults to kickassanime if undefined is passed
   const finalProvider = provider || 'kickassanime';
-  const params = new URLSearchParams({ 
-    provider: finalProvider, 
-    dub: dub ? 'true' : 'false' 
+  const params = new URLSearchParams({
+    provider: finalProvider,
+    dub: dub ? 'true' : 'false',
   });
   const url = `${BASE_URL}meta/anilist/episodes/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey(
@@ -369,12 +403,19 @@ export async function fetchAnimeEpisodes(
 }
 
 // Fetch Embedded Anime Episodes Servers
-export async function fetchAnimeEmbeddedEpisodes(episodeId: string, provider: string = 'kickassanime') {
+export async function fetchAnimeEmbeddedEpisodes(
+  episodeId: string,
+  provider: string = 'kickassanime',
+) {
   // Ensure provider defaults to kickassanime if undefined is passed
   const finalProvider = provider || 'kickassanime';
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/servers/${episodeId}?${params.toString()}`;
-  const cacheKey = generateCacheKey('animeEmbeddedServers', episodeId, finalProvider);
+  const cacheKey = generateCacheKey(
+    'animeEmbeddedServers',
+    episodeId,
+    finalProvider,
+  );
 
   return fetchFromProxy(url, fetchAnimeEmbeddedEpisodesCache, cacheKey);
 }
@@ -388,16 +429,63 @@ export async function fetchAnimeStreamingLinks(
   // Ensure provider defaults to kickassanime if undefined is passed
   const finalProvider = provider || 'kickassanime';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
-  
+
   // Add server parameter if provided (for kickassanime: vidstreaming, duckstream, birdstream)
   if (server) {
     params.append('server', server);
   }
-  
+
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
-  const cacheKey = generateCacheKey('animeStreamingLinks', episodeId, finalProvider, server || '');
+  const cacheKey = generateCacheKey(
+    'animeStreamingLinks',
+    episodeId,
+    finalProvider,
+    server || '',
+  );
 
   return fetchFromProxy(url, videoSourcesCache, cacheKey);
+}
+
+// Function to fetch airing schedule
+// Uses day-of-week based parameters (0-6 or day names) instead of Unix timestamps
+// Example: weekStart="Saturday", weekEnd=6 or weekStart="Sunday", weekEnd="Saturday"
+export async function fetchAiringSchedule(
+  page: number = 1,
+  perPage: number = 20,
+  weekStart: string | number = 'Saturday',
+  weekEnd: string | number = 6,
+  notYetAired: boolean = false,
+) {
+  try {
+    const params = new URLSearchParams({
+      page: page.toString(),
+      perPage: perPage.toString(),
+      weekStart: weekStart.toString(),
+      weekEnd: weekEnd.toString(),
+      notYetAired: notYetAired ? 'true' : 'false',
+    });
+
+    const url = `${BASE_URL}meta/anilist/airing-schedule?${params.toString()}`;
+    console.log('🔍 Fetching airing schedule from URL:', url);
+    console.log('📊 BASE_URL:', BASE_URL);
+    console.log('📝 Params:', Object.fromEntries(params));
+
+    const cacheKey = generateCacheKey(
+      'airingSchedule',
+      page.toString(),
+      perPage.toString(),
+      weekStart.toString(),
+      weekEnd.toString(),
+    );
+
+    const airingScheduleCache = createCache('AiringSchedule');
+    const result = await fetchFromProxy(url, airingScheduleCache, cacheKey);
+    console.log('✅ Airing schedule fetched successfully:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ Error in fetchAiringSchedule:', error);
+    throw error;
+  }
 }
 
 // Function to fetch skip times for an anime episode
