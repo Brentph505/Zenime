@@ -26,7 +26,7 @@ export default ({ mode }: ConfigEnv): UserConfigExport => {
 
     server: {
       port: parseInt(process.env.VITE_PORT || '5173'), // Use VITE_PORT from .env.local, default to 5173
-      open: true, // Automatically open the default browser when starting the server
+      open: false, // Automatically open the default browser when starting the server
     },
   });
 };
