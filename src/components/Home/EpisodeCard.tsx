@@ -223,8 +223,19 @@ export const EpisodeCard: React.FC = () => {
         return lastVisitedB - lastVisitedA;
       });
 
-      return orderedAnimeIds.map((animeId) => {
+      // Deduplicate by episode ID to prevent duplicate key warnings
+      const seenEpisodeIds = new Set<string>();
+      const uniqueEpisodes: Array<{ animeId: string; episode: Episode }> = [];
+
+      for (const animeId of orderedAnimeIds) {
         const episode = lastEpisodes[animeId];
+        if (episode && !seenEpisodeIds.has(episode.id)) {
+          seenEpisodeIds.add(episode.id);
+          uniqueEpisodes.push({ animeId, episode });
+        }
+      }
+
+      return uniqueEpisodes.map(({ animeId, episode }) => {
         const playbackInfo = JSON.parse(
           localStorage.getItem('all_episode_times') || '{}',
         ) as { [key: string]: { playbackPercentage: number } };
