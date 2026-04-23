@@ -1,35 +1,35 @@
 /* Light Mode  */
 :root {
-  --global-primary-bg: #f5f5f5;
-  --global-primary-bg-tr: rgba(245, 245, 245, 0.8);
-  --global-secondary-bg: #e0e0e0;
-  --global-tertiary-bg: #eaeaea;
-  --global-div: #e0e0e0;
-  --global-div-tr: rgba(224, 224, 224, 0.5);
-  --global-border: rgba(8, 8, 8, 0.1);
-  --global-text: #333;
-  --global-text-muted: #888;
-  --global-card-bg: #fff;
-  --global-card-title-bg: #e8e8e8;
-  --global-card-shadow: rgba(0, 0, 0, 0.2);
-  --global-primary-skeleton: rgba(165, 165, 165, 0.1);
-  --global-secondary-skeleton: rgba(165, 165, 165, 0.3);
-  --global-button-bg: #e0e0e0;
-  --global-button-hover-bg: #c8c8c8;
-  --global-button-text: #333;
-  --global-button-shadow: rgba(255, 255, 255, 0.5);
-  --global-genre-button-bg: #d4d4d4;
-  --global-shadow: rgba(0, 0, 0, 0.1);
+  --global-primary-bg: #f0f2f5;
+  --global-primary-bg-tr: rgba(240, 242, 245, 0.8);
+  --global-secondary-bg: #e6e9ef;
+  --global-tertiary-bg: #dde1e9;
+  --global-div: #cdd2db;
+  --global-div-tr: rgba(205, 210, 219, 0.5);
+  --global-border: rgba(20, 25, 35, 0.1);
+  --global-text: #1c2128;
+  --global-text-muted: #57606a;
+  --global-card-bg: #e6e9ef;
+  --global-card-title-bg: #dde1e9;
+  --global-card-shadow: rgba(20, 25, 35, 0.12);
+  --global-primary-skeleton: rgba(140, 150, 165, 0.15);
+  --global-secondary-skeleton: rgba(140, 150, 165, 0.35);
+  --global-button-bg: #cdd2db;
+  --global-button-hover-bg: #bcc3cf;
+  --global-button-text: #1c2128;
+  --global-button-shadow: rgba(20, 25, 35, 0.1);
+  --global-genre-button-bg: #bcc3cf;
+  --global-shadow: rgba(20, 25, 35, 0.08);
   --global-border-radius: 0.3rem;
   --primary-accent: #8080cf;
-  --primary-accent-bg: #595991;
+  --primary-accent-bg: #6b6bb8;
   --logo-text-transparent: url('/src/assets/zenime-text-transparent-black.webp');
   --logo-transparent: url('/src/assets/zenime-transparent-black.webp');
-  --ongoing-dot-color: #aaff00;
-  --completed-indicator-color: #00aaff;
-  --cancelled-indicator-color: #ff0000;
-  --not-yet-aired-indicator-color: #ffa500;
-  --default-indicator-color: #808080;
+  --ongoing-dot-color: #4caf50;
+  --completed-indicator-color: #2094d4;
+  --cancelled-indicator-color: #e5534b;
+  --not-yet-aired-indicator-color: #e09343;
+  --default-indicator-color: #57606a;
 }
 
 /* Dark Mode  */

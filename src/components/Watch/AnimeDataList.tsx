@@ -12,13 +12,6 @@ const Sidebar = styled.div`
   transition: 0.2s ease-in-out;
   width: 100%;
   max-width: 100%;
-  .Section-Title {
-    margin: 0;
-    padding: 0 0 0.5rem 0;
-    color: var(--global-text);
-    font-size: 1rem;
-    font-weight: bold;
-  }
   @media (max-width: 1000px) {
     max-width: 100%;
     gap: 0.4rem;
@@ -28,46 +21,87 @@ const Sidebar = styled.div`
   }
 `;
 
+const SectionTitle = styled.p`
+  margin: 0 0 0.4rem 0;
+  padding: 0;
+  color: var(--global-text);
+  font-size: 1rem;
+  font-weight: bold;
+`;
+
 const SidebarContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 0.5rem;
   background-color: var(--global-div-tr);
   border-radius: var(--global-border-radius);
   width: 100%;
   @media (max-width: 1000px) {
     padding: 0.3rem;
+    gap: 0.25rem;
   }
   @media (max-width: 500px) {
     padding: 0.25rem;
   }
 `;
 
-const Card = styled.div`
+const Card = styled.div<{ $backgroundImage: string }>`
   display: flex;
-  background-color: var(--global-div);
+  position: relative;
   border-radius: var(--global-border-radius);
   align-items: center;
   overflow: hidden;
   gap: 0.4rem;
   cursor: pointer;
-  margin-bottom: 0.35rem;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   animation: slideUp 0.5s ease-in-out;
   animation-fill-mode: backwards;
   transition:
-    background-color 0s ease-in-out,
-    margin-left 0.2s ease-in-out 0.1s;
+    margin-left 0.2s ease-in-out 0.1s,
+    box-shadow 0.2s ease-in-out,
+    transform 0.2s ease-in-out;
+
+  /* Light mode default */
+  background: linear-gradient(
+      90deg,
+      rgba(235, 237, 240, 0.96) 0%,
+      rgba(235, 237, 240, 0.88) 60%,
+      rgba(235, 237, 240, 0.55) 100%
+    ),
+    url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+  /* Dark mode */
+  .dark-mode & {
+    background: linear-gradient(
+        90deg,
+        rgba(20, 20, 20, 0.95) 0%,
+        rgba(40, 40, 40, 0.85) 50%,
+        rgba(60, 60, 60, 0.7) 100%
+      ),
+      url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
+    box-shadow: none;
+  }
+
   &:hover,
   &:active,
   &:focus {
-    background-color: var(--global-div-tr);
     margin-left: 0.35rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+
+    .dark-mode & {
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+    }
+
     @media (max-width: 500px) {
       margin-left: unset;
+      transform: unset;
     }
   }
+
   @media (max-width: 1000px) {
     gap: 0.3rem;
-    margin-bottom: 0.25rem;
   }
 `;
 
@@ -77,19 +111,25 @@ const AnimeImage = styled.img`
   object-fit: cover;
   border-radius: var(--global-border-radius);
   flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   @media (max-width: 1000px) {
     width: 3rem;
     height: 4.5rem;
   }
 `;
 
-const Info = styled.div``;
+const Info = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0 0.5rem;
+`;
 
 const TitleWithDot = styled.div`
   display: flex;
   align-items: center;
   padding: 0.3rem;
-  margin-top: 0;
   gap: 0.3rem;
   border-radius: var(--global-border-radius);
   cursor: pointer;
@@ -101,24 +141,26 @@ const TitleWithDot = styled.div`
 `;
 
 const Title = styled.p`
-  top: 0;
-  margin-bottom: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   font-size: 0.85rem;
   margin: 0;
+  font-weight: 600;
+  color: var(--global-text);
+
   @media (max-width: 1000px) {
     font-size: 0.8rem;
-    -webkit-line-clamp: 2;
   }
 `;
 
 const Details = styled.p`
   font-size: 0.7rem;
-  margin: 0.2rem 0 0 0;
-  color: rgba(102, 102, 102, 0.75);
+  margin: 0.2rem 0 0 0.3rem;
+  color: var(--global-text);
+  opacity: 0.75;
+
   svg {
     margin-left: 0.2rem;
   }
@@ -144,9 +186,9 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
   return (
     <Sidebar>
       {filteredRelations.length > 0 && (
-        <SidebarContainer>
-          <>
-            <p className='Section-Title'>RELATED</p>
+        <>
+          <SectionTitle>RELATED</SectionTitle>
+          <SidebarContainer>
             {filteredRelations
               .slice(0, window.innerWidth > 500 ? 5 : 3)
               .map((relation, index) => (
@@ -157,7 +199,10 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                   title={`${relation.title.userPreferred}`}
                   aria-label={`Watch ${relation.title.userPreferred}`}
                 >
-                  <Card style={{ animationDelay: `${index * 0.1}s` }}>
+                  <Card
+                    $backgroundImage={relation.image}
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
                     <AnimeImage
                       src={relation.image}
                       alt={relation.title.userPreferred}
@@ -175,7 +220,6 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                       <Details
                         aria-label={`Details about ${relation.title.userPreferred}`}
                       >
-                        {/* Conditionally render each piece of detail only if it's not null or empty */}
                         {relation.type && `${relation.type} `}
                         {relation.episodes && (
                           <>
@@ -194,13 +238,13 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                   </Card>
                 </Link>
               ))}
-          </>
-        </SidebarContainer>
+          </SidebarContainer>
+        </>
       )}
       {filteredRecommendations.length > 0 && (
-        <SidebarContainer>
-          <>
-            <p className='Section-Title'>RECOMMENDED</p>
+        <>
+          <SectionTitle>RECOMMENDED</SectionTitle>
+          <SidebarContainer>
             {filteredRecommendations
               .slice(0, window.innerWidth > 500 ? 5 : 3)
               .map((recommendation, index) => (
@@ -210,7 +254,10 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                   style={{ textDecoration: 'none', color: 'inherit' }}
                   title={`Watch ${recommendation.title.userPreferred}`}
                 >
-                  <Card style={{ animationDelay: `${index * 0.1}s` }}>
+                  <Card
+                    $backgroundImage={recommendation.image}
+                    style={{ animationDelay: `${index * 0.1}s` }}
+                  >
                     <AnimeImage
                       src={recommendation.image}
                       alt={recommendation.title.userPreferred}
@@ -228,7 +275,6 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                       <Details
                         aria-label={`Details about ${recommendation.title.userPreferred}`}
                       >
-                        {/* Similar conditional rendering for recommendation details */}
                         {recommendation.type && `${recommendation.type} `}
                         {recommendation.episodes && (
                           <>
@@ -247,8 +293,8 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                   </Card>
                 </Link>
               ))}
-          </>
-        </SidebarContainer>
+          </SidebarContainer>
+        </>
       )}
     </Sidebar>
   );

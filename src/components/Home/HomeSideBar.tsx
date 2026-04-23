@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import styled from 'styled-components';
-import { Link } from 'react-router-dom'; // Assuming you're using React Router for navigation
+import { Link } from 'react-router-dom';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
 import { Anime, StatusIndicator } from '../../index';
@@ -28,8 +28,15 @@ const TitleWithDot = styled.div`
 
 const AnimeCard = styled.div<{ $backgroundImage: string }>`
   display: flex;
-  background: linear-gradient(90deg, rgba(20, 20, 20, 0.95) 0%, rgba(40, 40, 40, 0.85) 50%, rgba(60, 60, 60, 0.7) 100%),
+  /* Light mode default — clean light overlay so text is readable */
+  background: linear-gradient(
+      90deg,
+      rgba(235, 237, 240, 0.96) 0%,
+      rgba(235, 237, 240, 0.88) 60%,
+      rgba(235, 237, 240, 0.55) 100%
+    ),
     url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
   border-radius: var(--global-border-radius);
   align-items: center;
   overflow: hidden;
@@ -46,12 +53,28 @@ const AnimeCard = styled.div<{ $backgroundImage: string }>`
   position: relative;
   min-height: 6.5rem;
 
+  /* Dark mode — dark overlay */
+  .dark-mode & {
+    background: linear-gradient(
+        90deg,
+        rgba(20, 20, 20, 0.95) 0%,
+        rgba(40, 40, 40, 0.85) 50%,
+        rgba(60, 60, 60, 0.7) 100%
+      ),
+      url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
+    box-shadow: none;
+  }
+
   &:hover,
   &:active,
   &:focus {
     margin-left: 0.35rem;
-    box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     transform: translateY(-2px);
+
+    .dark-mode & {
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
+    }
   }
 
   @media (max-width: 500px) {
@@ -92,14 +115,14 @@ const Title = styled.p`
   margin: 0;
   font-weight: 600;
   color: var(--global-text);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 `;
 
 const Details = styled.p`
   font-size: 0.75rem;
   margin: 0;
-  color: rgba(200, 200, 200, 0.8);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  color: var(--global-text);
+  opacity: 0.75;
+
   svg {
     margin-left: 0.4rem;
   }
@@ -163,7 +186,6 @@ export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
                       {anime.totalEpisodes}
                     </>
                   )}
-
                 {anime.rating && (
                   <>
                     <FaStar /> {anime.rating}
