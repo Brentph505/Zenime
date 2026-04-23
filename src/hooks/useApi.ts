@@ -447,23 +447,29 @@ export async function fetchAnimeStreamingLinks(
 }
 
 // Function to fetch airing schedule
-// Uses day-of-week based parameters (0-6 or day names) instead of Unix timestamps
-// Example: weekStart="Saturday", weekEnd=6 or weekStart="Sunday", weekEnd="Saturday"
+// Uses startDate and endDate in YYYY-MM-DD format
+// Example: startDate="2026-04-23", endDate="2026-04-29"
 export async function fetchAiringSchedule(
   page: number = 1,
   perPage: number = 20,
-  weekStart: string | number = 'Saturday',
-  weekEnd: string | number = 6,
-  notYetAired: boolean = false,
+  startDate: string = '',
+  endDate: string = '',
+  notYetAired: boolean = true,
 ) {
   try {
     const params = new URLSearchParams({
       page: page.toString(),
       perPage: perPage.toString(),
-      weekStart: weekStart.toString(),
-      weekEnd: weekEnd.toString(),
       notYetAired: notYetAired ? 'true' : 'false',
     });
+
+    // Add date range parameters if provided
+    if (startDate) {
+      params.append('startDate', startDate);
+    }
+    if (endDate) {
+      params.append('endDate', endDate);
+    }
 
     const url = `${BASE_URL}meta/anilist/airing-schedule?${params.toString()}`;
     console.log('🔍 Fetching airing schedule from URL:', url);
@@ -474,8 +480,8 @@ export async function fetchAiringSchedule(
       'airingSchedule',
       page.toString(),
       perPage.toString(),
-      weekStart.toString(),
-      weekEnd.toString(),
+      startDate,
+      endDate,
     );
 
     const airingScheduleCache = createCache('AiringSchedule');

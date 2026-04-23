@@ -11,7 +11,7 @@ const SeasonCardContainer = styled.div`
   margin-top: 1rem;
   margin-bottom: 1rem;
   @media (max-width: 500px) {
-    justify-content: center;
+    justify-content: flex-start;
   }
 `;
 

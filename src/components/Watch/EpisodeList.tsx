@@ -53,14 +53,14 @@ const EpisodeGrid = styled.div<{ $isRowLayout: boolean }>`
 `;
 
 const EpisodeImage = styled.img`
-  max-width: 250px;
-  max-height: 150px;
+  max-width: 100px;
+  max-height: 60px;
   height: auto;
   margin-top: 0.5rem;
   border-radius: var(--global-border-radius);
   @media (max-width: 500px) {
-    max-width: 125px;
-    max-height: 80px;
+    max-width: 80px;
+    max-height: 50px;
   }
 `;
 
@@ -195,8 +195,9 @@ const Icon = styled.div`
 `;
 
 const EpisodeNumber = styled.span``;
-const EpisodeTitle = styled.span`
+const EpisodeTitle = styled.span<{ $isSelected?: boolean }>`
   padding: 0.5rem;
+  color: ${({ $isSelected }) => ($isSelected ? 'var(--global-text)' : 'inherit')};
 `;
 
 // The updated EpisodeList component
@@ -494,14 +495,23 @@ export const EpisodeList: React.FC<Props> = ({
             >
               {displayMode === 'imageList' ? (
                 <>
-                  <div>
-                    <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                    <EpisodeTitle>{episode.title}</EpisodeTitle>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      flex: 1,
+                    }}
+                  >
+                    <EpisodeImage
+                      src={episode.image}
+                      alt={`Episode ${episode.number} - ${episode.title}`}
+                    />
+                    <div>
+                      <EpisodeNumber>{episode.number}. </EpisodeNumber>
+                      <EpisodeTitle $isSelected={$isSelected}>{episode.title}</EpisodeTitle>
+                    </div>
                   </div>
-                  <EpisodeImage
-                    src={episode.image}
-                    alt={`Episode ${episode.number} - ${episode.title}`}
-                  />
                 </>
               ) : displayMode === 'grid' ? (
                 <>
@@ -525,7 +535,7 @@ export const EpisodeList: React.FC<Props> = ({
                 // Render for 'list' layout
                 <>
                   <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                  <EpisodeTitle>{episode.title}</EpisodeTitle>
+                  <EpisodeTitle $isSelected={$isSelected}>{episode.title}</EpisodeTitle>
                   {$isSelected && <FontAwesomeIcon icon={faPlay} />}
                 </>
               )}

@@ -8,21 +8,37 @@ import { Anime, StatusIndicator } from '../../index';
 const Sidebar = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.75rem;
   transition: 0.2s ease-in-out;
+  width: 100%;
+  max-width: 100%;
   .Section-Title {
     margin: 0;
     padding: 0 0 0.5rem 0;
     color: var(--global-text);
-    font-size: 1.25rem;
+    font-size: 1rem;
     font-weight: bold;
+  }
+  @media (max-width: 1000px) {
+    max-width: 100%;
+    gap: 0.4rem;
+  }
+  @media (max-width: 500px) {
+    gap: 0.25rem;
   }
 `;
 
 const SidebarContainer = styled.div`
-  padding: 0.75rem;
+  padding: 0.5rem;
   background-color: var(--global-div-tr);
   border-radius: var(--global-border-radius);
+  width: 100%;
+  @media (max-width: 1000px) {
+    padding: 0.3rem;
+  }
+  @media (max-width: 500px) {
+    padding: 0.25rem;
+  }
 `;
 
 const Card = styled.div`
@@ -31,9 +47,9 @@ const Card = styled.div`
   border-radius: var(--global-border-radius);
   align-items: center;
   overflow: hidden;
-  gap: 0.5rem;
+  gap: 0.4rem;
   cursor: pointer;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35rem;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
   animation: slideUp 0.5s ease-in-out;
   animation-fill-mode: backwards;
@@ -48,13 +64,23 @@ const Card = styled.div`
     @media (max-width: 500px) {
       margin-left: unset;
     }
+  }
+  @media (max-width: 1000px) {
+    gap: 0.3rem;
+    margin-bottom: 0.25rem;
+  }
 `;
 
 const AnimeImage = styled.img`
-  width: 4.25rem;
-  height: 6rem;
+  width: 3.5rem;
+  height: 5rem;
   object-fit: cover;
   border-radius: var(--global-border-radius);
+  flex-shrink: 0;
+  @media (max-width: 1000px) {
+    width: 3rem;
+    height: 4.5rem;
+  }
 `;
 
 const Info = styled.div``;
@@ -62,31 +88,43 @@ const Info = styled.div``;
 const TitleWithDot = styled.div`
   display: flex;
   align-items: center;
-  padding: 0.5rem;
-  margin-top: 0.35rem;
-  gap: 0.4rem;
+  padding: 0.3rem;
+  margin-top: 0;
+  gap: 0.3rem;
   border-radius: var(--global-border-radius);
   cursor: pointer;
   transition: background 0.2s ease;
+  @media (max-width: 1000px) {
+    padding: 0.25rem;
+    gap: 0.25rem;
+  }
 `;
 
 const Title = styled.p`
   top: 0;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   margin: 0;
+  @media (max-width: 1000px) {
+    font-size: 0.8rem;
+    -webkit-line-clamp: 2;
+  }
 `;
 
 const Details = styled.p`
-  font-size: 0.75rem;
-  margin: 0;
+  font-size: 0.7rem;
+  margin: 0.2rem 0 0 0;
   color: rgba(102, 102, 102, 0.75);
   svg {
-    margin-left: 0.4rem;
+    margin-left: 0.2rem;
+  }
+  @media (max-width: 1000px) {
+    font-size: 0.65rem;
+    margin-top: 0.1rem;
   }
 `;
 

@@ -2,12 +2,32 @@ import { useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { fetchAiringSchedule } from '../../hooks/useApi';
 
+interface AnimeTitle {
+  romaji: string;
+  english: string | null;
+  native: string;
+  userPreferred: string;
+}
+
 interface AiringAnime {
   id: string;
-  title: string;
+  malId: number;
+  episode: number;
+  airingAt: number;
+  timeUntilAiring: number;
+  title: AnimeTitle;
+  country: string;
   image: string;
-  type: string;
+  imageHash: string;
+  cover: string;
+  coverHash: string;
+  description: string | null;
+  status: string;
   rating: number;
+  genres: string[];
+  color: string;
+  duration: number | null;
+  type: string;
   releaseDate: string;
 }
 
@@ -19,6 +39,8 @@ interface ScheduleItem {
   image: string;
   type: string;
   rating: number;
+  episode: number;
+  airingAt: number;
 }
 
 type ScheduleData = Record<string, ScheduleItem[]>;
@@ -26,16 +48,70 @@ type DateLabels = Record<string, string>;
 
 const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// Helper function to get day of week from date string (YYYY-MM-DD)
+// Helper function to get day of week from ISO date string
 function getDayOfWeek(dateString: string): string {
   try {
-    const date = new Date(dateString + 'T00:00:00Z');
+    // Parse the date string - already in UTC format (ends with Z)
+    const date = new Date(dateString);
     const dayIndex = date.getUTCDay();
     return days[dayIndex];
   } catch {
     console.warn('Invalid date string:', dateString);
     return 'Unknown';
   }
+}
+
+// Helper function to get current week's date range starting from today
+function getCurrentWeekDateRange(): [string, string] {
+  const today = new Date();
+  
+  // Start from today
+  const startDate = new Date(today);
+  startDate.setUTCHours(0, 0, 0, 0);
+  
+  // End date = today + 6 days (next week)
+  const endDate = new Date(startDate);
+  endDate.setUTCDate(startDate.getUTCDate() + 6);
+  
+  const formatDate = (date: Date): string => {
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  return [formatDate(startDate), formatDate(endDate)];
+}
+
+// Helper function to get date labels for each day starting from today
+function getDateLabelsForWeek(): DateLabels {
+  const today = new Date();
+  const startDate = new Date(today);
+  startDate.setUTCHours(0, 0, 0, 0);
+  
+  const labels: DateLabels = {};
+  const dateFormatter = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+  
+  // Get today's day index (0 = Sunday in JS)
+  const todayDayIndex = today.getUTCDay();
+  
+  // Create ordered days starting from today
+  const orderedDays: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dayIndex = (todayDayIndex + i) % 7;
+    orderedDays.push(days[dayIndex]);
+  }
+  
+  orderedDays.forEach((day, index) => {
+    const date = new Date(startDate);
+    date.setUTCDate(startDate.getUTCDate() + index);
+    labels[day] = dateFormatter.format(date);
+  });
+  
+  return labels;
 }
 
 // Helper function to group anime by day of week from release dates
@@ -57,32 +133,37 @@ function groupByDay(animeList: AiringAnime[]): ScheduleData {
 
   animeList.forEach((anime, idx) => {
     try {
-      if (!anime || !anime.releaseDate) {
-        console.warn(`Anime ${idx} missing releaseDate:`, anime);
+      if (!anime || !anime.airingAt) {
+        console.warn(`Anime ${idx} missing airingAt:`, anime);
         return;
       }
 
-      const dayName = getDayOfWeek(anime.releaseDate);
-      const title = anime.title || 'Unknown Title';
+      // Convert Unix timestamp (seconds) to ISO date string for getDayOfWeek
+      const releaseDate = new Date(anime.airingAt * 1000).toISOString();
+      const dayName = getDayOfWeek(releaseDate);
+      // Use userPreferred title, fallback to romaji
+      const title = anime.title?.userPreferred || anime.title?.romaji || 'Unknown Title';
       const id = anime.id || `unknown-${idx}`;
 
       grouped[dayName].push({
-        date: anime.releaseDate,
+        date: releaseDate,
         title,
         isNew: false,
         id,
         image: anime.image,
         type: anime.type,
         rating: anime.rating,
+        episode: anime.episode,
+        airingAt: anime.airingAt,
       });
     } catch (err) {
       console.error(`Error processing anime at index ${idx}:`, err, anime);
     }
   });
 
-  // Sort each day's anime by date
+  // Sort each day's anime by airing time
   Object.keys(grouped).forEach((day) => {
-    grouped[day].sort((a, b) => a.date.localeCompare(b.date));
+    grouped[day].sort((a, b) => (a.airingAt || 0) - (b.airingAt || 0));
   });
 
   return grouped;
@@ -120,22 +201,6 @@ const ScheduleSubtitle = styled.span`
 
   @media (max-width: 640px) {
     font-size: 0.7rem;
-  }
-`;
-
-const TimezoneInfo = styled.span`
-  font-size: 0.75rem;
-  color: var(--primary-accent);
-  letter-spacing: 0.04em;
-  display: inline-block;
-  margin-left: 0.5rem;
-  font-weight: 500;
-
-  @media (max-width: 640px) {
-    font-size: 0.65rem;
-    display: block;
-    margin-left: 0;
-    margin-top: 0.25rem;
   }
 `;
 
@@ -459,7 +524,14 @@ const SkeletonMetaLine = styled.div`
 `;
 
 export default function AnimeSchedule() {
-  const [activeDay, setActiveDay] = useState('Wed');
+  // Get today's day of week as default active day
+  const getTodayDay = (): string => {
+    const today = new Date();
+    const dayIndex = today.getUTCDay();
+    return days[dayIndex];
+  };
+
+  const [activeDay, setActiveDay] = useState<string>(getTodayDay());
   const [showAll, setShowAll] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleData>({
     Sun: [],
@@ -472,21 +544,9 @@ export default function AnimeSchedule() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateLabels, setDateLabels] = useState<DateLabels>({});
+  const [dateLabels, setDateLabels] = useState<DateLabels>(getDateLabelsForWeek());
 
-  const dayToParams = (day: string): [string, number] => {
-    const dayMap: Record<string, [string, number]> = {
-      Sun: ['Sunday', 0],
-      Mon: ['Monday', 1],
-      Tue: ['Tuesday', 2],
-      Wed: ['Wednesday', 3],
-      Thu: ['Thursday', 4],
-      Fri: ['Friday', 5],
-      Sat: ['Saturday', 6],
-    };
-    return dayMap[day] ?? ['Sunday', 0];
-  };
-
+  // Fetch schedule on mount using current week's date range
   useEffect(() => {
     const fetchSchedule = async () => {
       try {
@@ -494,16 +554,17 @@ export default function AnimeSchedule() {
         setLoading(true);
         setError(null);
 
-        const [weekStart, weekEnd] = dayToParams(activeDay);
+        // Use current week's date range (always fetch full week)
+        const [startDate, endDate] = getCurrentWeekDateRange();
 
         console.log('📡 Calling fetchAiringSchedule with params:', {
           page: 1,
           perPage: 50,
-          weekStart,
-          weekEnd,
+          startDate,
+          endDate,
         });
 
-        const data = await fetchAiringSchedule(1, 50, weekStart, weekEnd);
+        const data = await fetchAiringSchedule(1, 50, startDate, endDate);
 
         console.log('✅ Full API Response:', data);
 
@@ -528,21 +589,8 @@ export default function AnimeSchedule() {
           console.log('✅ Grouped data:', grouped);
           setScheduleData(grouped);
 
-          const labels: DateLabels = {};
-          days.forEach((day) => {
-            const firstOfDay = grouped[day]?.[0];
-            if (firstOfDay) {
-              const date = new Date(firstOfDay.date + 'T00:00:00Z');
-              const dateFormatter = new Intl.DateTimeFormat('en-US', {
-                month: 'short',
-                day: 'numeric',
-              });
-              labels[day] = dateFormatter.format(date);
-            } else {
-              labels[day] = '';
-            }
-          });
-          setDateLabels(labels);
+          // Set date labels for each day of the week (always show dates)
+          setDateLabels(getDateLabelsForWeek());
         }
 
         if (
@@ -568,13 +616,27 @@ export default function AnimeSchedule() {
     };
 
     fetchSchedule();
-  }, [activeDay]);
+  }, []); // Empty dependency array - fetch once on mount
 
   const entries = scheduleData[activeDay] || [];
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 640;
   const displayLimit = isMobile ? 6 : entries.length;
   const displayedEntries = showAll ? entries : entries.slice(0, displayLimit);
   const hasMore = entries.length > displayLimit;
+
+  // Get ordered days starting from today
+  const getOrderedDays = (): string[] => {
+    const today = new Date();
+    const todayDayIndex = today.getUTCDay();
+    const ordered: string[] = [];
+    for (let i = 0; i < 7; i++) {
+      const dayIndex = (todayDayIndex + i) % 7;
+      ordered.push(days[dayIndex]);
+    }
+    return ordered;
+  };
+
+  const orderedDays = getOrderedDays();
 
   return (
     <ScheduleRoot>
@@ -584,7 +646,7 @@ export default function AnimeSchedule() {
       </ScheduleHeader>
 
       <DayNav>
-        {days.map((day) => {
+        {orderedDays.map((day) => {
           const isActive = day === activeDay;
           return (
             <DayButton
@@ -630,7 +692,7 @@ export default function AnimeSchedule() {
                   <ScheduleContentWrapper>
                     <ScheduleTitleText>{item.title}</ScheduleTitleText>
                     <ScheduleTime>
-                      {item.type} • Rating: {item.rating}%
+                      Ep {item.episode} • {item.type} • Rating: {item.rating}%
                     </ScheduleTime>
                   </ScheduleContentWrapper>
                   <RatingBadge>⭐ {item.rating}</RatingBadge>

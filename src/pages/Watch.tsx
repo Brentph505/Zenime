@@ -41,12 +41,16 @@ const DataWrapper = styled.div`
   grid-template-columns: 1fr 1fr; // TODO Aim for a 3:1 ratio
   width: 100%; // TODO Make sure this container can expand enough
   @media (max-width: 1000px) {
-    grid-template-columns: auto;
+    grid-template-columns: 1fr;
+    max-width: 100%;
   }
 `;
 
 const SourceAndData = styled.div<{ $videoPlayerWidth: string }>`
   width: ${({ $videoPlayerWidth }) => $videoPlayerWidth};
+  @media (max-width: 1000px) {
+    width: 100%;
+  }
 `;
 
 const RalationsTable = styled.div`

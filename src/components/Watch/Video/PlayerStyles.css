@@ -39,3 +39,48 @@
 .vds-poster {
   object-fit: cover;
 }
+
+/* Mobile subtitle styling - larger when not in fullscreen */
+@media (max-width: 768px) {
+  /* Target video element native subtitles */
+  .player video::cue,
+  video::cue,
+  ::cue {
+    font-size: 0.65rem !important;
+    line-height: 1.3 !important;
+    background-color: rgba(0, 0, 0, 0.7) !important;
+    color: white !important;
+    padding: 0.2em !important;
+    font-family: sans-serif !important;
+  }
+  
+  /* Vidstack specific - more aggressive targeting */
+  .vds-cue-text,
+  .vds-cue,
+  .media-cue-text,
+  [class*="cue"] {
+    font-size: 0.65rem !important;
+    line-height: 1.3 !important;
+    font-family: sans-serif !important;
+  }
+  
+  /* Override vidstack theme variables for mobile */
+  .player {
+    --media-cue-font-size: 0.65rem !important;
+    --media-cue-line-height: 1.3 !important;
+  }
+  
+  /* Target the actual subtitle container */
+  .player .vds-cues,
+  .player .media-cues,
+  .vds-cues,
+  .media-cues {
+    font-size: 0.65rem !important;
+  }
+  
+  .player .vds-cue,
+  .player [data-cue] {
+    font-size: 0.65rem !important;
+    line-height: 1.3 !important;
+  }
+}
