@@ -189,7 +189,7 @@ async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
     // Attempt to retrieve the cached response using the cacheKey
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {
-      console.log(`✅ Cache HIT for: ${cacheKey}`);
+      console.log(`✅ Cache HIT for: ${cacheKey}`, cachedResponse);
       return cachedResponse; // Return the cached response if available
     }
 
@@ -211,7 +211,9 @@ async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
       requestConfig,
     );
 
-    console.log(`📥 Response received:`, response.status, response.data);
+    console.log(`📥 Response received:`, response.status);
+    console.log(`📥 Response data keys:`, Object.keys(response.data || {}));
+    console.log(`📥 Response data:`, response.data);
 
     // After obtaining the response, verify it for errors or empty data
     if (
@@ -436,6 +438,9 @@ export async function fetchAnimeStreamingLinks(
   }
 
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
+  console.log('fetchAnimeStreamingLinks URL:', url);
+  console.log('fetchAnimeStreamingLinks episodeId:', episodeId);
+  console.log('fetchAnimeStreamingLinks provider:', finalProvider);
   const cacheKey = generateCacheKey(
     'animeStreamingLinks',
     episodeId,
@@ -443,7 +448,9 @@ export async function fetchAnimeStreamingLinks(
     server || '',
   );
 
-  return fetchFromProxy(url, videoSourcesCache, cacheKey);
+  const result = await fetchFromProxy(url, videoSourcesCache, cacheKey);
+  console.log('fetchAnimeStreamingLinks result:', result);
+  return result;
 }
 
 // Function to fetch airing schedule

@@ -188,7 +188,12 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   nextEpisodenumber,
   availableServers = [],
 }) => {
-  console.log('MediaSource props:', { sourceType, availableServers });
+  console.log('MediaSource RENDER - props:', { 
+    sourceType, 
+    availableServers: availableServers,
+    availableServersLength: availableServers?.length,
+    episodeId 
+  });
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShareClick = () => {
@@ -201,7 +206,12 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
 
   // Generate server buttons dynamically from availableServers
   const renderServerButtons = () => {
-    console.log('Rendering server buttons with availableServers:', availableServers);
+    console.log('renderServerButtons called with:', availableServers);
+    if (!availableServers || availableServers.length === 0) {
+      console.log('No availableServers, returning default');
+      return [{ key: 'default', label: 'Default' }];
+    }
+    console.log('Mapping servers:', availableServers);
     return availableServers.map((server) => ({
       key: server,
       label: server.charAt(0).toUpperCase() + server.slice(1),

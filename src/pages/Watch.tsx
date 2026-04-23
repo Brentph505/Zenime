@@ -160,6 +160,21 @@ const Watch: React.FC = () => {
     `source-[${animeId}]`;
   const getLanguageKey = (animeId: string | undefined) =>
     `subOrDub-[${animeId}]`;
+  
+  // Per-episode server storage keys
+  const getEpisodeServerKey = (animeId: string | undefined, episodeId: string | undefined) =>
+    `episode-server-[${animeId}]-[${episodeId}]`;
+  
+  const getSavedServerForEpisode = (animeId: string | undefined, episodeId: string | undefined) => {
+    if (!animeId || !episodeId) return 'default';
+    return localStorage.getItem(getEpisodeServerKey(animeId, episodeId)) || 'default';
+  };
+  
+  const saveServerForEpisode = (animeId: string | undefined, episodeId: string | undefined, server: string) => {
+    if (!animeId || !episodeId) return;
+    localStorage.setItem(getEpisodeServerKey(animeId, episodeId), server);
+  };
+  
   const updateVideoPlayerWidth = useCallback(() => {
     if (videoPlayerContainerRef.current) {
       const width = `${videoPlayerContainerRef.current.offsetWidth}px`;
@@ -194,9 +209,7 @@ const Watch: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showNoEpisodesMessage, setShowNoEpisodesMessage] = useState(false);
   const [lastKeypressTime, setLastKeypressTime] = useState(0);
-  const [sourceType, setSourceType] = useState(
-    () => localStorage.getItem(STORAGE_KEYS.SOURCE_TYPE) || 'default',
-  );
+  const [sourceType, setSourceType] = useState<string>('default');
   const [language, setLanguage] = useState(
     () => localStorage.getItem(STORAGE_KEYS.LANGUAGE) || 'sub',
   );
@@ -550,37 +563,57 @@ const Watch: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(getSourceTypeKey(animeId), sourceType);
-    console.log('Source type changed to:', sourceType, 'for animeId:', animeId);
-  }, [sourceType, animeId]);
+    // Save server selection per episode
+    if (animeId && currentEpisode.id && currentEpisode.id !== '0') {
+      saveServerForEpisode(animeId, currentEpisode.id, sourceType);
+      console.log('Saved server:', sourceType, 'for episode:', currentEpisode.id);
+    }
+  }, [sourceType, animeId, currentEpisode.id]);
+
+  useEffect(() => {
+    // Load saved server for the current episode, or default if new episode
+    if (animeId && currentEpisode.id && currentEpisode.id !== '0') {
+      const savedServer = getSavedServerForEpisode(animeId, currentEpisode.id);
+      console.log('Loading saved server for episode:', currentEpisode.id, '->', savedServer);
+      setSourceType(savedServer);
+    } else {
+      setSourceType('default');
+    }
+  }, [currentEpisode.id, animeId]);
 
   useEffect(() => {
     if (!currentEpisode.id || currentEpisode.id === '0') return;
 
     const fetchAvailableServers = async () => {
+      console.log('Fetching available servers for episode:', currentEpisode.id);
       try {
         const response = await fetchAnimeStreamingLinks(currentEpisode.id, 'kickassanime');
         console.log('Streaming links response:', response);
+        console.log('Response keys:', Object.keys(response));
+        console.log('availableServers:', response?.availableServers);
+        console.log('servers:', response?.servers);
         
         // Try to get availableServers from response
         let servers: string[] = [];
         
         if (response && response.availableServers && Array.isArray(response.availableServers) && response.availableServers.length > 0) {
-          servers = response.availableServers;
+          console.log('Found availableServers in response');
+          servers = response.availableServers.map((s: string) => s.toLowerCase());
         } else if (response && response.servers && Array.isArray(response.servers) && response.servers.length > 0) {
+          console.log('Found servers in response');
           // Extract server names from servers array
           servers = response.servers
             .map((s: any) => {
-              if (typeof s === 'string') return s;
+              if (typeof s === 'string') return s.toLowerCase();
               if (s.name) return s.name.toLowerCase();
               return null;
             })
             .filter(Boolean) as string[];
+        } else {
+          console.log('No servers found in response, using known servers');
+          // Only use known servers as fallback if API returns nothing
+          servers = ['vidstreaming', 'duckstream', 'birdstream'];
         }
-        
-        // Always include known servers for kickassanime
-        const knownServers = ['vidstreaming', 'duckstream', 'birdstream'];
-        servers = [...servers, ...knownServers];
         
         // Remove duplicates
         servers = [...new Set(servers)];
@@ -590,13 +623,34 @@ const Watch: React.FC = () => {
           servers.unshift('default');
         }
         
-        if (servers.length > 0) {
-          console.log('Available servers found:', servers);
-          setAvailableServers(servers);
-        } else {
-          console.warn('No servers found in response. Full response:', response);
-          setAvailableServers(['default']);
+        // Verify each server has valid M3U8 sources before showing
+        const verifiedServers: string[] = [];
+        for (const server of servers) {
+          try {
+            const serverResponse = await fetchAnimeStreamingLinks(
+              currentEpisode.id,
+              'kickassanime',
+              server === 'default' ? undefined : server
+            );
+            // Check if server has valid M3U8 sources
+            const hasM3U8 = serverResponse.sources?.some(
+              (s: any) => s.isM3U8 || s.url?.endsWith('.m3u8')
+            );
+            if (hasM3U8) {
+              verifiedServers.push(server);
+              console.log(`Server ${server} has valid M3U8 sources`);
+            } else {
+              console.log(`Server ${server} has no M3U8 sources, hiding`);
+            }
+          } catch (e) {
+            console.log(`Server ${server} check failed, hiding`);
+          }
         }
+        
+        // Fallback to default if no servers verified
+        const finalServers = verifiedServers.length > 0 ? verifiedServers : ['default'];
+        console.log('Final servers list (verified):', finalServers);
+        setAvailableServers(finalServers);
       } catch (error) {
         console.error('Error fetching available servers:', error);
         setAvailableServers(['default']);

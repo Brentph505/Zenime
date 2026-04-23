@@ -119,11 +119,19 @@ export function Player({
   const [skipTimes, setSkipTimes] = useState<SkipTime[]>([]);
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [vttGenerated, setVttGenerated] = useState<boolean>(false);
-  const episodeNumber = propEpisodeNumber ? String(propEpisodeNumber) : getEpisodeNumber(episodeId);
+  const [canPlay, setCanPlay] = useState<boolean>(false);
+  const episodeNumber = propEpisodeNumber
+    ? String(propEpisodeNumber)
+    : getEpisodeNumber(episodeId);
   const animeVideoTitle = animeTitle;
 
   const { settings, setSettings } = useSettings();
   const { autoPlay, autoNext, autoSkip } = settings;
+
+  // Debug: log sourceType changes
+  useEffect(() => {
+    console.log('[Player] sourceType changed:', sourceType);
+  }, [sourceType]);
 
   useEffect(() => {
     // Skip fetching if episodeId is not valid
@@ -141,14 +149,23 @@ export function Player({
   }, [episodeId, malId, updateDownloadLink, sourceType]);
 
   useEffect(() => {
-    if (autoPlay && player.current) {
+    if (autoPlay && canPlay && player.current) {
       player.current
         .play()
         .catch((e) =>
           console.log('Playback failed to start automatically:', e),
         );
     }
-  }, [autoPlay, src]);
+  }, [autoPlay, src, canPlay]);
+
+  // Force player to reload when src changes (server change)
+  useEffect(() => {
+    if (player.current && src) {
+      console.log('[Player] Source changed, reloading player:', src);
+      // Note: Vidstack player reloads automatically when src changes
+      // No manual load() method needed on MediaPlayerInstance
+    }
+  }, [src]);
 
   useEffect(() => {
     if (player.current && currentTime) {
@@ -169,6 +186,10 @@ export function Player({
     if (player.current) {
       setTotalDuration(player.current.duration);
     }
+  }
+
+  function onCanPlay() {
+    setCanPlay(true);
   }
 
   function onTimeUpdate() {
@@ -269,14 +290,43 @@ export function Player({
   async function fetchAndSetAnimeSource() {
     try {
       // Use server parameter only if sourceType is not 'default'
-      const serverParam = sourceType !== 'default' ? sourceType : undefined;
-      const response: StreamingResponse = await fetchAnimeStreamingLinks(episodeId, 'kickassanime', serverParam);
-      
+      // Convert to lowercase to match API expected format
+      const serverParam =
+        sourceType !== 'default' ? sourceType.toLowerCase() : undefined;
+      console.log('[Player] fetchAndSetAnimeSource called with:', {
+        episodeId,
+        sourceType,
+        serverParam,
+      });
+
+      const response: StreamingResponse = await fetchAnimeStreamingLinks(
+        episodeId,
+        'kickassanime',
+        serverParam,
+      );
+      console.log('[Player] API response:', response);
+      console.log('[Player] API response sources:', response?.sources);
+      console.log(
+        '[Player] API response sources length:',
+        response?.sources?.length,
+      );
+
       if (response.sources && response.sources.length > 0) {
-        // Get the first/best quality source
-        const selectedSource = response.sources[0];
-        setSrc(selectedSource.url);
-        
+        // Filter to only include M3U8 sources - check both isM3U8 flag and URL extension
+        const m3u8Sources = response.sources.filter(
+          (source) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+        );
+        console.log('[Player] M3U8 sources:', m3u8Sources);
+
+        if (m3u8Sources.length > 0) {
+          // Get the first/best quality M3U8 source
+          const selectedSource = m3u8Sources[0];
+          console.log('[Player] Selected source URL:', selectedSource.url);
+          setSrc(selectedSource.url);
+        } else {
+          console.error('No M3U8 video sources found in response');
+        }
+
         // Set download link if available
         if (response.download) {
           updateDownloadLink(response.download);
@@ -284,7 +334,7 @@ export function Player({
       } else {
         console.error('No video sources found in response');
       }
-      
+
       // Set subtitles if available
       if (response.subtitles && response.subtitles.length > 0) {
         setSubtitles(response.subtitles);
@@ -301,8 +351,17 @@ export function Player({
   }
 
   function getEpisodeNumber(id: string): string {
-    const parts = id.split('-');
-    return parts[parts.length - 1];
+    // Handle episode IDs like: that-time-i-got-reincarnated-as-a-slime-season-3-6b04/episode/ep-1-9ff869
+    // Extract the episode number from patterns like "ep-1" or "episode-1"
+    const epMatch = id.match(/ep[-_]?(\d+)/i);
+    if (epMatch) {
+      return epMatch[1];
+    }
+    // Fallback: try to get the last numeric part
+    const parts = id.split(/[-/]/);
+    const lastPart = parts[parts.length - 1];
+    const num = parseInt(lastPart, 10);
+    return isNaN(num) ? '1' : num.toString();
   }
 
   const toggleAutoPlay = () =>
@@ -332,9 +391,11 @@ export function Player({
         title={`${animeVideoTitle} - Episode ${episodeNumber}`}
         src={src}
         autoplay={autoPlay}
+        muted={autoPlay} // Start muted to allow autoplay without user interaction
         crossorigin
         playsinline
         onLoadedMetadata={onLoadedMetadata}
+        onCanPlay={onCanPlay}
         onProviderChange={onProviderChange}
         onTimeUpdate={onTimeUpdate}
         ref={player}
@@ -351,7 +412,8 @@ export function Player({
           {vttUrl && (
             <Track kind='chapters' src={vttUrl} default label='Skip Times' />
           )}
-          {subtitles && subtitles.length > 0 && (
+          {subtitles &&
+            subtitles.length > 0 &&
             subtitles.map((subtitle, index) => (
               <Track
                 key={`subtitle-${index}`}
@@ -360,8 +422,7 @@ export function Player({
                 label={subtitle.lang}
                 default={subtitle.lang === 'English' || index === 0}
               />
-            ))
-          )}
+            ))}
         </MediaProvider>
         <DefaultAudioLayout icons={defaultLayoutIcons} />
         <DefaultVideoLayout icons={defaultLayoutIcons} />
