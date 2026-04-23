@@ -4,28 +4,28 @@ import { Link } from 'react-router-dom';
 import { Relation } from '../../index';
 
 const SeasonCardContainer = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: left;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
   margin-top: 1rem;
   margin-bottom: 1rem;
-  @media (max-width: 500px) {
-    justify-content: flex-start;
+
+  @media (min-width: 641px) {
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
   }
 `;
 
 const SeasonCard = styled(Link)`
   background-size: cover;
   background-position: center;
-  padding: 0.9rem;
-  height: 6rem;
-  width: 20rem;
-  @media (max-width: 500px) {
-    height: 3rem;
-    width: 8rem;
-    padding: 1.3rem;
+  padding: 0.6rem;
+  height: 5rem;
+
+  @media (max-width: 640px) {
+    height: 2.5rem;
+    padding: 0.5rem;
   }
+
   position: relative;
   display: flex;
   align-items: center;
@@ -40,20 +40,19 @@ const SeasonCard = styled(Link)`
   &::before {
     content: '';
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    inset: 0;
     background-color: rgba(0, 0, 0, 0.5);
     border-radius: var(--global-border-radius);
     z-index: 1;
   }
+
   transition: transform 0.2s ease-in-out;
 
   &:hover,
-  &:active &:focus {
+  &:active,
+  &:focus {
     transform: translateY(-5px);
-    @media (max-width: 500px) {
+    @media (max-width: 640px) {
       transform: none;
     }
   }
@@ -62,41 +61,38 @@ const SeasonCard = styled(Link)`
 const Content = styled.div`
   position: relative;
   z-index: 2;
+  width: 100%;
 `;
 
 const SeasonName = styled.div`
-  font-size: 0.9rem;
-  @media (max-width: 500px) {
-    display: none;
-    width: 8rem;
-    font-size: 0.8rem;
+  font-size: 0.8rem;
+  @media (max-width: 640px) {
+    font-size: 0.65rem;
   }
   color: white;
   text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
 const RelationType = styled.div`
-  font-size: 1.3rem;
-  @media (max-width: 500px) {
-    font-size: 1.1rem;
-    width: 8rem;
-    margin-bottom: 0.25rem;
+  font-size: 1.1rem;
+  @media (max-width: 640px) {
+    font-size: 0.75rem;
+    margin-bottom: 0.15rem;
   }
   font-weight: bold;
   color: white;
   border-radius: var(--global-border-radius);
   text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
 `;
 
 export const Seasons: React.FC<{ relations: Relation[] }> = ({ relations }) => {
-  const sortedRelations = relations.sort((a, b) => {
-    if (a.relationType === 'PREQUEL' && b.relationType !== 'PREQUEL') {
-      return -1;
-    }
-    if (a.relationType !== 'PREQUEL' && b.relationType === 'PREQUEL') {
-      return 1;
-    }
+  const sortedRelations = [...relations].sort((a, b) => {
+    if (a.relationType === 'PREQUEL' && b.relationType !== 'PREQUEL') return -1;
+    if (a.relationType !== 'PREQUEL' && b.relationType === 'PREQUEL') return 1;
     return 0;
   });
 

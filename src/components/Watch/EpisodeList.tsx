@@ -50,6 +50,11 @@ const EpisodeGrid = styled.div<{ $isRowLayout: boolean }>`
   padding: 0.4rem;
   overflow-y: auto;
   flex-grow: 1;
+
+  @media (max-width: 640px) {
+    grid-template-columns: ${({ $isRowLayout }) =>
+      $isRowLayout ? '1fr' : 'repeat(auto-fill, minmax(2.5rem, 1fr))'};
+  }
 `;
 
 const EpisodeImage = styled.img`
@@ -58,9 +63,13 @@ const EpisodeImage = styled.img`
   height: auto;
   margin-top: 0.5rem;
   border-radius: var(--global-border-radius);
-  @media (max-width: 500px) {
-    max-width: 80px;
-    max-height: 50px;
+  @media (max-width: 640px) {
+    max-width: 70px;
+    max-height: 42px;
+  }
+  @media (max-width: 400px) {
+    max-width: 60px;
+    max-height: 36px;
   }
 `;
 
@@ -197,7 +206,8 @@ const Icon = styled.div`
 const EpisodeNumber = styled.span``;
 const EpisodeTitle = styled.span<{ $isSelected?: boolean }>`
   padding: 0.5rem;
-  color: ${({ $isSelected }) => ($isSelected ? 'var(--global-text)' : 'inherit')};
+  color: ${({ $isSelected }) =>
+    $isSelected ? 'var(--global-text)' : 'inherit'};
 `;
 
 // The updated EpisodeList component
@@ -509,7 +519,9 @@ export const EpisodeList: React.FC<Props> = ({
                     />
                     <div>
                       <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                      <EpisodeTitle $isSelected={$isSelected}>{episode.title}</EpisodeTitle>
+                      <EpisodeTitle $isSelected={$isSelected}>
+                        {episode.title}
+                      </EpisodeTitle>
                     </div>
                   </div>
                 </>
@@ -535,7 +547,9 @@ export const EpisodeList: React.FC<Props> = ({
                 // Render for 'list' layout
                 <>
                   <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                  <EpisodeTitle $isSelected={$isSelected}>{episode.title}</EpisodeTitle>
+                  <EpisodeTitle $isSelected={$isSelected}>
+                    {episode.title}
+                  </EpisodeTitle>
                   {$isSelected && <FontAwesomeIcon icon={faPlay} />}
                 </>
               )}
