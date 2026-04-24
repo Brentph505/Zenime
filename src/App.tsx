@@ -23,6 +23,7 @@ import {
   ApolloClientProvider,
   Settings,
   SettingsProvider,
+  Info,
 } from './index';
 import { register } from 'swiper/element/bundle';
 import { Analytics } from '@vercel/analytics/react';
@@ -61,6 +62,7 @@ function App() {
                     path='/watch/:animeId/:animeTitle/:episodeNumber'
                     element={<Watch />}
                   />
+                  <Route path='/info/:animeId' element={<Info />} />
                   <Route path='/profile' element={<Profile />} />
                   <Route path='/profile/settings' element={<Settings />} />
                   <Route path='/about' element={<About />} />
