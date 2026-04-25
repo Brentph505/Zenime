@@ -573,13 +573,11 @@ export default function AnimeSchedule() {
         const dateString = getActiveDateString();
 
         console.log('📡 Calling fetchAiringSchedule with params:', {
-          page: 1,
-          perPage: 50,
           startDate: dateString,
           endDate: dateString,
         });
 
-        const data = await fetchAiringSchedule(1, 50, dateString, dateString);
+        const data = await fetchAiringSchedule(dateString, dateString);
 
         console.log('✅ Full API Response:', data);
 

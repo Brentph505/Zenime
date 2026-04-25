@@ -457,18 +457,11 @@ export async function fetchAnimeStreamingLinks(
 // Uses startDate and endDate in YYYY-MM-DD format
 // Example: startDate="2026-04-23", endDate="2026-04-29"
 export async function fetchAiringSchedule(
-  page: number = 1,
-  perPage: number = 20,
   startDate: string = '',
   endDate: string = '',
-  notYetAired: boolean = true,
 ) {
   try {
-    const params = new URLSearchParams({
-      page: page.toString(),
-      perPage: perPage.toString(),
-      notYetAired: notYetAired ? 'true' : 'false',
-    });
+    const params = new URLSearchParams();
 
     // Add date range parameters if provided
     if (startDate) {
@@ -485,8 +478,6 @@ export async function fetchAiringSchedule(
 
     const cacheKey = generateCacheKey(
       'airingSchedule',
-      page.toString(),
-      perPage.toString(),
       startDate,
       endDate,
     );
