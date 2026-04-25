@@ -1,121 +1,96 @@
 import { useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Link } from 'react-router-dom';
-import { fetchAiringSchedule } from '../../hooks/useApi';
+import { fetchAiringSchedule, AniListAiringItem } from '../../hooks/useApi';
 
-interface AnimeTitle {
-  romaji: string;
-  english: string | null;
-  native: string;
-  userPreferred: string;
-}
-
-interface AiringAnime {
-  id: string;
-  malId: number;
-  episode: number;
-  airingAt: number;
-  timeUntilAiring: number;
-  title: AnimeTitle;
-  country: string;
-  image: string;
-  imageHash: string;
-  cover: string;
-  coverHash: string;
-  description: string | null;
-  status: string;
-  rating: number;
-  genres: string[];
-  color: string;
-  duration: number | null;
-  type: string;
-  releaseDate: string;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface ScheduleItem {
-  date: string;
+  id: string;
+  airingAt: number;
+  episode: number;
   title: string;
   englishTitle: string | null;
   romajiTitle: string;
-  isNew: boolean;
-  id: string;
   image: string;
+  color: string | null;
   type: string;
-  rating: number;
-  episode: number;
-  airingAt: number;
+  format: string;
+  rating: number | null;
+  genres: string[];
+  countryOfOrigin: string;
 }
 
-type DateLabels = Record<string, string>;
+// ─────────────────────────────────────────────────────────────────────────────
+// Date / Time helpers  (all LOCAL timezone — adapts wherever the user is)
+// ─────────────────────────────────────────────────────────────────────────────
 
-const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_ABBRS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// Helper function to format airing time in user's local timezone (24-hour format)
-function formatLocalTime24(unixTimestamp: number): string {
+/**
+ * Short day abbreviation for a given offset from today in LOCAL time.
+ * dayOffset = 0 → today's day name, 1 → tomorrow's, etc.
+ */
+function getDayAbbr(dayOffset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dayOffset);
+  return DAY_ABBRS[d.getDay()];
+}
+
+/**
+ * Returns a short date label like "Apr 26" for a given day offset.
+ */
+function getShortDate(dayOffset: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + dayOffset);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+  }).format(d);
+}
+
+/**
+ * Formats a Unix timestamp (seconds) as HH:MM in the user's LOCAL timezone.
+ */
+function formatLocalTime(unixSeconds: number): string {
   try {
-    // Convert Unix timestamp (seconds) to milliseconds and create Date object
-    const date = new Date(unixTimestamp * 1000);
-    
-    // Format time in user's local timezone using 24-hour format
-    const timeFormatter = new Intl.DateTimeFormat('en-GB', {
+    return new Intl.DateTimeFormat('en-GB', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    });
-    
-    return timeFormatter.format(date);
-  } catch (err) {
-    console.warn('Error formatting time:', err);
-    return 'Unknown time';
+    }).format(new Date(unixSeconds * 1000));
+  } catch {
+    return '--:--';
   }
 }
 
-// Helper function to format a date as YYYY-MM-DD
-function formatDate(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+/**
+ * Maps a raw AniListAiringItem to the leaner ScheduleItem shape the UI uses.
+ */
+function mapToScheduleItem(raw: AniListAiringItem): ScheduleItem {
+  const { media } = raw;
+  return {
+    id: String(media.id),
+    airingAt: raw.airingAt,
+    episode: raw.episode,
+    title: media.title.userPreferred || media.title.romaji || 'Unknown',
+    englishTitle: media.title.english ?? null,
+    romajiTitle: media.title.romaji || 'Unknown',
+    image: media.coverImage.large || media.coverImage.medium || '',
+    color: media.coverImage.color ?? null,
+    type: media.type ?? 'ANIME',
+    format: media.format ?? '',
+    rating: media.averageScore ?? null,
+    genres: media.genres ?? [],
+    countryOfOrigin: media.countryOfOrigin ?? '',
+  };
 }
 
-// Helper function to get the date string for a specific day index (0 = today, 1 = tomorrow, etc.)
-function getDateStringForDay(dayOffset: number): string {
-  const date = new Date();
-  date.setUTCHours(0, 0, 0, 0);
-  date.setUTCDate(date.getUTCDate() + dayOffset);
-  return formatDate(date);
-}
-
-// Helper function to get date labels for each day starting from today
-function getDateLabelsForWeek(): DateLabels {
-  const today = new Date();
-  const startDate = new Date(today);
-  startDate.setUTCHours(0, 0, 0, 0);
-  
-  const labels: DateLabels = {};
-  const dateFormatter = new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
-  
-  // Get today's day index (0 = Sunday in JS)
-  const todayDayIndex = today.getUTCDay();
-  
-  // Create ordered days starting from today
-  const orderedDays: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const dayIndex = (todayDayIndex + i) % 7;
-    orderedDays.push(days[dayIndex]);
-  }
-  
-  orderedDays.forEach((day, index) => {
-    const date = new Date(startDate);
-    date.setUTCDate(startDate.getUTCDate() + index);
-    labels[day] = dateFormatter.format(date);
-  });
-  
-  return labels;
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Styled components
+// ─────────────────────────────────────────────────────────────────────────────
 
 const ScheduleRoot = styled.section`
   width: 100%;
@@ -127,7 +102,6 @@ const ScheduleRoot = styled.section`
 
   @media (max-width: 640px) {
     padding: 1rem;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 `;
 
@@ -170,14 +144,12 @@ const DayNav = styled.nav`
   gap: 0;
   margin-bottom: 1.5rem;
   border-bottom: 1px solid var(--global-border);
-  padding-bottom: 0;
   overflow-x: auto;
   overflow-y: hidden;
   flex-wrap: nowrap;
   scrollbar-width: thin;
   scrollbar-color: var(--global-border) transparent;
 
-  /* Hide scrollbar for Chrome, Safari and Opera */
   &::-webkit-scrollbar {
     height: 4px;
   }
@@ -191,11 +163,7 @@ const DayNav = styled.nav`
 
   @media (max-width: 640px) {
     margin-bottom: 1rem;
-    gap: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
-    flex-wrap: nowrap;
   }
 `;
 
@@ -218,13 +186,11 @@ const DayButton = styled.button<{ $isActive: boolean }>`
 
   &:hover {
     opacity: 0.8;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   @media (max-width: 640px) {
     padding: 0.4rem 0.5rem 0.6rem;
     gap: 0.15rem;
-    flex-shrink: 0;
     min-width: fit-content;
   }
 `;
@@ -300,17 +266,12 @@ const ViewMoreButton = styled.button`
     padding: 0.6rem 0.8rem;
     font-size: 0.8rem;
     margin-top: 0.75rem;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   }
 `;
 
 const pulse = keyframes`
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
 `;
 
 const SkeletonRow = styled.div`
@@ -384,8 +345,7 @@ const SkeletonRating = styled.div`
   flex-shrink: 0;
 `;
 
-// New styled components for the improved layout
-const ScheduleRowNew = styled(Link)`
+const ScheduleRow = styled(Link)`
   display: flex;
   align-items: center;
   padding: 0.875rem 0;
@@ -431,7 +391,7 @@ const TimeText = styled.span`
   }
 `;
 
-const AnimeImageNew = styled.img`
+const AnimeImage = styled.img`
   width: 3.5rem;
   height: 4.5rem;
   object-fit: cover;
@@ -545,110 +505,63 @@ const RatingLabel = styled.span`
   }
 `;
 
-export default function AnimeSchedule() {
-  // Get today's day of week as default active day (0 = today)
-  const getTodayDayIndex = (): number => 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// Component
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const [activeDayIndex, setActiveDayIndex] = useState<number>(getTodayDayIndex());
+const DAY_OFFSETS = [0, 1, 2, 3, 4, 5, 6]; // 0 = today … 6 = 6 days from now
+const MOBILE_LIMIT = 6;
+
+export default function AnimeSchedule() {
+  const [activeDayOffset, setActiveDayOffset] = useState<number>(0);
   const [showAll, setShowAll] = useState(false);
   const [scheduleData, setScheduleData] = useState<ScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const dateLabels = getDateLabelsForWeek();
 
-  // Get the date string for the active day
-  const getActiveDateString = (): string => {
-    return getDateStringForDay(activeDayIndex);
-  };
-
-  // Fetch schedule for a specific date when activeDayIndex changes
+  // Re-fetch whenever the selected day changes
   useEffect(() => {
-    const fetchSchedule = async () => {
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      setError(null);
+      setScheduleData([]);
+
       try {
-        console.log('🚀 Starting to fetch airing schedule...');
-        setLoading(true);
-        setError(null);
+        console.log(`🗓️ Fetching AniList schedule for dayOffset=${activeDayOffset}`);
+        const rawItems = await fetchAiringSchedule(activeDayOffset);
 
-        // Use specific date for both startDate and endDate (single day request)
-        const dateString = getActiveDateString();
+        if (cancelled) return;
 
-        console.log('📡 Calling fetchAiringSchedule with params:', {
-          startDate: dateString,
-          endDate: dateString,
-        });
-
-        const data = await fetchAiringSchedule(dateString, dateString);
-
-        console.log('✅ Full API Response:', data);
-
-        if (
-          data &&
-          data.results &&
-          Array.isArray(data.results) &&
-          data.results.length > 0
-        ) {
-          console.log('✅ First result sample:', data.results[0]);
-          
-          // Convert API results to ScheduleItem array
-          const items: ScheduleItem[] = data.results.map((anime: AiringAnime) => {
-            const releaseDate = new Date(anime.airingAt * 1000).toISOString();
-            const title = anime.title?.userPreferred || anime.title?.romaji || 'Unknown Title';
-            const englishTitle = anime.title?.english || null;
-            const romajiTitle = anime.title?.romaji || 'Unknown Title';
-            const id = anime.id || `unknown-${Math.random()}`;
-            
-            return {
-              date: releaseDate,
-              title,
-              englishTitle,
-              romajiTitle,
-              isNew: false,
-              id,
-              image: anime.image,
-              type: anime.type,
-              rating: anime.rating,
-              episode: anime.episode,
-              airingAt: anime.airingAt,
-            };
-          });
-          
-          // Sort by airing time
-          items.sort((a, b) => (a.airingAt || 0) - (b.airingAt || 0));
-          
-          console.log('✅ Schedule items:', items);
-          setScheduleData(items);
-        } else {
-          console.warn('⚠️ No valid results in API response');
-          setScheduleData([]);
-        }
+        const items = rawItems.map(mapToScheduleItem);
+        setScheduleData(items);
+        console.log(`✅ ${items.length} items loaded for offset ${activeDayOffset}`);
       } catch (err) {
-        console.error('❌ Error in fetchSchedule:', err);
-        setError('Failed to load airing schedule');
-        console.error('API Error details:', {
-          message: err instanceof Error ? err.message : String(err),
-          error: err,
-          stack: err instanceof Error ? err.stack : undefined,
-        });
+        if (cancelled) return;
+        console.error('❌ AnimeSchedule fetch error:', err);
+        setError('Failed to load airing schedule. Please try again later.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchSchedule();
-  }, [activeDayIndex]); // Fetch when active day changes
+    load();
+    return () => { cancelled = true; };
+  }, [activeDayOffset]);
 
-  const entries = scheduleData;
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 640;
-  const displayLimit = isMobile ? 6 : entries.length;
-  const displayedEntries = showAll ? entries : entries.slice(0, displayLimit);
-  const hasMore = entries.length > displayLimit;
+  // Reset "show all" when day changes
+  useEffect(() => {
+    setShowAll(false);
+  }, [activeDayOffset]);
 
-  // Get ordered day indices (0 = today, 1 = tomorrow, etc.)
-  const getOrderedDayIndices = (): number[] => {
-    return [0, 1, 2, 3, 4, 5, 6];
-  };
-
-  const orderedDayIndices = getOrderedDayIndices();
+  const isMobile =
+    typeof window !== 'undefined' && window.innerWidth <= 640;
+  const displayLimit = isMobile ? MOBILE_LIMIT : scheduleData.length;
+  const displayedEntries = showAll
+    ? scheduleData
+    : scheduleData.slice(0, displayLimit);
+  const hasMore = !showAll && scheduleData.length > displayLimit;
 
   return (
     <ScheduleRoot>
@@ -657,21 +570,20 @@ export default function AnimeSchedule() {
         <ScheduleTitle>Airing Schedule</ScheduleTitle>
       </ScheduleHeader>
 
+      {/* Day tab bar — ordered from today outward */}
       <DayNav>
-        {orderedDayIndices.map((dayIndex) => {
-          const isActive = dayIndex === activeDayIndex;
-          const dayName = days[(new Date().getUTCDay() + dayIndex) % 7];
+        {DAY_OFFSETS.map((offset) => {
+          const isActive = offset === activeDayOffset;
+          const abbr = getDayAbbr(offset);
+          const dateStr = getShortDate(offset);
           return (
             <DayButton
-              key={dayIndex}
-              onClick={() => {
-                setActiveDayIndex(dayIndex);
-                setShowAll(false);
-              }}
+              key={offset}
+              onClick={() => setActiveDayOffset(offset)}
               $isActive={isActive}
             >
-              <DayLabel $isActive={isActive}>{dayName}</DayLabel>
-              {dateLabels[dayName] && <DateLabel>{dateLabels[dayName]}</DateLabel>}
+              <DayLabel $isActive={isActive}>{abbr}</DayLabel>
+              <DateLabel>{dateStr}</DateLabel>
             </DayButton>
           );
         })}
@@ -695,35 +607,60 @@ export default function AnimeSchedule() {
           </>
         ) : error ? (
           <EmptyState>{error}</EmptyState>
-        ) : entries.length === 0 ? (
-          <EmptyState>No airings scheduled for {days[(new Date().getUTCDay() + activeDayIndex) % 7]}.</EmptyState>
+        ) : scheduleData.length === 0 ? (
+          <EmptyState>
+            No airings scheduled for {getDayAbbr(activeDayOffset)},{' '}
+            {getShortDate(activeDayOffset)}.
+          </EmptyState>
         ) : (
           <>
-            {displayedEntries.map((item: ScheduleItem, idx: number) => (
-              <ScheduleRowNew key={item.id || idx} to={`/watch/${item.id}`}>
+            {displayedEntries.map((item, idx) => (
+              <ScheduleRow key={item.id || idx} to={`/watch/${item.id}`}>
+                {/* Local airing time */}
                 <TimeWrapper>
-                  <TimeText>{formatLocalTime24(item.airingAt)}</TimeText>
+                  <TimeText>{formatLocalTime(item.airingAt)}</TimeText>
                 </TimeWrapper>
+
+                {/* Cover image */}
                 {item.image && (
-                  <AnimeImageNew src={item.image} alt={item.englishTitle || item.title} />
+                  <AnimeImage
+                    src={item.image}
+                    alt={item.englishTitle || item.title}
+                    loading="lazy"
+                  />
                 )}
+
+                {/* Title + meta */}
                 <ContentWrapper>
-                  <AnimeTitleEnglish>{item.englishTitle || item.title}</AnimeTitleEnglish>
-                  <AnimeTitleRomaji>{item.romajiTitle}</AnimeTitleRomaji>
+                  <AnimeTitleEnglish>
+                    {item.englishTitle || item.title}
+                  </AnimeTitleEnglish>
+                  {item.romajiTitle !== (item.englishTitle || item.title) && (
+                    <AnimeTitleRomaji>{item.romajiTitle}</AnimeTitleRomaji>
+                  )}
                   <EpisodeInfo>
                     <EpisodeBadge>Ep {item.episode}</EpisodeBadge>
-                    <TypeBadge>{item.type}</TypeBadge>
+                    <TypeBadge>{item.format || item.type}</TypeBadge>
                   </EpisodeInfo>
                 </ContentWrapper>
+
+                {/* Score */}
                 <RatingWrapper>
-                  <RatingValue>{item.rating}</RatingValue>
-                  <RatingLabel>Score</RatingLabel>
+                  {item.rating !== null ? (
+                    <>
+                      <RatingValue>{item.rating}</RatingValue>
+                      <RatingLabel>Score</RatingLabel>
+                    </>
+                  ) : (
+                    <RatingValue style={{ opacity: 0.3 }}>—</RatingValue>
+                  )}
                 </RatingWrapper>
-              </ScheduleRowNew>
+              </ScheduleRow>
             ))}
-            {hasMore && !showAll && (
+
+            {hasMore && (
               <ViewMoreButton onClick={() => setShowAll(true)}>
-                View More
+                View More ({scheduleData.length - displayLimit} remaining)
               </ViewMoreButton>
             )}
           </>
