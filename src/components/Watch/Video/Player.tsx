@@ -391,7 +391,7 @@ export function Player({
         title={`${animeVideoTitle} - Episode ${episodeNumber}`}
         src={src}
         autoplay={autoPlay}
-        muted={autoPlay} // Start muted to allow autoplay without user interaction
+        muted={false} // Player should never be muted by default
         crossorigin
         playsinline
         onLoadedMetadata={onLoadedMetadata}

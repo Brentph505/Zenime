@@ -32,7 +32,7 @@ const Callback = () => {
 
     // Determine the endpoint based on the platform
     const apiEndpoint =
-      PLATFORM === 'VERCEL' ? '/api/exchange-token' : '/exchange-token';
+      PLATFORM === 'VERCEL' ? '/api/exchange-token' : '/.netlify/functions/exchange-token';
 
     if (code) {
       axios

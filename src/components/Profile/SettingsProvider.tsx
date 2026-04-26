@@ -38,13 +38,13 @@ interface SettingsProviderProps {
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({
   children,
 }) => {
-  const [settings, setSettingsState] = useState({
-    autoSkip: localStorage.getItem('autoSkip') === 'true',
-    autoPlay: localStorage.getItem('autoPlay') === 'true',
-    autoNext: localStorage.getItem('autoNext') === 'true',
-    defaultLanguage: localStorage.getItem('defaultLanguage') || 'sub',
-    defaultServers: localStorage.getItem('defaultServers') || 'default',
-  });
+   const [settings, setSettingsState] = useState({
+     autoSkip: localStorage.getItem('autoSkip') === 'true',
+     autoPlay: localStorage.getItem('autoPlay') === 'true' || !localStorage.getItem('autoPlay'),
+     autoNext: localStorage.getItem('autoNext') === 'true',
+     defaultLanguage: localStorage.getItem('defaultLanguage') || 'sub',
+     defaultServers: localStorage.getItem('defaultServers') || 'default',
+   });
 
   useEffect(() => {
     // This useEffect will ensure that any changes to the settings state are reflected in local storage
