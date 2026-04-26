@@ -1,12 +1,15 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuidv4 } from 'uuid';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'GET') {
-    res.status(405).send('Method Not Allowed');
-    return;
+export const handler = async (event: { httpMethod: string }) => {
+  if (event.httpMethod !== 'GET') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
   const csrfToken = uuidv4();
-  res.json({ csrfToken });
-}
+
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ csrfToken }),
+  };
+};
