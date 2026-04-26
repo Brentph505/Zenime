@@ -627,3 +627,76 @@ export async function fetchRecentEpisodes(
   );
   return fetchFromProxy(url, createCache('RecentEpisodes'), cacheKey);
 }
+
+export async function fetchStudio(
+  studioId: string,
+  page: number = 1,
+  perPage: number = 20,
+  provider: string = 'kickassanime',
+) {
+  const finalProvider = provider || 'kickassanime';
+  const params = new URLSearchParams({
+    page: page.toString(),
+    perPage: perPage.toString(),
+    provider: finalProvider,
+  });
+  const url = `${BASE_URL}meta/anilist/studio/${studioId}?${params.toString()}`;
+  const cacheKey = generateCacheKey(
+    'studio',
+    studioId,
+    page.toString(),
+    perPage.toString(),
+    finalProvider,
+  );
+  return fetchFromProxy(url, createCache('Studio'), cacheKey);
+}
+
+export interface JikanProducer {
+  mal_id: number;
+  url: string;
+  titles: Array<{
+    type: string;
+    title: string;
+  }>;
+  images: {
+    jpg: {
+      image_url: string;
+    };
+  };
+  favorites: number;
+  established: string | null;
+  about: string | null;
+  count: number;
+}
+
+export async function fetchStudioJikan(studioId: string): Promise<JikanProducer | null> {
+  const cacheKey = generateCacheKey('studioJikan', studioId);
+  const jikanCache = createCache('StudioJikan');
+
+  const cached = jikanCache.get(cacheKey);
+  if (cached) {
+    console.log(`✅ Jikan studio cache HIT: ${cacheKey}`);
+    return cached as JikanProducer;
+  }
+
+  console.log(`🌐 Jikan studio fetch for ID: ${studioId}`);
+
+  try {
+    // Use plain axios (not axiosInstance) so the global X-API-Key header is
+    // NOT sent — Jikan blocks requests that include unrecognised headers via CORS.
+    const response = await axios.get(
+      `https://api.jikan.moe/v4/producers/${studioId}`,
+      { timeout: 10000 }
+    );
+
+    if (response.status === 200 && response.data?.data) {
+      const producerData = response.data.data as JikanProducer;
+      jikanCache.set(cacheKey, producerData);
+      return producerData;
+    }
+    return null;
+  } catch (error) {
+    console.error(`❌ Jikan studio fetch failed for ID ${studioId}:`, error);
+    return null;
+  }
+}

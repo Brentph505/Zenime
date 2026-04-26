@@ -49,13 +49,18 @@ const PageWrapper = styled.div`
   color: ${A.text};
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
   animation: ${fadeIn} 0.4s ease;
+  overflow-x: hidden;
 `;
 
 // ─── Hero ─────────────────────────────────────────────────────────────────────
 
 const HeroWrap = styled.div`
   position: relative;
-  width: 100%;
+  width: 100vw;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
   height: 360px;
   overflow: hidden;
   @media (max-width: 768px) { height: 180px; }
@@ -94,11 +99,16 @@ const HeroAccentBar = styled.div`
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
 const Shell = styled.div`
+  width: 100%;
   max-width: 1400px;
   margin: 0 auto;
   padding: 0 1.5rem 5rem;
   position: relative;
-  @media (max-width: 600px) { padding: 0 0.5rem 4rem; }
+  box-sizing: border-box;
+  @media (max-width: 860px) {
+    padding: 0 0 4rem;
+    width: 100%;
+  }
 `;
 
 const Grid = styled.div`
@@ -125,7 +135,7 @@ const MobileHeader = styled.div`
     margin-top: -100px;
     position: relative;
     z-index: 3;
-    padding: 0 0 1rem;
+    padding: 0 0.75rem 1rem;
   }
 `;
 
@@ -268,12 +278,17 @@ const RightCol = styled.div`
   }
 
   @media (max-width: 860px) {
-    border-radius: 0 0 12px 12px;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
     border-top: none;
     padding: 0.85rem 0.75rem 1.25rem;
     gap: 1rem;
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
   }
-  @media (max-width: 600px) { padding: 0.75rem 0.5rem 1.25rem; }
+  @media (max-width: 600px) { padding: 0.75rem 0.75rem 1.25rem; }
 `;
 
 const DesktopTitleBlock = styled.div`
@@ -513,7 +528,7 @@ const SearchInput = styled.input`
   }
 `;
 
-// ─── Segmented view toggle (single unified button) ────────────────────────────
+// ─── Segmented view toggle ────────────────────────────────────────────────────
 
 const SegmentedControl = styled.div`
   display: flex;
@@ -799,7 +814,6 @@ const StyledCardGrid = styled.div`
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
 
-  /* visible scrollbar on desktop */
   &::-webkit-scrollbar {
     display: block;
     height: 6px;
@@ -925,7 +939,6 @@ const Info: React.FC = () => {
     return chunks;
   }, [animeInfo?.episodes]);
 
-  // Clamp epRange if ranges shrinks (e.g. new anime has fewer chunks)
   useEffect(() => {
     if (ranges.length > 0 && epRange >= ranges.length) {
       setEpRange(0);
@@ -969,7 +982,6 @@ const Info: React.FC = () => {
 
   const usePills = ranges.length <= 10;
 
-  // Helper: is this the "first" episode for highlight purposes
   const isFirst = (idx: number) => idx === 0 && epRange === 0 && !epSearch.trim();
 
   return (
@@ -1192,7 +1204,6 @@ const Info: React.FC = () => {
                         />
                       </SearchBox>
 
-                      {/* Single unified segmented button */}
                       <SegmentedControl>
                         <SegmentOption
                           $active={epView === 'card'}

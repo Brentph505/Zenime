@@ -7,8 +7,8 @@ import {
   StyledCardGrid,
   fetchAdvancedSearch,
   SkeletonCard,
+  type Anime,
 } from '../index';
-import { Paging } from '../index';
 
 const Container = styled.div`
   display: flex;
@@ -80,7 +80,7 @@ const Search = () => {
   );
 
   //Other logic
-  const [animeData, setAnimeData] = useState<Paging[]>([]);
+  const [animeData, setAnimeData] = useState<Anime[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [hasNextPage, setHasNextPage] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);

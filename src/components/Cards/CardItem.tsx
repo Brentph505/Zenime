@@ -1,12 +1,12 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
-import { SkeletonCard, StatusIndicator, type Anime } from '../../index'; // Adjust the import path to correctly point to your index.ts location
-import { FaPlay } from 'react-icons/fa'; // For the play icon
+import { SkeletonCard, StatusIndicator, type Anime } from '../../index';
+import { FaPlay } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
 
-const StyledCardWrapper = styled(Link)`
+const StyledCardWrapper = styled.div`
   color: var(--global-text);
   animation: slideUp 0.4s ease;
   text-decoration: none;
@@ -76,16 +76,21 @@ const ImageWrapper = styled.div`
     height: 100%;
     border-radius: var(--global-border-radius);
     transition: 0.3s ease-in-out;
-    transition: filter 0.3s ease-in-out; // Ensure the filter transition is smooth
+    transition: filter 0.3s ease-in-out;
   }
 
   &:hover img {
-    filter: brightness(0.5); // Decrease brightness to 60% on hover
+    filter: brightness(0.5);
   }
 
   &:hover ${PlayIcon} {
     opacity: 1;
   }
+`;
+
+const PosterLink = styled(Link)`
+  display: block;
+  text-decoration: none;
 `;
 
 const TitleContainer = styled.div<{ $isHovered: boolean }>`
@@ -97,12 +102,22 @@ const TitleContainer = styled.div<{ $isHovered: boolean }>`
   border-radius: var(--global-border-radius);
   cursor: pointer;
   transition: background 0.2s ease;
+  text-decoration: none;
 
   &:hover,
   &:active,
   &:focus {
     background: var(--global-card-title-bg);
   }
+`;
+
+const TitleLink = styled(Link)`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  text-decoration: none;
+  color: inherit;
 `;
 
 const Title = styled.h5<{ $isHovered: boolean; color?: string }>`
@@ -147,8 +162,8 @@ const CardDetails = styled.div`
   padding: 0.25rem 0rem;
   gap: 0.5rem;
   white-space: nowrap;
-  overflow: hidden; // Ensures that overflow text is hidden
-  text-overflow: ellipsis; // Adds an ellipsis to indicate that text has been cut off
+  overflow: hidden;
+  text-overflow: ellipsis;
   svg {
     margin-bottom: 0.12rem;
     margin-right: -0.4rem;
@@ -158,6 +173,7 @@ const CardDetails = styled.div`
 export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
   const [loading, setLoading] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
+  const [isTitleHovered, setIsTitleHovered] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -167,16 +183,12 @@ export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
     return () => clearTimeout(timer);
   }, [anime.id]);
 
-  const handleMouseEnter = () => {
-    setIsHovered(true);
-  };
-
-  const handleMouseLeave = () => {
-    setIsHovered(false);
-  };
+  const handleMouseEnter = () => setIsHovered(true);
+  const handleMouseLeave = () => setIsHovered(false);
 
   const imageSrc = anime.image || '';
   const animeColor = anime.color || '#999999';
+
   const displayTitle = useMemo(
     () => anime.title.english || anime.title.romaji || 'No Title',
     [anime.title.english, anime.title.romaji],
@@ -188,12 +200,9 @@ export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
     [],
   );
 
-  const handleImageLoad = () => {
-    setLoading(false); // Set loading to false when image is loaded
-  };
+  const handleImageLoad = () => setLoading(false);
 
   const displayDetail = useMemo(() => {
-    // Any complex logic can go here
     return (
       <ImgDetail $isHovered={isHovered} color={anime.color}>
         {anime.type}
@@ -207,43 +216,58 @@ export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
         <SkeletonCard />
       ) : (
         <StyledCardWrapper
-          to={`/watch/${anime.id}`}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
-          color={animeColor}
-          title={anime.title.english || anime.title.romaji}
         >
           <StyledCardItem>
-            <ImageDisplayWrapper>
-              <AnimeImage>
-                <ImageWrapper>
-                  <img
-                    src={imageSrc}
-                    onLoad={handleImageLoad}
-                    loading='eager'
-                    alt={
-                      anime.title.english || anime.title.romaji + ' Cover Image'
-                    }
-                  />
-                  <PlayIcon
-                    title={
-                      'Play ' + (anime.title.english || anime.title.romaji)
-                    }
-                  />
-                </ImageWrapper>
-                {isHovered && displayDetail}
-              </AnimeImage>
-            </ImageDisplayWrapper>
-            <TitleContainer $isHovered={isHovered}>
-              <StatusIndicator status={anime.status} />
-              <Title
-                $isHovered={isHovered}
-                color={anime.color}
-                title={'Title: ' + (anime.title.english || anime.title.romaji)}
+            {/* Poster → /watch/:id */}
+            <PosterLink
+              to={`/watch/${anime.id}`}
+              title={'Play ' + (anime.title.english || anime.title.romaji)}
+            >
+              <ImageDisplayWrapper>
+                <AnimeImage>
+                  <ImageWrapper>
+                    <img
+                      src={imageSrc}
+                      onLoad={handleImageLoad}
+                      loading='eager'
+                      alt={
+                        anime.title.english || anime.title.romaji + ' Cover Image'
+                      }
+                    />
+                    <PlayIcon
+                      title={
+                        'Play ' + (anime.title.english || anime.title.romaji)
+                      }
+                    />
+                  </ImageWrapper>
+                  {isHovered && displayDetail}
+                </AnimeImage>
+              </ImageDisplayWrapper>
+            </PosterLink>
+
+            {/* Title → /info/:id */}
+            <TitleContainer
+              $isHovered={isTitleHovered}
+              onMouseEnter={() => setIsTitleHovered(true)}
+              onMouseLeave={() => setIsTitleHovered(false)}
+            >
+              <TitleLink
+                to={`/info/${anime.id}`}
+                title={'Info: ' + (anime.title.english || anime.title.romaji)}
               >
-                {truncateTitle(displayTitle, 35)}
-              </Title>
+                <StatusIndicator status={anime.status} />
+                <Title
+                  $isHovered={isTitleHovered}
+                  color={anime.color}
+                  title={'Title: ' + (anime.title.english || anime.title.romaji)}
+                >
+                  {truncateTitle(displayTitle, 35)}
+                </Title>
+              </TitleLink>
             </TitleContainer>
+
             <div>
               <CardDetails title='Romaji Title'>
                 {truncateTitle(anime.title.romaji || '', 24)}
