@@ -1,20 +1,20 @@
 import axios from 'axios';
 
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
+export const handler = async (event: { httpMethod: string; body: string | null }) => {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  let body: { code?: string };
+  let code: string | undefined;
   try {
-    body = await req.json();
+    const parsed = JSON.parse(event.body ?? '{}');
+    code = parsed.code;
   } catch {
-    return new Response('Invalid JSON body', { status: 400 });
+    return { statusCode: 400, body: 'Invalid JSON body' };
   }
 
-  const { code } = body;
   if (!code) {
-    return new Response('Authorization code is required', { status: 400 });
+    return { statusCode: 400, body: 'Authorization code is required' };
   }
 
   const payload = {
@@ -25,10 +25,8 @@ export default async function handler(req: Request): Promise<Response> {
     redirect_uri: process.env.VITE_REDIRECT_URI,
   };
 
-  const url = 'https://anilist.co/api/v2/oauth/token';
-
   try {
-    const response = await axios.post(url, payload, {
+    const response = await axios.post('https://anilist.co/api/v2/oauth/token', payload, {
       headers: {
         'Content-Type': 'application/json',
         'Accept-Encoding': 'identity',
@@ -36,28 +34,26 @@ export default async function handler(req: Request): Promise<Response> {
     });
 
     if (response.data.access_token) {
-      return new Response(JSON.stringify({ accessToken: response.data.access_token }), {
-        status: 200,
+      return {
+        statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-      });
-    } else {
-      throw new Error('Access token not found in the response');
+        body: JSON.stringify({ accessToken: response.data.access_token }),
+      };
     }
-  } catch (error: unknown) {
-    if (error instanceof Error) {
-      const message = error.message;
-      const details = axios.isAxiosError(error) && error.response ? error.response.data : message;
-      return new Response(JSON.stringify({ error: 'Failed to exchange token', details }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    } else {
-      return new Response(
-        JSON.stringify({ error: 'Failed to exchange token', details: 'An unknown error occurred' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-  }
-}
 
-export const config = { path: '/api/exchange-token' }; // adjust path as needed
+    throw new Error('Access token not found in the response');
+  } catch (error: unknown) {
+    const details =
+      error instanceof Error
+        ? axios.isAxiosError(error) && error.response
+          ? error.response.data
+          : error.message
+        : 'An unknown error occurred';
+
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Failed to exchange token', details }),
+    };
+  }
+};
