@@ -12,3 +12,6 @@
   from = "/get-csrf-token"
   to = "/.netlify/functions/get-csrf-token"
   status = 200
+
+[build.environment]
+  VITE_DEPLOY_PLATFORM = "NETLIFY"
