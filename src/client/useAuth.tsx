@@ -48,7 +48,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async () => {
     try {
-      const response = await axios.get('/get-csrf-token');
+      const PLATFORM = import.meta.env.VITE_DEPLOY_PLATFORM;
+      const csrfEndpoint = PLATFORM === 'VERCEL' ? '/api/get-csrf-token' : '/.netlify/functions/get-csrf-token';
+      const response = await axios.get(csrfEndpoint);
       const csrfToken = response.data.csrfToken;
       const authUrl = buildAuthUrl(csrfToken);
       window.location.href = authUrl;

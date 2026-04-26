@@ -49,8 +49,10 @@ const client = new ApolloClient({
 
 // Functions for handling authentication
 function login() {
+  const PLATFORM = import.meta.env.VITE_DEPLOY_PLATFORM;
+  const csrfEndpoint = PLATFORM === 'VERCEL' ? '/api/get-csrf-token' : '/.netlify/functions/get-csrf-token';
   axios
-    .get('/get-csrf-token')
+    .get(csrfEndpoint)
     .then((response) => {
       const csrfToken = response.data.csrfToken;
       const authUrl = buildAuthUrl(csrfToken);
