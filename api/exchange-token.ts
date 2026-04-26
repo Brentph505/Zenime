@@ -1,15 +1,20 @@
 import axios from 'axios';
-import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-export default async function exchangeAccessToken(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    res.status(405).send('Method Not Allowed');
-    return;
+    return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const { code } = req.body;
+  let body: { code?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return new Response('Invalid JSON body', { status: 400 });
+  }
+
+  const { code } = body;
   if (!code) {
-    return res.status(400).send('Authorization code is required');
+    return new Response('Authorization code is required', { status: 400 });
   }
 
   const payload = {
@@ -31,27 +36,28 @@ export default async function exchangeAccessToken(req: VercelRequest, res: Verce
     });
 
     if (response.data.access_token) {
-      res.json({ accessToken: response.data.access_token });
+      return new Response(JSON.stringify({ accessToken: response.data.access_token }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
     } else {
       throw new Error('Access token not found in the response');
     }
   } catch (error: unknown) {
-    // First, check if it's an instance of Error
     if (error instanceof Error) {
-      // Now you can safely read the message property
       const message = error.message;
-      // If it's an axios error, it may have a response object
       const details = axios.isAxiosError(error) && error.response ? error.response.data : message;
-      res.status(500).json({
-        error: 'Failed to exchange token',
-        details,
+      return new Response(JSON.stringify({ error: 'Failed to exchange token', details }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
       });
     } else {
-      // If it's not an Error object, handle it as a generic error
-      res.status(500).json({
-        error: 'Failed to exchange token',
-        details: 'An unknown error occurred',
-      });
+      return new Response(
+        JSON.stringify({ error: 'Failed to exchange token', details: 'An unknown error occurred' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
     }
   }
 }
+
+export const config = { path: '/api/exchange-token' }; // adjust path as needed
