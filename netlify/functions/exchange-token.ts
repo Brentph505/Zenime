@@ -1,7 +1,6 @@
 import axios from 'axios';
-import { Handler } from '@netlify/functions';
 
-const handler: Handler = async (event, context) => {
+export default async function handler(event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) {
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,

@@ -3,6 +3,7 @@ import axios from 'axios';
 import path from 'path';
 import os from 'os';
 import bodyParser from 'body-parser';
+import { v4 as uuidv4 } from 'uuid';
 
 const app = express();
 
@@ -22,6 +23,12 @@ const INDEX_FILE = path.join(DIST_DIR, 'index.html');
 app.use(express.static(DIST_DIR));
 app.use(express.json());
 app.use(bodyParser.json());
+
+// CSRF Token endpoint
+app.get('/get-csrf-token', (req, res) => {
+  const csrfToken = uuidv4();
+  res.json({ csrfToken });
+});
 
 // API Endpoint for exchanging authorization token
 const apiEndpoint = '/api/exchange-token';
@@ -65,14 +72,16 @@ app.post(apiEndpoint, async (req, res) => {
       throw new Error('Access token not found in the response');
     }
   } catch (error) {
-    console.error('Error during token exchange:', error.message);
-    if (error.response) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const responseData = axios.isAxiosError(error) ? error.response?.data : undefined;
+    console.error('Error during token exchange:', message);
+    if (axios.isAxiosError(error) && error.response) {
       console.error('Error Status:', error.response.status);
       console.error('Error Details:', error.response.data);
     }
     res.status(500).json({
       error: 'Failed to exchange token',
-      details: error.response?.data || error.message,
+      details: responseData || message,
     });
   }
 });
