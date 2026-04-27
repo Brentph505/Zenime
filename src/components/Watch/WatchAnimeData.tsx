@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
+import { useNavigate } from 'react-router-dom';
 import { Seasons, Anime } from '../../index';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 
@@ -231,6 +232,33 @@ const IframeTrailer = styled.iframe`
   }
 `;
 
+const ClickableText = styled.span`
+  color: var(--global-text);
+  cursor: pointer;
+  transition: color 0.2s ease;
+
+  &:hover {
+    color: var(--primary-accent);
+  }
+`;
+
+const GenreTag = styled.span`
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  margin: 0.15rem;
+  background-color: var(--global-div);
+  color: var(--global-text);
+  border-radius: var(--global-border-radius);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: var(--primary-accent);
+    color: white;
+  }
+`;
+
 const TrailerOverlay = styled.div`
   position: fixed;
   top: 0;
@@ -264,6 +292,7 @@ const TrailerOverlayContent = styled.div`
 export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
   animeData,
 }) => {
+  const navigate = useNavigate();
   const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
 
@@ -397,7 +426,7 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                   <AnimeDataText>
                     {animeData.type ? (
                       <p>
-                        Type: <strong>{animeData.type}</strong>
+                        Type: <ClickableText onClick={() => navigate(`/search?query=&format=${encodeURIComponent(animeData.type!)}`)}><strong>{animeData.type}</strong></ClickableText>
                       </p>
                     ) : (
                       <p>
@@ -406,7 +435,7 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                     )}
                     {animeData.releaseDate ? (
                       <p>
-                        Year: <strong>{animeData.releaseDate}</strong>
+                        Year: <ClickableText onClick={() => navigate(`/search?year=${animeData.releaseDate}`)}><strong>{animeData.releaseDate}</strong></ClickableText>
                       </p>
                     ) : (
                       <p>
@@ -436,7 +465,25 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                     )}
                     {animeData.studios && animeData.studios.length > 0 ? (
                       <p>
-                        Studios: <strong>{animeData.studios}</strong>
+                        Studios:{' '}
+                        <strong>
+                          {animeData.studios.map((studio, index) => (
+                            <React.Fragment key={studio}>
+                              <ClickableText
+                                onClick={() =>
+                                  navigate(
+                                    `/studio/${
+                                      animeData.studioIds?.[index] || studio
+                                    }`,
+                                  )
+                                }
+                              >
+                                {studio}
+                              </ClickableText>
+                              {index < animeData.studios.length - 1 && ', '}
+                            </React.Fragment>
+                          ))}
+                        </strong>
                       </p>
                     ) : (
                       <p>
@@ -465,18 +512,20 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                         Duration: <strong>Unknown</strong>
                       </p>
                     )}
-                    {animeData.season ? (
-                      <p>
-                        Season:{' '}
-                        <strong>
-                          {capitalizeFirstLetter(animeData.season)}
-                        </strong>
-                      </p>
-                    ) : (
-                      <p>
-                        Season: <strong>Unknown</strong>
-                      </p>
-                    )}
+                     {animeData.season ? (
+                       <p>
+                         Season:{' '}
+                         <ClickableText onClick={() => navigate(`/search?season=${animeData.season?.toLowerCase()}`)}>
+                           <strong>
+                             {animeData.season.toUpperCase()}
+                           </strong>
+                         </ClickableText>
+                       </p>
+                     ) : (
+                       <p>
+                         Season: <strong>Unknown</strong>
+                       </p>
+                     )}
                     {animeData.countryOfOrigin && (
                       <p>
                         Country: <strong>{animeData.countryOfOrigin}</strong>
@@ -512,7 +561,21 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                     )} */}
                     {animeData.genres && animeData.genres.length > 0 ? (
                       <p>
-                        Genres: <strong>{animeData.genres.join(', ')}</strong>
+                        Genres:{' '}
+                        <strong>
+                          {animeData.genres.map((genre, index) => (
+                            <React.Fragment key={genre}>
+                              <ClickableText
+                                onClick={() =>
+                                  navigate(`/search?genres=${encodeURIComponent(genre)}`)
+                                }
+                              >
+                                {genre}
+                              </ClickableText>
+                              {index < animeData.genres.length - 1 && ', '}
+                            </React.Fragment>
+                          ))}
+                        </strong>
                       </p>
                     ) : (
                       <p>

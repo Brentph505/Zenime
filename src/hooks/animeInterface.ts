@@ -103,6 +103,7 @@ export interface Anime {
   duration: number;
   genres: string[];
   studios: string[];
+  studioIds: number[];
   subOrDub: string;
   season: string;
   popularity: number;

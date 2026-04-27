@@ -383,6 +383,24 @@ const Pill = styled.span<{ $accent?: boolean }>`
   background: ${({ $accent }) => $accent ? A.accentDim : 'transparent'};
 `;
 
+const ClickablePill = styled(Pill)`
+  cursor: pointer;
+  transition: all 0.2s ease;
+  &:hover {
+    border-color: ${A.accent};
+    color: ${A.accent};
+    background: ${A.accentDim};
+  }
+`;
+
+const ClickableMetaVal = styled.span`
+  cursor: pointer;
+  transition: color 0.2s ease;
+  &:hover {
+    color: ${A.accent};
+  }
+`;
+
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
 const TabNav = styled.div`display: flex; border-bottom: 1px solid #e5e7eb;
@@ -969,16 +987,16 @@ const Info: React.FC = () => {
   const title  = animeInfo.title.english || animeInfo.title.romaji || '';
   const romaji = animeInfo.title.romaji;
 
-  const metaItems = [
+  const metaItems: { key: string; val: string; onClick?: () => void }[] = [
     animeInfo.totalEpisodes != null && { key: 'Episodes', val: String(animeInfo.totalEpisodes) },
     animeInfo.duration        && { key: 'Duration',  val: `${animeInfo.duration} min` },
-    animeInfo.season          && { key: 'Season',    val: animeInfo.season.toUpperCase() },
-    animeInfo.releaseDate     && { key: 'Year',      val: String(animeInfo.releaseDate) },
+    animeInfo.season          && { key: 'Season',    val: animeInfo.season.toUpperCase(), onClick: () => navigate(`/search?season=${animeInfo.season?.toLowerCase()}`) },
+    animeInfo.releaseDate     && { key: 'Year',      val: String(animeInfo.releaseDate), onClick: () => navigate(`/search?year=${animeInfo.releaseDate}`) },
     animeInfo.status          && { key: 'Status',    val: animeInfo.status },
-    animeInfo.type            && { key: 'Format',    val: animeInfo.type },
+    animeInfo.type            && { key: 'Format',    val: animeInfo.type, onClick: () => navigate(`/search?type=${encodeURIComponent(animeInfo.type!)}`) },
     animeInfo.title.native    && { key: 'Native',    val: animeInfo.title.native },
     animeInfo.studios?.length > 0 && { key: 'Studio', val: animeInfo.studios.join(', ') },
-  ].filter(Boolean) as { key: string; val: string }[];
+  ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
 
   const usePills = ranges.length <= 10;
 
@@ -1009,7 +1027,7 @@ const Info: React.FC = () => {
             {romaji && romaji !== title && <MobileRomaji>{romaji}</MobileRomaji>}
             <MobilePillRow>
               {animeInfo.status && <Pill $accent>{animeInfo.status}</Pill>}
-              {animeInfo.genres?.slice(0, 3).map((g, i) => <Pill key={i}>{g}</Pill>)}
+              {animeInfo.genres?.slice(0, 3).map((g, i) => <ClickablePill key={i} onClick={() => navigate(`/search?genres=${encodeURIComponent(g)}`)}>{g}</ClickablePill>)}
             </MobilePillRow>
           </MobileTitleBlock>
         </MobileHeader>
@@ -1044,17 +1062,17 @@ const Info: React.FC = () => {
                 {animeInfo.duration && (
                   <SideMetaRow><SideMetaKey>Duration</SideMetaKey><SideMetaVal>{animeInfo.duration} min</SideMetaVal></SideMetaRow>
                 )}
-                {animeInfo.season && (
-                  <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal style={{ textTransform: 'uppercase' }}>{animeInfo.season}</SideMetaVal></SideMetaRow>
-                )}
+                 {animeInfo.season && (
+                   <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?season=${animeInfo.season?.toLowerCase()}`)}>{animeInfo.season.toUpperCase()}</ClickableMetaVal></SideMetaVal></SideMetaRow>
+                 )}
                 {animeInfo.releaseDate && (
-                  <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal>{animeInfo.releaseDate}</SideMetaVal></SideMetaRow>
+                  <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?year=${animeInfo.releaseDate}`)}>{animeInfo.releaseDate}</ClickableMetaVal></SideMetaVal></SideMetaRow>
                 )}
                 {animeInfo.status && (
                   <SideMetaRow><SideMetaKey>Status</SideMetaKey><SideMetaVal>{animeInfo.status}</SideMetaVal></SideMetaRow>
                 )}
                 {animeInfo.type && (
-                  <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal>{animeInfo.type}</SideMetaVal></SideMetaRow>
+                  <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?type=${encodeURIComponent(animeInfo.type!)}`)}>{animeInfo.type}</ClickableMetaVal></SideMetaVal></SideMetaRow>
                 )}
                 {animeInfo.title.native && (
                   <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{animeInfo.title.native}</SideMetaVal></SideMetaRow>
@@ -1087,10 +1105,10 @@ const Info: React.FC = () => {
             {/* Mobile: compact meta grid */}
             {metaItems.length > 0 && (
               <MobileMeta>
-                {metaItems.map(({ key, val }) => (
+                {metaItems.map(({ key, val, onClick }) => (
                   <MobileMetaCell key={key}>
                     <MobileMetaKey>{key}</MobileMetaKey>
-                    <MobileMetaVal>{val}</MobileMetaVal>
+                    <MobileMetaVal>{onClick ? <ClickableMetaVal onClick={onClick}>{val}</ClickableMetaVal> : val}</MobileMetaVal>
                   </MobileMetaCell>
                 ))}
               </MobileMeta>
@@ -1104,7 +1122,7 @@ const Info: React.FC = () => {
               <PillRow>
                 {animeInfo.status && <Pill $accent>{animeInfo.status}</Pill>}
                 {animeInfo.rating != null && <Pill>{animeInfo.rating}% Score</Pill>}
-                {animeInfo.genres?.slice(0, 5).map((g, i) => <Pill key={i}>{g}</Pill>)}
+                {animeInfo.genres?.slice(0, 5).map((g, i) => <ClickablePill key={i} onClick={() => navigate(`/search?genres=${encodeURIComponent(g)}`)}>{g}</ClickablePill>)}
               </PillRow>
             </DesktopTitleBlock>
 
