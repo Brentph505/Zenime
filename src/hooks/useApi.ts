@@ -23,6 +23,13 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
 
+// GraphQL query to fetch all available genres from AniList
+const GENRE_QUERY = `
+  query {
+    genres: GenreCollection
+  }
+`;
+
 // Axios instance
 const axiosInstance = axios.create({
   baseURL: PROXY_URL || undefined,
@@ -164,6 +171,57 @@ const animeInfoCache = createCache('Info');
 const animeEpisodesCache = createCache('Episodes');
 const fetchAnimeEmbeddedEpisodesCache = createCache('Video Embedded Sources');
 const videoSourcesCache = createCache('Video Sources');
+const genreCache = createCache('AniListGenres');
+
+/**
+ * Fetch all available genres from AniList GraphQL API.
+ * Returns a cached array of genre strings.
+ */
+export async function fetchAniListGenres(): Promise<string[]> {
+  const cacheKey = 'genres';
+  
+  const cached = genreCache.get(cacheKey);
+  if (cached) {
+    console.log('✅ AniList genres cache HIT');
+    return cached as string[];
+  }
+
+  console.log('🌐 Fetching genres from AniList...');
+
+  try {
+    const response = await fetch(ANILIST_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        query: GENRE_QUERY,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AniList GraphQL error: HTTP ${response.status}`);
+    }
+
+    const json = await response.json();
+
+    if (json.errors) {
+      console.error('AniList GraphQL errors:', json.errors);
+      throw new Error(json.errors[0]?.message ?? 'AniList GraphQL error');
+    }
+
+    const genres = json?.data?.genres ?? [];
+    console.log(`✅ AniList genres: ${genres.length} genres fetched`);
+    
+    genreCache.set(cacheKey, genres);
+    return genres;
+  } catch (error) {
+    console.error('❌ Failed to fetch AniList genres:', error);
+    // Return empty array on error - fallback will be used
+    return [];
+  }
+}
 
 async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
   try {

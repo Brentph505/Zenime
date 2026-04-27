@@ -1,4 +1,4 @@
-import { year as currentYear } from '../index';
+import { year as currentYear, fetchAniListGenres } from '../index';
 
 export interface Option {
   value: string;
@@ -15,7 +15,8 @@ export interface FilterProps {
 
 export const anyOption: Option = { value: '', label: 'Any' };
 
-export const genreOptions: Option[] = [
+// Default fallback genres (used if API fails)
+export const defaultGenreOptions: Option[] = [
   { value: 'Action', label: 'Action' },
   { value: 'Adventure', label: 'Adventure' },
   { value: 'Comedy', label: 'Comedy' },
@@ -34,6 +35,25 @@ export const genreOptions: Option[] = [
   { value: 'Supernatural', label: 'Supernatural' },
   { value: 'Thriller', label: 'Thriller' },
 ];
+
+// Async function to get genre options from AniList API
+export async function getGenreOptions(): Promise<Option[]> {
+  try {
+    const genres = await fetchAniListGenres();
+    if (genres && genres.length > 0) {
+      return genres.map((genre: string) => ({
+        value: genre,
+        label: genre,
+      }));
+    }
+  } catch (error) {
+    console.error('Failed to fetch genres from AniList, using defaults:', error);
+  }
+  return defaultGenreOptions;
+}
+
+// For backwards compatibility, export defaultGenreOptions as genreOptions
+export const genreOptions: Option[] = defaultGenreOptions;
 
 export const yearOptions: Option[] = [
   anyOption,

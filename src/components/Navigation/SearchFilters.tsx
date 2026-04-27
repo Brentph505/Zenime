@@ -13,7 +13,8 @@ import { FiX } from 'react-icons/fi';
 import {
   Option,
   FilterProps,
-  genreOptions,
+  defaultGenreOptions,
+  getGenreOptions,
   anyOption,
   yearOptions,
   seasonOptions,
@@ -399,6 +400,30 @@ export const SearchFilters: React.FC<{
 }) => {
   // State to track if any filter is changed from its default value
   const [filtersChanged, setFiltersChanged] = useState(false);
+  
+  // State for dynamic genres loaded from AniList
+  const [dynamicGenreOptions, setDynamicGenreOptions] = useState<Option[]>(defaultGenreOptions);
+  const [genresLoading, setGenresLoading] = useState(true);
+
+  // Load genres from AniList on mount
+  useEffect(() => {
+    const loadGenres = async () => {
+      try {
+        const genres = await getGenreOptions();
+        if (genres.length > 0) {
+          setDynamicGenreOptions(genres);
+        }
+      } catch (error) {
+        console.error('Failed to load genres:', error);
+      } finally {
+        setGenresLoading(false);
+      }
+    };
+    loadGenres();
+  }, []);
+
+  // Use dynamic genres if loaded, otherwise fall back to defaults
+  const effectiveGenreOptions = genresLoading ? defaultGenreOptions : dynamicGenreOptions;
 
   const handleResetFilters = () => {
     setSelectedGenres([]);
@@ -462,7 +487,7 @@ export const SearchFilters: React.FC<{
           />
           <FilterSelect
             label='Genres'
-            options={genreOptions}
+            options={effectiveGenreOptions}
             isMulti
             onChange={handleChange(setSelectedGenres)}
             value={selectedGenres}
