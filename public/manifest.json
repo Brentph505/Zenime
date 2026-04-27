@@ -5,7 +5,7 @@
   "lang": "en",
   "background_color": "#080808",
   "display": "standalone",
-  "orientation": "standalone",
+  "orientation": "portrait-primary",
   "scope": "/",
   "start_url": "/",
   "screenshots": [

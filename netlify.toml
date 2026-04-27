@@ -1,4 +1,9 @@
 [[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
   from = "/exchange-token"
   to = "/.netlify/functions/exchange-token"
   status = 200
@@ -6,11 +11,6 @@
 [[redirects]]
   from = "/get-csrf-token"
   to = "/.netlify/functions/get-csrf-token"
-  status = 200
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
   status = 200
 
 [build.environment]
