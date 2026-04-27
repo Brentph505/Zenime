@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import {
@@ -14,6 +14,7 @@ import {
   Episode,
   Anime,
   CardItem as AnimeCardItem,
+  AnimeDataList,
 } from '../index';
 
 // ─── Animations ───────────────────────────────────────────────────────────────
@@ -759,25 +760,33 @@ const NumCell = styled.div<{ $active?: boolean; $filler?: boolean; $first?: bool
   }
 `;
 
-// ─── Recommendations ──────────────────────────────────────────────────────────
+// ─── Full-width sections (Recommendations + Related) ─────────────────────────
 
-const RecsWrap = styled.div`
-  border-top: 1px solid #e5e7eb;
+const FullWidthSection = styled.div`
+  margin-top: 2.5rem;
   padding-top: 2rem;
-  margin-top: 1rem;
+  border-top: 1px solid #e5e7eb;
+  position: relative;
+  z-index: 2;
   .dark-mode & {
     border-top: 1px solid ${A.border};
   }
+  @media (max-width: 860px) {
+    margin-top: 1.75rem;
+    padding-top: 1.5rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
 `;
 
-const RecsHeader = styled.div`
+const SectionHeader = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1rem;
 `;
 
-const RecsLabel = styled.div`
+const SectionLabel = styled.div`
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -905,13 +914,13 @@ const Info: React.FC = () => {
   const [epSearch, setEpSearch] = useState('');
   const [epRange,  setEpRange]  = useState(0);
 
-  // Recommendations scroll ref
-  const recsRef = useRef<HTMLDivElement>(null);
+  // Scroll refs for full-width sections
+  const recsRef    = useRef<HTMLDivElement>(null);
+  const relatedRef = useRef<HTMLDivElement>(null);
 
-  const scrollRecs = (dir: 'left' | 'right') => {
-    if (!recsRef.current) return;
-    const amount = 320;
-    recsRef.current.scrollBy({ left: dir === 'left' ? -amount : amount, behavior: 'smooth' });
+  const scrollSection = (ref: React.RefObject<HTMLDivElement>, dir: 'left' | 'right') => {
+    if (!ref.current) return;
+    ref.current.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -973,6 +982,24 @@ const Info: React.FC = () => {
     );
   }, [ranges, epRange, epSearch]);
 
+  // Flatten relations from AnimeDataList into a usable array for card rendering
+  // Must be defined before early returns to maintain consistent hook order
+  const relatedAnime = useMemo(() => {
+    if (!animeInfo?.relations?.length) return [];
+    return animeInfo.relations.flatMap((rel: any) =>
+      rel.nodes ? rel.nodes : [rel]
+    ).filter(Boolean);
+  }, [animeInfo?.relations]);
+
+  // Process recommendations - must be before early returns for hook consistency
+  const recommendations = useMemo(() => {
+    return animeInfo?.recommendations?.slice(0, 16) ?? [];
+  }, [animeInfo?.recommendations]);
+
+  // Determine if scroll buttons are needed (more than 1 row worth of items)
+  const recsNeedScroll = recommendations.length > 5;
+  const relatedNeedScroll = relatedAnime.length > 5;
+
   if (loading) return <Loader>Loading…</Loader>;
   if (error || !animeInfo) return (
     <ErrorWrap>
@@ -990,12 +1017,12 @@ const Info: React.FC = () => {
   const metaItems: { key: string; val: string; onClick?: () => void }[] = [
     animeInfo.totalEpisodes != null && { key: 'Episodes', val: String(animeInfo.totalEpisodes) },
     animeInfo.duration        && { key: 'Duration',  val: `${animeInfo.duration} min` },
-    animeInfo.season          && { key: 'Season',    val: animeInfo.season.toUpperCase(), onClick: () => navigate(`/search?season=${animeInfo.season?.toLowerCase()}`) },
+    animeInfo.season          && { key: 'Season',    val: animeInfo.season.toUpperCase(), onClick: () => navigate(`/search?season=${animeInfo.season?.toUpperCase()}`) },
     animeInfo.releaseDate     && { key: 'Year',      val: String(animeInfo.releaseDate), onClick: () => navigate(`/search?year=${animeInfo.releaseDate}`) },
     animeInfo.status          && { key: 'Status',    val: animeInfo.status },
     animeInfo.type            && { key: 'Format',    val: animeInfo.type, onClick: () => navigate(`/search?type=${encodeURIComponent(animeInfo.type!)}`) },
     animeInfo.title.native    && { key: 'Native',    val: animeInfo.title.native },
-    animeInfo.studios?.length > 0 && { key: 'Studio', val: animeInfo.studios.join(', ') },
+    animeInfo.studios?.length > 0 && { key: 'Studio', val: animeInfo.studios.join(', '), onClick: () => navigate(`/studio/${animeInfo.studioIds?.[0]}`) },
   ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
 
   const usePills = ranges.length <= 10;
@@ -1063,7 +1090,7 @@ const Info: React.FC = () => {
                   <SideMetaRow><SideMetaKey>Duration</SideMetaKey><SideMetaVal>{animeInfo.duration} min</SideMetaVal></SideMetaRow>
                 )}
                  {animeInfo.season && (
-                   <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?season=${animeInfo.season?.toLowerCase()}`)}>{animeInfo.season.toUpperCase()}</ClickableMetaVal></SideMetaVal></SideMetaRow>
+                   <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?season=${animeInfo.season?.toUpperCase()}`)}>{animeInfo.season.toUpperCase()}</ClickableMetaVal></SideMetaVal></SideMetaRow>
                  )}
                 {animeInfo.releaseDate && (
                   <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?year=${animeInfo.releaseDate}`)}>{animeInfo.releaseDate}</ClickableMetaVal></SideMetaVal></SideMetaRow>
@@ -1078,7 +1105,7 @@ const Info: React.FC = () => {
                   <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{animeInfo.title.native}</SideMetaVal></SideMetaRow>
                 )}
                 {animeInfo.studios?.length > 0 && (
-                  <SideMetaRow><SideMetaKey>Studio</SideMetaKey><SideMetaVal>{animeInfo.studios.join(', ')}</SideMetaVal></SideMetaRow>
+                  <SideMetaRow><SideMetaKey>Studio</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/studio/${animeInfo.studioIds?.[0]}`)}>{animeInfo.studios.join(', ')}</ClickableMetaVal></SideMetaVal></SideMetaRow>
                 )}
               </SidebarMeta>
             </PosterActions>
@@ -1328,29 +1355,57 @@ const Info: React.FC = () => {
               </Panel>
             )}
 
-            {/* ── Recommendations ── */}
-            {(animeInfo.recommendations?.length ?? 0) > 0 && (
-              <RecsWrap>
-                <RecsHeader>
-                  <RecsLabel>You might also like</RecsLabel>
-                  <ScrollBtnRow>
-                    <ScrollBtn onClick={() => scrollRecs('left')} aria-label="Scroll left">
-                      <FaChevronLeft size={12} />
-                    </ScrollBtn>
-                    <ScrollBtn onClick={() => scrollRecs('right')} aria-label="Scroll right">
-                      <FaChevronRight size={12} />
-                    </ScrollBtn>
-                  </ScrollBtnRow>
-                </RecsHeader>
-                <StyledCardGrid ref={recsRef}>
-                  {animeInfo.recommendations.slice(0, 16).map(r => (
-                    <AnimeCardItem key={r.id} anime={r as unknown as Anime} />
-                  ))}
-                </StyledCardGrid>
-              </RecsWrap>
-            )}
           </RightCol>
         </Grid>
+
+        {/* ── Recommendations — full width below grid ── */}
+        {recommendations.length > 0 && (
+          <FullWidthSection>
+            <SectionHeader>
+              <SectionLabel>You might also like</SectionLabel>
+              {recsNeedScroll && (
+                <ScrollBtnRow>
+                  <ScrollBtn onClick={() => scrollSection(recsRef, 'left')} aria-label="Scroll left">
+                    <FaChevronLeft size={12} />
+                  </ScrollBtn>
+                  <ScrollBtn onClick={() => scrollSection(recsRef, 'right')} aria-label="Scroll right">
+                    <FaChevronRight size={12} />
+                  </ScrollBtn>
+                </ScrollBtnRow>
+              )}
+            </SectionHeader>
+            <StyledCardGrid ref={recsRef}>
+              {recommendations.map(r => (
+                <AnimeCardItem key={r.id} anime={r as unknown as Anime} />
+              ))}
+            </StyledCardGrid>
+          </FullWidthSection>
+        )}
+
+        {/* ── Related — full width below recommendations, using AnimeCardItem ── */}
+        {relatedAnime.length > 0 && (
+          <FullWidthSection>
+            <SectionHeader>
+              <SectionLabel>Related</SectionLabel>
+              {relatedNeedScroll && (
+                <ScrollBtnRow>
+                  <ScrollBtn onClick={() => scrollSection(relatedRef, 'left')} aria-label="Scroll left">
+                    <FaChevronLeft size={12} />
+                  </ScrollBtn>
+                  <ScrollBtn onClick={() => scrollSection(relatedRef, 'right')} aria-label="Scroll right">
+                    <FaChevronRight size={12} />
+                  </ScrollBtn>
+                </ScrollBtnRow>
+              )}
+            </SectionHeader>
+            <StyledCardGrid ref={relatedRef}>
+              {relatedAnime.slice(0, 16).map((r: any) => (
+                <AnimeCardItem key={r.id} anime={r as unknown as Anime} />
+              ))}
+            </StyledCardGrid>
+          </FullWidthSection>
+        )}
+
       </Shell>
     </PageWrapper>
   );

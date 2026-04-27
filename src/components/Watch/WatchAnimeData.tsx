@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Seasons, Anime } from '../../index';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
+import { FaExternalLinkAlt } from 'react-icons/fa';
 
 const AnimeDataContainer = styled.div`
   margin-bottom: 1.5rem;
@@ -112,6 +113,42 @@ const AnimeInfoImage = styled.img`
   @media (max-width: 500px) {
     max-height: 12rem;
     width: 8.5rem;
+  }
+`;
+
+const ImageWrapper = styled.div`
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  width: 10.5rem;
+  max-height: 15rem;
+  @media (max-width: 500px) {
+    width: 8.5rem;
+    max-height: 12rem;
+  }
+`;
+
+const InfoIconOverlay = styled(Link)`
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--global-border-radius);
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: white;
+  
+  &:hover {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    opacity: 0.7;
   }
 `;
 
@@ -350,7 +387,12 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                 alignItems: 'center',
               }}
             >
-              <AnimeInfoImage src={animeData.image} alt='Anime Title Image' />
+              <ImageWrapper>
+                <AnimeInfoImage src={animeData.image} alt='Anime Title Image' />
+                <InfoIconOverlay to={`/info/${animeData.id}`} title="View Info">
+                  <FaExternalLinkAlt size={24} />
+                </InfoIconOverlay>
+              </ImageWrapper>
               {animeData.trailer && animeData.status !== 'Not yet aired' && (
                 <ShowTrailerButton onClick={toggleTrailer}>
                   <p>
@@ -515,7 +557,7 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                      {animeData.season ? (
                        <p>
                          Season:{' '}
-                         <ClickableText onClick={() => navigate(`/search?season=${animeData.season?.toLowerCase()}`)}>
+                         <ClickableText onClick={() => navigate(`/search?season=${animeData.season?.toUpperCase()}`)}>
                            <strong>
                              {animeData.season.toUpperCase()}
                            </strong>

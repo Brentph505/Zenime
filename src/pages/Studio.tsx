@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
-import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import {
   CardGrid,
   StyledCardGrid,
@@ -201,37 +200,6 @@ const StatLabel = styled.span`
   letter-spacing: 0.07em;
 `;
 
-const FavButton = styled.button<{ $isFav: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  background-color: ${({ $isFav }) =>
-    $isFav ? 'var(--primary-accent-bg)' : 'var(--global-button-bg)'};
-  color: ${({ $isFav }) =>
-    $isFav ? '#fff' : 'var(--global-text)'};
-  border: none;
-  border-radius: var(--global-border-radius);
-  padding: 0.6rem 1rem;
-  font-size: 0.78rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.1s ease;
-  flex-shrink: 0;
-  align-self: flex-start;
-  margin-left: auto;
-
-  &:hover {
-    background-color: ${({ $isFav }) =>
-      $isFav ? 'var(--primary-accent)' : 'var(--global-button-hover-bg)'};
-    transform: scale(1.03);
-  }
-
-  @media (max-width: 500px) {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.72rem;
-  }
-`;
-
 // ─── Filters + Header ─────────────────────────────────────────────────────────
 
 const CatalogHeader = styled.div`
@@ -366,7 +334,6 @@ function Studio() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isFav, setIsFav] = useState(false);
   const [activeType, setActiveType] = useState<AnimeType>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -429,7 +396,6 @@ function Studio() {
 
   useEffect(() => {
     if (data) {
-      setIsFav(data.isFavourite);
       document.title = `${data.name} | Studio Catalog`;
     }
   }, [data]);
@@ -438,11 +404,6 @@ function Studio() {
     if (!loadingMore && data?.anime.hasNextPage) {
       fetchData(currentPage + 1, true);
     }
-  };
-
-  const handleFavToggle = () => {
-    setIsFav((prev) => !prev);
-    // TODO: Implement actual favorite toggle API call
   };
 
   const allAnime: StudioAnimeResult[] = data ? dedupeById(data.anime.results) : [];
@@ -512,11 +473,6 @@ function Studio() {
                 )}
               </HeroStats>
             </HeroInfo>
-
-            <FavButton $isFav={isFav} onClick={handleFavToggle}>
-              {isFav ? <FaHeart size={12} /> : <FaRegHeart size={12} />}
-              {isFav ? 'Favourited' : 'Favourite'}
-            </FavButton>
           </HeroBody>
         </HeroWrapper>
       )}
