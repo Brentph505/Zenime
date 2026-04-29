@@ -783,7 +783,7 @@ export async function fetchSkipTimes({
 
 export async function fetchRecentEpisodes(
   page: number = 1,
-  perPage: number = 18,
+  perPage: number = 24,
   provider: string = 'kickassanime',
 ) {
   const params = new URLSearchParams({

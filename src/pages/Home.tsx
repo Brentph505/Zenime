@@ -226,6 +226,15 @@ const loadingKeyMap: Record<string, 'trending' | 'popular' | 'topRated' | 'topAi
   latest: 'latest',
 };
 
+const buildInitialLoading = (activeTab: string) => ({
+  trending: activeTab === 'trending',
+  popular:  activeTab === 'popular',
+  topRated: activeTab === 'topRated',
+  topAiring: false,
+  Upcoming:  false,
+  latest:   activeTab === 'latest',
+});
+
 const Home = () => {
   const [itemsCount, setItemsCount] = useState(
     window.innerWidth > 500 ? 24 : 15,
@@ -242,7 +251,7 @@ const Home = () => {
     return 'trending';
   });
 
-  const [state, setState] = useState({
+  const [state, setState] = useState(() => ({
     watchedEpisodes: [] as Episode[],
     trendingAnime: [] as Anime[],
     popularAnime: [] as Anime[],
@@ -251,24 +260,23 @@ const Home = () => {
     Upcoming: [] as Anime[],
     latestAnime: [] as Anime[],
     error: null as string | null,
-    // ✅ FIX: All tabs start as loading=true so the skeleton shows
-    // immediately and nothing races against an "empty + not loading" check.
-    loading: {
-      trending: true,
-      popular: true,
-      topRated: true,
-      topAiring: true,
-      Upcoming: true,
-      latest: true,
-    },
-  });
+    loading: buildInitialLoading(
+      (() => {
+        const now = Date.now();
+        const savedData = localStorage.getItem('home tab');
+        if (savedData) {
+          const { tab, timestamp } = JSON.parse(savedData);
+          if (now - timestamp < 300000) return tab;
+        }
+        return 'trending';
+      })()
+    ),
+  }));
 
   const [paging, setPaging] = useState<Record<string, TabPaging>>({
     trending: defaultPaging,
     popular: defaultPaging,
     topRated: defaultPaging,
-    topAiring: defaultPaging,
-    Upcoming: defaultPaging,
     latest: defaultPaging,
   });
 
@@ -291,43 +299,56 @@ const Home = () => {
     }
   }, []);
 
-  // ✅ FIX: Only fetch data for the active tab to reduce server load
+  useEffect(() => {
+    Promise.all([
+      fetchTopAiringAnime(1, 10),
+      fetchUpcomingSeasons(1, 10),
+    ]).then(([topAiring, Upcoming]) => {
+      setState((prev) => ({
+        ...prev,
+        topAiring: topAiring.results.slice(0, 10),
+        Upcoming:  Upcoming.results.slice(0, 10),
+      }));
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const fetchCount = Math.ceil(itemsCount * 1.4);
 
-    const fetchers: Record<string, () => Promise<Paging>> = {
-      trending: () => fetchTrendingAnime(1, fetchCount),
-      popular: () => fetchPopularAnime(1, fetchCount),
-      topRated: () => fetchTopAnime(1, fetchCount),
-      topAiring: () => fetchTopAiringAnime(1, fetchCount),
-      Upcoming: () => fetchUpcomingSeasons(1, fetchCount),
-      latest: () => fetchRecentEpisodes(1, fetchCount, 'kickassanime'),
+    const tabFetchers: Record<string, (p: number, c: number) => Promise<Paging>> = {
+      trending: fetchTrendingAnime,
+      popular:  fetchPopularAnime,
+      topRated: fetchTopAnime,
+      latest:   fetchRecentEpisodes,
     };
 
-    const dataKeys: Record<string, string> = {
+    const dataKeys: Record<string, keyof typeof state> = {
       trending: 'trendingAnime',
-      popular: 'popularAnime',
+      popular:  'popularAnime',
       topRated: 'topAnime',
-      topAiring: 'topAiring',
-      Upcoming: 'Upcoming',
-      latest: 'latestAnime',
+      latest:   'latestAnime',
     };
 
-    const fetcher = fetchers[activeTab];
-    const dataKey = dataKeys[activeTab];
+    const fetcher  = tabFetchers[activeTab];
+    const dataKey  = dataKeys[activeTab];
     const loadingKey = loadingKeyMap[activeTab];
 
-    if (!fetcher || !dataKey || !loadingKey) return;
+    if (!fetcher || !dataKey) return;
 
-    // Skip if already loaded
-    const currentData = state[dataKey as keyof typeof state];
-    if (Array.isArray(currentData) && currentData.length > 0) return;
+    const existingData = state[dataKey];
+    if (Array.isArray(existingData) && existingData.length > 0) return;
 
     const fetchData = async () => {
-      setState((prev) => ({ ...prev, loading: { ...prev.loading, [loadingKey]: true } }));
+      setState((prev) => ({
+        ...prev,
+        loading: { ...prev.loading, [loadingKey]: true },
+      }));
 
       try {
-        const result = await fetcher();
+        // For the latest tab, request exactly itemsCount — no over-fetch needed
+        const perPage = activeTab === 'latest' ? itemsCount : fetchCount;
+        const result = await fetcher(1, perPage);
         const raw = result.results.slice(0, itemsCount);
         const trimmed = activeTab === 'latest' ? raw.map(normalizeEpisodeToAnime) : raw;
 
@@ -343,11 +364,15 @@ const Home = () => {
       } catch {
         setState((prev) => ({ ...prev, error: 'An unexpected error occurred' }));
       } finally {
-        setState((prev) => ({ ...prev, loading: { ...prev.loading, [loadingKey]: false } }));
+        setState((prev) => ({
+          ...prev,
+          loading: { ...prev.loading, [loadingKey]: false },
+        }));
       }
     };
 
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, itemsCount]);
 
   useEffect(() => {
@@ -359,18 +384,13 @@ const Home = () => {
     localStorage.setItem('home tab', tabData);
   }, [activeTab]);
 
-  // ✅ FIX: fetchTabPage is only used for explicit page-change navigation (prev/next).
-  // It no longer needs to be called on tab switch because the initial fetch
-  // already populates page 1 for every tab before loading=false is set.
   const fetchTabPage = async (tab: string, page: number, count: number) => {
     const fetchCount = Math.ceil(count * 1.4);
     const fetchers: Record<string, (p: number, c: number) => Promise<Paging>> = {
       trending: fetchTrendingAnime,
-      popular: fetchPopularAnime,
+      popular:  fetchPopularAnime,
       topRated: fetchTopAnime,
-      topAiring: fetchTopAiringAnime,
-      Upcoming: fetchUpcomingSeasons,
-      latest: (p, c) => fetchRecentEpisodes(p, c, 'kickassanime'),
+      latest:   fetchRecentEpisodes,
     };
 
     const fetcher = fetchers[tab];
@@ -384,17 +404,17 @@ const Home = () => {
     }));
 
     try {
-      const result = await fetcher(page, fetchCount);
+      // For the latest tab, request exactly count — no over-fetch needed
+      const perPage = tab === 'latest' ? count : fetchCount;
+      const result = await fetcher(page, perPage);
       const raw = result.results.slice(0, count);
       const trimmed = tab === 'latest' ? raw.map(normalizeEpisodeToAnime) : raw;
 
       const dataKey: Record<string, string> = {
         trending: 'trendingAnime',
-        popular: 'popularAnime',
+        popular:  'popularAnime',
         topRated: 'topAnime',
-        topAiring: 'topAiring',
-        Upcoming: 'Upcoming',
-        latest: 'latestAnime',
+        latest:   'latestAnime',
       };
 
       setState((prev) => ({ ...prev, [dataKey[tab]]: trimmed }));
@@ -447,24 +467,20 @@ const Home = () => {
 
   const tabDataMap: Record<string, Anime[]> = {
     trending: state.trendingAnime,
-    popular: state.popularAnime,
+    popular:  state.popularAnime,
     topRated: state.topAnime,
-    topAiring: state.topAiring,
-    Upcoming: state.Upcoming,
-    latest: state.latestAnime,
+    latest:   state.latestAnime,
   };
 
   const SEASON = getNextSeason();
-  const activePaging = paging[activeTab] ?? defaultPaging;
+  const activePaging  = paging[activeTab] ?? defaultPaging;
   const activeLoading = state.loading[loadingKeyMap[activeTab]];
 
   const TABS = [
-    { key: 'trending', label: 'TRENDING' },
-    { key: 'popular',  label: 'POPULAR'  },
+    { key: 'trending', label: 'TRENDING'  },
+    { key: 'popular',  label: 'POPULAR'   },
     { key: 'topRated', label: 'TOP RATED' },
-    { key: 'topAiring', label: 'TOP AIRING' },
-    { key: 'Upcoming', label: 'UPCOMING' },
-    { key: 'latest',   label: 'LATEST'   },
+    { key: 'latest',   label: 'LATEST'    },
   ];
 
   return (
