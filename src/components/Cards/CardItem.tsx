@@ -170,7 +170,7 @@ const CardDetails = styled.div`
   }
 `;
 
-export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
+export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ anime, isLatestTab = false }) => {
   // ✅ FIX: Removed the internal `loading` state that was gated by setTimeout(0).
   // That pattern caused every card to render <SkeletonCard /> on mount and
   // then flip to the real card after a microtask — on page 1 the flip raced
@@ -212,9 +212,9 @@ export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
       onMouseLeave={handleMouseLeave}
     >
       <StyledCardItem>
-        {/* Poster → /watch/:id */}
+        {/* Poster → /watch/:id or /watch/:id?ep=totalEpisodes for latest tab */}
         <PosterLink
-          to={`/watch/${anime.id}`}
+          to={`/watch/${anime.id}${isLatestTab && anime.totalEpisodes ? `?ep=${anime.totalEpisodes}` : ''}`}
           title={'Play ' + (anime.title.english || anime.title.romaji)}
         >
           <ImageDisplayWrapper>

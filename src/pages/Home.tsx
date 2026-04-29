@@ -459,6 +459,7 @@ const Home = () => {
     animeData: Anime[],
     isLoading: boolean,
     hasError: boolean,
+    isLatestTab: boolean = false,
   ) => {
     return (
       <Section>
@@ -469,7 +470,7 @@ const Home = () => {
             ))}
           </StyledCardGrid>
         ) : (
-          <CardGrid animeData={animeData} hasNextPage={false} onLoadMore={() => {}} />
+          <CardGrid animeData={animeData} hasNextPage={false} onLoadMore={() => {}} isLatestTab={isLatestTab} />
         )}
       </Section>
     );
@@ -554,6 +555,7 @@ const Home = () => {
             tabDataMap[activeTab] ?? [],
             activeLoading,
             !!state.error,
+            activeTab === 'latest',
           )}
         </div>
 
