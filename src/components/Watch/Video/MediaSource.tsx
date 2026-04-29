@@ -19,7 +19,6 @@ interface MediaSourceProps {
   embeddedServerName?: string;
 }
 
-// Adjust the Container for responsive layout
 const UpdatedContainer = styled.div`
   justify-content: center;
   margin-top: 1rem;
@@ -110,9 +109,16 @@ const ServerLabel = styled.span`
   }
 `;
 
+const LoadingServers = styled.div`
+  font-size: 0.8rem;
+  color: var(--global-text);
+  opacity: 0.6;
+  padding: 0.4rem 0;
+`;
+
 const DownloadLink = styled.a`
-  display: inline-flex; // Use inline-flex to easily center the icon
-  align-items: center; // Align the icon vertically center
+  display: inline-flex;
+  align-items: center;
   margin-left: 0.5rem;
   padding: 0.5rem;
   gap: 0.25rem;
@@ -130,7 +136,7 @@ const DownloadLink = styled.a`
     transform 0.2s ease-in-out;
 
   svg {
-    font-size: 0.85rem; // Adjust icon size
+    font-size: 0.85rem;
   }
 
   &:hover {
@@ -207,40 +213,43 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   availableServers = [],
   embeddedServerName = 'Embedded',
 }) => {
-  console.log('MediaSource RENDER - props:', { 
-    sourceType, 
-    availableServers: availableServers,
-    availableServersLength: availableServers?.length,
-    episodeId 
-  });
   const [isCopied, setIsCopied] = useState(false);
 
   const handleShareClick = () => {
     navigator.clipboard.writeText(window.location.href);
     setIsCopied(true);
-    setTimeout(() => {
-      setIsCopied(false);
-    }, 2000);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
-  // Generate server buttons dynamically from availableServers
-  const renderServerButtons = () => {
-    console.log('renderServerButtons called with:', availableServers);
-    if (!availableServers || availableServers.length === 0) {
-      console.log('No availableServers, returning embedded only');
-      return [{ key: 'embedded', label: 'Default', isEmbedded: true }];
+  /**
+   * Build the server button list:
+   * - One "Embedded" button (iframe-based) always shown first with real server name
+   * - Then all verified M3U8 servers with their real names
+   */
+  const buildServerButtons = () => {
+    const buttons: { key: string; label: string; isEmbedded: boolean }[] = [];
+
+    // Show real embedded server name; fallback to 'Embedded' while loading
+    buttons.push({
+      key: 'embedded',
+      label: embeddedServerName || 'Embedded',
+      isEmbedded: true,
+    });
+
+    // Real verified servers with their actual names
+    for (const server of availableServers) {
+      buttons.push({
+        key: server,
+        label: server.charAt(0).toUpperCase() + server.slice(1),
+        isEmbedded: false,
+      });
     }
-    console.log('Mapping servers:', availableServers);
-    // Add "Embedded" option alongside regular servers
-    const servers = availableServers.map((server) => ({
-      key: server,
-      label: server.charAt(0).toUpperCase() + server.slice(1),
-      isEmbedded: false,
-    }));
-    // Add Embedded option at the beginning with EM badge
-    servers.unshift({ key: 'embedded', label: embeddedServerName, isEmbedded: true });
-    return servers;
+
+    return buttons;
   };
+
+  const serverButtons = buildServerButtons();
+  const isLoadingServers = availableServers.length === 0 && !sourceType;
 
   return (
     <UpdatedContainer>
@@ -261,44 +270,46 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
             {isCopied && <p>Copied to clipboard!</p>}
             <br />
             <br />
-            <p>If current servers don't work, please try other servers.</p>
+            <p>If the current server doesn't work, please try another.</p>
           </>
         ) : (
           'Loading episode information...'
         )}
         {airingTime && (
-          <>
-            <p>
-              Episode <strong>{nextEpisodenumber}</strong> will air in{' '}
-              <FaBell />
-              <strong> {airingTime}</strong>.
-            </p>
-          </>
+          <p>
+            Episode <strong>{nextEpisodenumber}</strong> will air in{' '}
+            <FaBell />
+            <strong> {airingTime}</strong>.
+          </p>
         )}
       </EpisodeInfoColumn>
+
       <ServerContainer>
         <ServerTitle>
           <FaServer /> Server
         </ServerTitle>
-        <ServerGrid>
-          {renderServerButtons().map((server) => (
-            <ServerButton
-              key={`server-${server.key}`}
-              className={sourceType === server.key ? 'active' : ''}
-              onClick={() => {
-                console.log('Server button clicked:', server.key);
-                console.log('Current sourceType:', sourceType);
-                setSourceType(server.key);
-                console.log('Called setSourceType with:', server.key);
-              }}
-            >
-              <ServerLabel>
-                <span className="server-name">{server.label}</span>
-                {server.isEmbedded && <span className="em-badge">EM</span>}
-              </ServerLabel>
-            </ServerButton>
-          ))}
-        </ServerGrid>
+
+        {isLoadingServers ? (
+          <LoadingServers>Checking available servers…</LoadingServers>
+        ) : (
+          <ServerGrid>
+            {serverButtons.map((server) => (
+              <ServerButton
+                key={`server-${server.key}`}
+                className={sourceType === server.key ? 'active' : ''}
+                onClick={() => {
+                  console.log('Selected server:', server.key);
+                  setSourceType(server.key);
+                }}
+              >
+                <ServerLabel>
+                  <span className="server-name">{server.label}</span>
+                  {server.isEmbedded && <span className="em-badge">EM</span>}
+                </ServerLabel>
+              </ServerButton>
+            ))}
+          </ServerGrid>
+        )}
       </ServerContainer>
     </UpdatedContainer>
   );

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './PlayerStyles.css';
+import { useNavigate } from 'react-router-dom';
 import {
   isHLSProvider,
   MediaPlayer,
@@ -113,7 +114,7 @@ export function Player({
   onPrevEpisode,
   onNextEpisode,
   animeTitle,
-  sourceType = 'default',
+  sourceType = '',
   embeddedUrl,
   serverUrl,
 }: PlayerProps) {
@@ -133,22 +134,72 @@ export function Player({
 
   const { settings, setSettings } = useSettings();
   const { autoPlay, autoNext, autoSkip } = settings;
+  const navigate = useNavigate();
 
-  // Debug: log sourceType changes
+  const isEmbedded = sourceType === 'embedded';
+
+  // Build the embedded URL, injecting autoplay=1 when the user has autoplay on
+  const builtEmbeddedUrl = React.useMemo(() => {
+    if (!embeddedUrl) return '';
+    try {
+      const u = new URL(embeddedUrl);
+      if (autoPlay) u.searchParams.set('autoplay', '1');
+      return u.toString();
+    } catch {
+      return embeddedUrl;
+    }
+  }, [embeddedUrl, autoPlay]);
+
   useEffect(() => {
-    console.log('[Player] sourceType changed:', sourceType);
+    console.log('[Player] sourceType changed:', sourceType, '| isEmbedded:', isEmbedded);
   }, [sourceType]);
+
+  // Listen for postMessage events from the cross-origin iframe.
+  // Most embeddable players (vidstack, plyr, jwplayer, custom) broadcast an
+  // 'ended' signal so we can trigger auto-next without direct DOM access.
+  useEffect(() => {
+    if (!isEmbedded) return;
+
+    const handleMessage = (event: MessageEvent) => {
+      const d = event.data;
+      if (!d) return;
+
+      const isEnded =
+        d === 'ended' ||
+        d?.type === 'ended' ||
+        d?.event === 'ended' ||
+        d?.action === 'ended' ||
+        d?.type === 'video:ended' ||
+        d?.name === 'ended' ||
+        (typeof d === 'string' && d.toLowerCase().includes('ended'));
+
+      if (isEnded) {
+        console.log('[Player] iframe postMessage: video ended');
+        if (autoNext) handlePlaybackEnded();
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isEmbedded, autoNext]);
+
+  // When switching TO embedded mode, clear the HLS src so MediaPlayer unmounts cleanly
+  useEffect(() => {
+    if (isEmbedded) {
+      setSrc('');
+    }
+  }, [isEmbedded]);
 
   useEffect(() => {
     // Skip fetching if episodeId is not valid
-    if (!episodeId || episodeId === '0') {
-      return;
-    }
+    if (!episodeId || episodeId === '0') return;
+    // Skip HLS fetch entirely when in embedded mode — the iframe handles playback
+    if (isEmbedded) return;
 
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
-
     fetchAndSetAnimeSource();
     fetchAndProcessSkipTimes();
+
     return () => {
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
@@ -163,15 +214,6 @@ export function Player({
         );
     }
   }, [autoPlay, src, canPlay]);
-
-  // Force player to reload when src changes (server change)
-  useEffect(() => {
-    if (player.current && src) {
-      console.log('[Player] Source changed, reloading player:', src);
-      // Note: Vidstack player reloads automatically when src changes
-      // No manual load() method needed on MediaPlayerInstance
-    }
-  }, [src]);
 
   useEffect(() => {
     if (player.current && currentTime) {
@@ -203,10 +245,7 @@ export function Player({
       const currentTime = player.current.currentTime;
       const duration = player.current.duration || 1;
       const playbackPercentage = (currentTime / duration) * 100;
-      const playbackInfo = {
-        currentTime,
-        playbackPercentage,
-      };
+      const playbackInfo = { currentTime, playbackPercentage };
       const allPlaybackInfo = JSON.parse(
         localStorage.getItem('all_episode_times') || '{}',
       );
@@ -221,7 +260,7 @@ export function Player({
           ({ interval }) =>
             currentTime >= interval.startTime && currentTime < interval.endTime,
         );
-        if (skipInterval) {
+        if (skipInterval && player.current) {
           player.current.currentTime = skipInterval.interval.endTime;
         }
       }
@@ -244,18 +283,15 @@ export function Player({
       const skipType =
         skipTime.skipType.toUpperCase() === 'OP' ? 'Opening' : 'Outro';
 
-      // Insert default title chapter before this skip time if there's a gap
       if (previousEndTime < startTime) {
         vttString += `${formatTime(previousEndTime)} --> ${formatTime(startTime)}\n`;
         vttString += `${animeVideoTitle} - Episode ${episodeNumber}\n\n`;
       }
 
-      // Insert this skip time
       vttString += `${formatTime(startTime)} --> ${formatTime(endTime)}\n`;
       vttString += `${skipType}\n\n`;
       previousEndTime = endTime;
 
-      // Insert default title chapter after the last skip time
       if (index === sortedSkipTimes.length - 1 && endTime < totalDuration) {
         vttString += `${formatTime(endTime)} --> ${formatTime(totalDuration)}\n`;
         vttString += `${animeVideoTitle} - Episode ${episodeNumber}\n\n`;
@@ -295,54 +331,37 @@ export function Player({
 
   async function fetchAndSetAnimeSource() {
     try {
-      // Use server parameter only if sourceType is not 'default'
-      // Convert to lowercase to match API expected format
-      const serverParam =
-        sourceType !== 'default' ? sourceType.toLowerCase() : undefined;
-      console.log('[Player] fetchAndSetAnimeSource called with:', {
-        episodeId,
-        sourceType,
-        serverParam,
-      });
+      const serverParam = sourceType && sourceType !== 'default'
+        ? sourceType.toLowerCase()
+        : undefined;
 
-      // Server URL will be automatically extracted from API response
+      console.log('[Player] fetchAndSetAnimeSource:', { episodeId, sourceType, serverParam });
+
       const response: StreamingResponse = await fetchAnimeStreamingLinksProxied(
         episodeId,
         'kickassanime',
         serverParam,
       );
-      console.log('[Player] API response:', response);
-      console.log('[Player] API response sources:', response?.sources);
-      console.log(
-        '[Player] API response sources length:',
-        response?.sources?.length,
-      );
 
       if (response.sources && response.sources.length > 0) {
-        // Filter to only include M3U8 sources - check both isM3U8 flag and URL extension
         const m3u8Sources = response.sources.filter(
           (source) => source.isM3U8 || source.url?.endsWith('.m3u8'),
         );
-        console.log('[Player] M3U8 sources:', m3u8Sources);
 
         if (m3u8Sources.length > 0) {
-          // Get the first/best quality M3U8 source
-          const selectedSource = m3u8Sources[0];
-          console.log('[Player] Selected source URL:', selectedSource.url);
-          setSrc(selectedSource.url);
+          setSrc(m3u8Sources[0].url);
+          console.log('[Player] Set src:', m3u8Sources[0].url);
         } else {
-          console.error('No M3U8 video sources found in response');
+          console.error('No M3U8 sources found');
         }
 
-        // Set download link if available
         if (response.download) {
           updateDownloadLink(response.download);
         }
       } else {
-        console.error('No video sources found in response');
+        console.error('No video sources in response');
       }
 
-      // Set subtitles if available
       if (response.subtitles && response.subtitles.length > 0) {
         setSubtitles(response.subtitles);
       }
@@ -358,13 +377,8 @@ export function Player({
   }
 
   function getEpisodeNumber(id: string): string {
-    // Handle episode IDs like: that-time-i-got-reincarnated-as-a-slime-season-3-6b04/episode/ep-1-9ff869
-    // Extract the episode number from patterns like "ep-1" or "episode-1"
     const epMatch = id.match(/ep[-_]?(\d+)/i);
-    if (epMatch) {
-      return epMatch[1];
-    }
-    // Fallback: try to get the last numeric part
+    if (epMatch) return epMatch[1];
     const parts = id.split(/[-/]/);
     const lastPart = parts[parts.length - 1];
     const num = parseInt(lastPart, 10);
@@ -380,11 +394,9 @@ export function Player({
 
   const handlePlaybackEnded = async () => {
     if (!autoNext) return;
-
     try {
       player.current?.pause();
-
-      await new Promise((resolve) => setTimeout(resolve, 200)); // Delay for transition
+      await new Promise((resolve) => setTimeout(resolve, 200));
       await onEpisodeEnd();
     } catch (error) {
       console.error('Error moving to the next episode:', error);
@@ -393,86 +405,125 @@ export function Player({
 
   return (
     <div style={{ animation: 'popIn 0.25s ease-in-out' }}>
-      {/* Embedded iframe player */}
-      {embeddedUrl && (
-        <div style={{ width: '100%', aspectRatio: '16/9' }}>
-          <iframe
-            src={embeddedUrl}
-            style={{ width: '100%', height: '100%', border: 'none' }}
-            allowFullScreen
-            allow="autoplay; fullscreen"
-            title={`${animeVideoTitle} - Episode ${episodeNumber}`}
-          />
+      {/* Embedded iframe player — key forces full remount when URL changes */}
+      {isEmbedded && builtEmbeddedUrl && (
+        <div style={{ position: 'relative' }}>
+          <div
+            key={builtEmbeddedUrl}
+            style={{ width: '100%', aspectRatio: '16/9' }}
+          >
+            <iframe
+              src={builtEmbeddedUrl}
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                borderRadius: 'var(--global-border-radius)',
+              }}
+              allowFullScreen
+              allow="autoplay; fullscreen; picture-in-picture"
+              title={`${animeVideoTitle} - Episode ${episodeNumber}`}
+            />
+          </div>
+          {/* Controls overlay — mirrors the HLS player-menu for the iframe */}
+          <div
+            className='player-menu'
+            style={{
+              backgroundColor: 'var(--global-div-tr)',
+              borderRadius: 'var(--global-border-radius)',
+            }}
+          >
+            <Button onClick={toggleAutoPlay}>
+              {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
+            </Button>
+            <Button onClick={onPrevEpisode}>
+              <TbPlayerTrackPrev /> Prev
+            </Button>
+            <Button onClick={onNextEpisode}>
+              <TbPlayerTrackNext /> Next
+            </Button>
+            <Button onClick={toggleAutoNext}>
+              {autoNext ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Next
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* Regular video player */}
-      {!embeddedUrl && (
-      <MediaPlayer
-        className='player'
-        title={`${animeVideoTitle} - Episode ${episodeNumber}`}
-        src={src}
-        autoplay={autoPlay}
-        muted={false} // Player should never be muted by default
-        crossorigin
-        playsinline
-        onLoadedMetadata={onLoadedMetadata}
-        onCanPlay={onCanPlay}
-        onProviderChange={onProviderChange}
-        onTimeUpdate={onTimeUpdate}
-        ref={player}
-        aspectRatio='16/9'
-        load='eager'
-        posterLoad='eager'
-        streamType='on-demand'
-        storage='storage-key'
-        keyTarget='player'
-        onEnded={handlePlaybackEnded}
-      >
-        <MediaProvider>
-          <Poster className='vds-poster' src={banner} alt='' />
-          {vttUrl && (
-            <Track kind='chapters' src={vttUrl} default label='Skip Times' />
-          )}
-          {subtitles &&
-            subtitles.length > 0 &&
-            subtitles.map((subtitle, index) => (
-              <Track
-                key={`subtitle-${index}`}
-                kind='subtitles'
-                src={subtitle.url}
-                label={subtitle.lang}
-                default={subtitle.lang === 'English' || index === 0}
-              />
-            ))}
-        </MediaProvider>
-        <DefaultAudioLayout icons={defaultLayoutIcons} />
-        <DefaultVideoLayout icons={defaultLayoutIcons} />
-      </MediaPlayer>
+      {/* HLS video player — only shown when NOT in embedded mode */}
+      {!isEmbedded && (
+        <>
+        <MediaPlayer
+          className='player'
+          title={`${animeVideoTitle} - Episode ${episodeNumber}`}
+          src={src}
+          autoplay={autoPlay}
+          muted={false}
+          crossorigin
+          playsinline
+          onLoadedMetadata={onLoadedMetadata}
+          onCanPlay={onCanPlay}
+          onProviderChange={onProviderChange}
+          onTimeUpdate={onTimeUpdate}
+          ref={player}
+          aspectRatio='16/9'
+          load='eager'
+          posterLoad='eager'
+          streamType='on-demand'
+          storage='storage-key'
+          keyTarget='player'
+          onEnded={handlePlaybackEnded}
+        >
+          <MediaProvider>
+            <Poster 
+              className='vds-poster' 
+              src={banner} 
+              alt='' 
+              onClick={() => animeId && navigate(`/info/${animeId}`)}
+              style={{ cursor: 'pointer' }}
+            />
+            {vttUrl && (
+              <Track kind='chapters' src={vttUrl} default label='Skip Times' />
+            )}
+            {subtitles &&
+              subtitles.length > 0 &&
+              subtitles.map((subtitle, index) => (
+                <Track
+                  key={`subtitle-${index}`}
+                  kind='subtitles'
+                  src={subtitle.url}
+                  label={subtitle.lang}
+                  default={subtitle.lang === 'English' || index === 0}
+                />
+              ))}
+          </MediaProvider>
+          <DefaultAudioLayout icons={defaultLayoutIcons} />
+          <DefaultVideoLayout icons={defaultLayoutIcons} />
+        </MediaPlayer>
+        <div
+          className='player-menu'
+          style={{
+            backgroundColor: 'var(--global-div-tr)',
+            borderRadius: 'var(--global-border-radius)',
+          }}
+        >
+          <Button onClick={toggleAutoPlay}>
+            {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
+          </Button>
+          <Button $autoskip onClick={toggleAutoSkip}>
+            {autoSkip ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Skip
+          </Button>
+          <Button onClick={onPrevEpisode}>
+            <TbPlayerTrackPrev /> Prev
+          </Button>
+          <Button onClick={onNextEpisode}>
+            <TbPlayerTrackNext /> Next
+          </Button>
+          <Button onClick={toggleAutoNext}>
+            {autoNext ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Next
+          </Button>
+        </div>
+        </>
       )}
-      <div
-        className='player-menu'
-        style={{
-          backgroundColor: 'var(--global-div-tr)',
-          borderRadius: 'var(--global-border-radius)',
-        }}
-      >
-        <Button onClick={toggleAutoPlay}>
-          {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
-        </Button>
-        <Button $autoskip onClick={toggleAutoSkip}>
-          {autoSkip ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Skip
-        </Button>
-        <Button onClick={onPrevEpisode}>
-          <TbPlayerTrackPrev /> Prev
-        </Button>
-        <Button onClick={onNextEpisode}>
-          <TbPlayerTrackNext /> Next
-        </Button>
-        <Button onClick={toggleAutoNext}>
-          {autoNext ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Next
-        </Button>
-      </div>
     </div>
   );
 }

@@ -123,6 +123,19 @@ const ListItem = styled.button<{
           : 'background-color: var(--global-button-hover-bg); filter: brightness(1.05); color: #FFFFFF'};
     padding-left: ${({ $isRowLayout }) => ($isRowLayout ? '1rem' : '')};
   }
+
+  @media (hover: none) and (pointer: coarse) {
+    &:hover,
+    &:active,
+    &:focus {
+      background-color: inherit !important;
+      color: inherit !important;
+      filter: none !important;
+      box-shadow: none !important;
+      outline: none !important;
+      padding-left: ${({ $isRowLayout }) => ($isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0')};
+    }
+  }
 `;
 
 const ControlsContainer = styled.div`

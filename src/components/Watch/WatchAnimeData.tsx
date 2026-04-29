@@ -126,9 +126,12 @@ const ImageWrapper = styled.div`
     width: 8.5rem;
     max-height: 12rem;
   }
+  @media (hover: none) and (pointer: coarse) {
+    cursor: default;
+  }
 `;
 
-const InfoIconOverlay = styled(Link)`
+const InfoIconOverlay = styled(Link)<{ $show: boolean }>`
   position: absolute;
   top: 0;
   left: 0;
@@ -142,13 +145,18 @@ const InfoIconOverlay = styled(Link)`
   opacity: 0;
   transition: opacity 0.2s ease;
   color: white;
-  
+
+  /* Desktop: show on hover */
   &:hover {
     opacity: 1;
   }
 
-  @media (hover: none) {
-    opacity: 0.7;
+  /* Mobile: show if $show is true */
+  @media (hover: none) and (pointer: coarse) {
+    opacity: ${({ $show }) => ($show ? 0.7 : 0)};
+    &:hover {
+      opacity: ${({ $show }) => ($show ? 0.7 : 0)};
+    }
   }
 `;
 
@@ -332,6 +340,7 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
   const navigate = useNavigate();
   const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
+  const [showInfoOverlay, setShowInfoOverlay] = useState(false);
 
   const getAnimeIdFromUrl = () => {
     const pathParts = window.location.pathname.split('/');
@@ -387,9 +396,28 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                 alignItems: 'center',
               }}
             >
-              <ImageWrapper>
+              <ImageWrapper
+                onClick={() => {
+                  // Only trigger on mobile
+                  if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
+                    setShowInfoOverlay((prev) => !prev);
+                  }
+                }}
+                style={{ touchAction: 'manipulation' }}
+              >
                 <AnimeInfoImage src={animeData.image} alt='Anime Title Image' />
-                <InfoIconOverlay to={`/info/${animeData.id}`} title="View Info">
+                <InfoIconOverlay
+                  to={`/info/${animeData.id}`}
+                  title="View Info"
+                  $show={showInfoOverlay}
+                  onClick={e => {
+                    // Only allow navigation if overlay is visible on mobile
+                    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches && !showInfoOverlay) {
+                      e.preventDefault();
+                      setShowInfoOverlay(true);
+                    }
+                  }}
+                >
                   <FaExternalLinkAlt size={24} />
                 </InfoIconOverlay>
               </ImageWrapper>

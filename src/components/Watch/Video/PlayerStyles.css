@@ -83,4 +83,45 @@
     font-size: 0.65rem !important;
     line-height: 1.3 !important;
   }
+  
+  /* Disable hover effects on mobile */
+  .player-menu button:hover,
+  .player-menu button:active,
+  .player button:hover,
+  .player button:active {
+    background-color: var(--global-div) !important;
+    transform: none !important;
+  }
+  
+  /* Disable vidstack hover effects on mobile */
+  .vds-controls:hover,
+  .vds-controls:active,
+  .vds-button:hover,
+  .vds-button:active,
+  .vds-menu-item:hover,
+  .vds-menu-item:active {
+    background-color: transparent !important;
+    transform: none !important;
+  }
+}
+
+/* Touch device hover fix - disable hover effects on devices without hover capability */
+@media (hover: none) and (pointer: coarse) {
+  .player-menu button:hover,
+  .player-menu button:active,
+  .player button:hover,
+  .player button:active {
+    background-color: var(--global-div) !important;
+    transform: none !important;
+  }
+  
+  .vds-controls:hover,
+  .vds-controls:active,
+  .vds-button:hover,
+  .vds-button:active,
+  .vds-menu-item:hover,
+  .vds-menu-item:active {
+    background-color: transparent !important;
+    transform: none !important;
+  }
 }

@@ -13,7 +13,6 @@ import {
   fetchAnimeData,
   fetchAnimeInfo,
   fetchAnimeStreamingLinks,
-  fetchAnimeEmbeddedEpisodes,
   SkeletonPlayer,
   useCountdown,
 } from '../index';
@@ -167,8 +166,8 @@ const Watch: React.FC = () => {
     `episode-server-[${animeId}]-[${episodeId}]`;
   
   const getSavedServerForEpisode = (animeId: string | undefined, episodeId: string | undefined) => {
-    if (!animeId || !episodeId) return 'default';
-    return localStorage.getItem(getEpisodeServerKey(animeId, episodeId)) || 'default';
+    if (!animeId || !episodeId) return null;
+    return localStorage.getItem(getEpisodeServerKey(animeId, episodeId)) || null;
   };
   
   const saveServerForEpisode = (animeId: string | undefined, episodeId: string | undefined, server: string) => {
@@ -210,7 +209,7 @@ const Watch: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showNoEpisodesMessage, setShowNoEpisodesMessage] = useState(false);
   const [lastKeypressTime, setLastKeypressTime] = useState(0);
-  const [sourceType, setSourceType] = useState<string>('default');
+  const [sourceType, setSourceType] = useState<string>('');
   const [language, setLanguage] = useState(
     () => localStorage.getItem(STORAGE_KEYS.LANGUAGE) || 'sub',
   );
@@ -218,9 +217,7 @@ const Watch: React.FC = () => {
   const [availableServers, setAvailableServers] = useState<string[]>([]);
   const [embeddedUrl, setEmbeddedUrl] = useState<string>('');
   const [serverUrl, setServerUrl] = useState<string>('');
-  const [embeddedServerName, setEmbeddedServerName] = useState<string>('Default');
-  // Log for debugging
-  console.log('Embedded server name:', embeddedServerName);
+  const [embeddedServerName, setEmbeddedServerName] = useState<string>('');
   const nextEpisodeAiringTime =
     animeInfo && animeInfo.nextAiringEpisode
       ? animeInfo.nextAiringEpisode.airingTime * 1000
@@ -326,12 +323,7 @@ const Watch: React.FC = () => {
 
   //----------------------------------------------USEFFECTS----------------------------------------------
   useEffect(() => {
-    const defaultSourceType = 'default';
     const defaultLanguage = 'sub';
-    setSourceType(
-      localStorage.getItem(getSourceTypeKey(animeId || '')) ||
-        defaultSourceType,
-    );
     setLanguage(
       localStorage.getItem(getLanguageKey(animeId || '')) || defaultLanguage,
     );
@@ -471,7 +463,6 @@ const Watch: React.FC = () => {
             );
             setLanguageChanged(false);
           } else if (navigateToEpisode) {
-            // Just update currentEpisode without navigating if URL already matches
             setCurrentEpisode({
               id: navigateToEpisode.id,
               number: navigateToEpisode.number,
@@ -568,60 +559,45 @@ const Watch: React.FC = () => {
     return () => window.removeEventListener('resize', updateMaxHeight);
   }, []);
 
+  // Save server selection per episode (skip empty/loading state)
   useEffect(() => {
-    // Save server selection per episode
-    if (animeId && currentEpisode.id && currentEpisode.id !== '0') {
+    if (animeId && currentEpisode.id && currentEpisode.id !== '0' && sourceType) {
       saveServerForEpisode(animeId, currentEpisode.id, sourceType);
       console.log('Saved server:', sourceType, 'for episode:', currentEpisode.id);
     }
   }, [sourceType, animeId, currentEpisode.id]);
 
+  // When available servers are fetched, auto-select: restore saved server or pick first available
   useEffect(() => {
-    // Load saved server for the current episode, or default if new episode
-    if (animeId && currentEpisode.id && currentEpisode.id !== '0') {
-      const savedServer = getSavedServerForEpisode(animeId, currentEpisode.id);
-      console.log('Loading saved server for episode:', currentEpisode.id, '->', savedServer);
+    if (availableServers.length === 0) return;
+
+    const savedServer = getSavedServerForEpisode(animeId, currentEpisode.id);
+    if (savedServer && availableServers.includes(savedServer)) {
+      console.log('Restoring saved server:', savedServer);
       setSourceType(savedServer);
     } else {
-      setSourceType('default');
+      console.log('Auto-selecting first available server:', availableServers[0]);
+      setSourceType(availableServers[0]);
     }
-  }, [currentEpisode.id, animeId]);
+  }, [availableServers]);
 
-  // Fetch embedded URL when sourceType is 'embedded'
+  // Reset everything when the episode changes so stale values never flash
   useEffect(() => {
-    if (sourceType !== 'embedded' || !currentEpisode.id || currentEpisode.id === '0') {
+    if (currentEpisode.id && currentEpisode.id !== '0') {
+      setSourceType('');
+      setAvailableServers([]);
+      setEmbeddedServerName('');
       setEmbeddedUrl('');
       setServerUrl('');
-      return;
     }
+  }, [currentEpisode.id]);
 
-    const fetchEmbeddedUrl = async () => {
-      try {
-        // Use fetchAnimeEmbeddedEpisodes to get servers with names
-        const response = await fetchAnimeEmbeddedEpisodes(currentEpisode.id, 'kickassanime');
-        console.log('Embedded server response:', response);
-        
-        if (response && response.length > 0) {
-          // Use the first server's URL as the embedded URL
-          const firstServer = response[0];
-          const serverUrlValue = firstServer.url;
-          const serverName = firstServer.name || 'Default';
-          if (serverUrlValue) {
-            setServerUrl(serverUrlValue);
-            setEmbeddedServerName(serverName);
-            // For embedded, we use the server URL directly as iframe src
-            setEmbeddedUrl(serverUrlValue);
-            console.log('Set embedded URL:', serverUrlValue, 'Name:', serverName);
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching embedded URL:', error);
-      }
-    };
-
-    fetchEmbeddedUrl();
-  }, [sourceType, currentEpisode.id]);
-
+  // Fetch available servers for this episode.
+  // The streaming links response already contains:
+  //   servers[0].name  → display name (e.g. "VidStreaming")
+  //   servers[0].url   → iframe src for embedded playback
+  //   sources[]        → HLS streams
+  // So we get everything in one call — no separate embedded fetch needed.
   useEffect(() => {
     if (!currentEpisode.id || currentEpisode.id === '0') return;
 
@@ -630,71 +606,62 @@ const Watch: React.FC = () => {
       try {
         const response = await fetchAnimeStreamingLinks(currentEpisode.id, 'kickassanime');
         console.log('Streaming links response:', response);
-        console.log('Response keys:', Object.keys(response));
-        console.log('availableServers:', response?.availableServers);
-        console.log('servers:', response?.servers);
-        
-        // Try to get availableServers from response
+
+        // Extract the embedded (iframe) server name and URL from servers[0]
+        if (response?.servers?.length > 0) {
+          const firstServer = response.servers[0];
+          if (firstServer.name) setEmbeddedServerName(firstServer.name);
+          if (firstServer.url) {
+            setEmbeddedUrl(firstServer.url);
+            setServerUrl(firstServer.url);
+            console.log('Embedded server:', firstServer.name, '→', firstServer.url);
+          }
+        }
+
+        // Build the list of HLS server names to verify
         let servers: string[] = [];
-        
-        if (response && response.availableServers && Array.isArray(response.availableServers) && response.availableServers.length > 0) {
-          console.log('Found availableServers in response');
+        if (response?.availableServers?.length > 0) {
           servers = response.availableServers.map((s: string) => s.toLowerCase());
-        } else if (response && response.servers && Array.isArray(response.servers) && response.servers.length > 0) {
-          console.log('Found servers in response');
-          // Extract server names from servers array
+        } else if (response?.servers?.length > 0) {
           servers = response.servers
-            .map((s: any) => {
-              if (typeof s === 'string') return s.toLowerCase();
-              if (s.name) return s.name.toLowerCase();
-              return null;
-            })
-            .filter(Boolean) as string[];
+            .map((s: any) => (typeof s === 'string' ? s : s.name) || null)
+            .filter(Boolean)
+            .map((s: string) => s.toLowerCase());
         } else {
-          console.log('No servers found in response, using known servers');
-          // Only use known servers as fallback if API returns nothing
           servers = ['vidstreaming', 'duckstream', 'birdstream'];
         }
-        
-        // Remove duplicates
-        servers = [...new Set(servers)];
-        
-        // Always include 'default' as an option
-        if (!servers.includes('default')) {
-          servers.unshift('default');
-        }
-        
-        // Verify each server has valid M3U8 sources before showing
+
+        // Deduplicate and strip any generic placeholder
+        servers = [...new Set(servers)].filter((s) => s !== 'default');
+
+        // Verify each server actually returns M3U8 sources
         const verifiedServers: string[] = [];
         for (const server of servers) {
           try {
             const serverResponse = await fetchAnimeStreamingLinks(
               currentEpisode.id,
               'kickassanime',
-              server === 'default' ? undefined : server
+              server,
             );
-            // Check if server has valid M3U8 sources
             const hasM3U8 = serverResponse.sources?.some(
-              (s: any) => s.isM3U8 || s.url?.endsWith('.m3u8')
+              (s: any) => s.isM3U8 || s.url?.endsWith('.m3u8'),
             );
             if (hasM3U8) {
               verifiedServers.push(server);
-              console.log(`Server ${server} has valid M3U8 sources`);
+              console.log(`Server ${server} verified ✓`);
             } else {
-              console.log(`Server ${server} has no M3U8 sources, hiding`);
+              console.log(`Server ${server} has no M3U8 sources, skipping`);
             }
-          } catch (e) {
-            console.log(`Server ${server} check failed, hiding`);
+          } catch {
+            console.log(`Server ${server} check failed, skipping`);
           }
         }
-        
-        // Fallback to default if no servers verified
-        const finalServers = verifiedServers.length > 0 ? verifiedServers : ['default'];
-        console.log('Final servers list (verified):', finalServers);
-        setAvailableServers(finalServers);
+
+        console.log('Verified HLS servers:', verifiedServers);
+        setAvailableServers(verifiedServers);
       } catch (error) {
         console.error('Error fetching available servers:', error);
-        setAvailableServers(['default']);
+        setAvailableServers([]);
       }
     };
 
