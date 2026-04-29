@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
-import { SkeletonCard, StatusIndicator, type Anime } from '../../index';
+import { StatusIndicator, type Anime } from '../../index';
 import { FaPlay } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
@@ -171,23 +171,21 @@ const CardDetails = styled.div`
 `;
 
 export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
-  const [loading, setLoading] = useState(true);
+  // ✅ FIX: Removed the internal `loading` state that was gated by setTimeout(0).
+  // That pattern caused every card to render <SkeletonCard /> on mount and
+  // then flip to the real card after a microtask — on page 1 the flip raced
+  // against React's reconciliation and many cards never resolved.
+  // The parent (Home.tsx) already shows a full skeleton grid while data is
+  // fetching, so CardItem only ever mounts once data is ready. No internal
+  // loading gate is needed here.
+
   const [isHovered, setIsHovered] = useState(false);
   const [isTitleHovered, setIsTitleHovered] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 0);
-
-    return () => clearTimeout(timer);
-  }, [anime.id]);
 
   const handleMouseEnter = () => setIsHovered(true);
   const handleMouseLeave = () => setIsHovered(false);
 
   const imageSrc = anime.image || '';
-  const animeColor = anime.color || '#999999';
 
   const displayTitle = useMemo(
     () => anime.title.english || anime.title.romaji || 'No Title',
@@ -200,8 +198,6 @@ export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
     [],
   );
 
-  const handleImageLoad = () => setLoading(false);
-
   const displayDetail = useMemo(() => {
     return (
       <ImgDetail $isHovered={isHovered} color={anime.color}>
@@ -211,91 +207,84 @@ export const CardItem: React.FC<{ anime: Anime }> = ({ anime }) => {
   }, [isHovered, anime.color, anime.type]);
 
   return (
-    <>
-      {loading ? (
-        <SkeletonCard />
-      ) : (
-        <StyledCardWrapper
-          onMouseEnter={handleMouseEnter}
-          onMouseLeave={handleMouseLeave}
+    <StyledCardWrapper
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      <StyledCardItem>
+        {/* Poster → /watch/:id */}
+        <PosterLink
+          to={`/watch/${anime.id}`}
+          title={'Play ' + (anime.title.english || anime.title.romaji)}
         >
-          <StyledCardItem>
-            {/* Poster → /watch/:id */}
-            <PosterLink
-              to={`/watch/${anime.id}`}
-              title={'Play ' + (anime.title.english || anime.title.romaji)}
-            >
-              <ImageDisplayWrapper>
-                <AnimeImage>
-                  <ImageWrapper>
-                    <img
-                      src={imageSrc}
-                      onLoad={handleImageLoad}
-                      loading='eager'
-                      alt={
-                        anime.title.english || anime.title.romaji + ' Cover Image'
-                      }
-                    />
-                    <PlayIcon
-                      title={
-                        'Play ' + (anime.title.english || anime.title.romaji)
-                      }
-                    />
-                  </ImageWrapper>
-                  {isHovered && displayDetail}
-                </AnimeImage>
-              </ImageDisplayWrapper>
-            </PosterLink>
+          <ImageDisplayWrapper>
+            <AnimeImage>
+              <ImageWrapper>
+                <img
+                  src={imageSrc}
+                  loading='eager'
+                  alt={
+                    anime.title.english || anime.title.romaji + ' Cover Image'
+                  }
+                />
+                <PlayIcon
+                  title={
+                    'Play ' + (anime.title.english || anime.title.romaji)
+                  }
+                />
+              </ImageWrapper>
+              {isHovered && displayDetail}
+            </AnimeImage>
+          </ImageDisplayWrapper>
+        </PosterLink>
 
-            {/* Title → /info/:id */}
-            <TitleContainer
+        {/* Title → /info/:id */}
+        <TitleContainer
+          $isHovered={isTitleHovered}
+          onMouseEnter={() => setIsTitleHovered(true)}
+          onMouseLeave={() => setIsTitleHovered(false)}
+        >
+          <TitleLink
+            to={`/info/${anime.id}`}
+            title={'Info: ' + (anime.title.english || anime.title.romaji)}
+          >
+            <StatusIndicator status={anime.status} />
+            <Title
               $isHovered={isTitleHovered}
-              onMouseEnter={() => setIsTitleHovered(true)}
-              onMouseLeave={() => setIsTitleHovered(false)}
+              color={anime.color}
+              title={'Title: ' + (anime.title.english || anime.title.romaji)}
             >
-              <TitleLink
-                to={`/info/${anime.id}`}
-                title={'Info: ' + (anime.title.english || anime.title.romaji)}
-              >
-                <StatusIndicator status={anime.status} />
-                <Title
-                  $isHovered={isTitleHovered}
-                  color={anime.color}
-                  title={'Title: ' + (anime.title.english || anime.title.romaji)}
-                >
-                  {truncateTitle(displayTitle, 35)}
-                </Title>
-              </TitleLink>
-            </TitleContainer>
+              {truncateTitle(displayTitle, 35)}
+            </Title>
+          </TitleLink>
+        </TitleContainer>
 
-            <div>
-              <CardDetails title='Romaji Title'>
-                {truncateTitle(anime.title.romaji || '', 24)}
-              </CardDetails>
-              <CardDetails title='Card Details'>
-                {anime.releaseDate && (
-                  <>
-                    <FaCalendarAlt />
-                    {anime.releaseDate}
-                  </>
-                )}
-                {(anime.totalEpisodes || anime.episodes) && (
-                  <>
-                    <TbCards />
-                    {anime.totalEpisodes || anime.episodes}
-                  </>
-                )}
-                {anime.rating && (
-                  <>
-                    <FaStar />
-                    {anime.rating}
-                  </>
-                )}
-              </CardDetails>
-            </div>
-          </StyledCardItem>
-        </StyledCardWrapper>
-      )}
-    </>
+        <div>
+          <CardDetails title='Romaji Title'>
+            {truncateTitle(anime.title.romaji || '', 24)}
+          </CardDetails>
+          <CardDetails title='Card Details'>
+            {anime.releaseDate && (
+              <>
+                <FaCalendarAlt />
+                {anime.releaseDate}
+              </>
+            )}
+            {(anime.totalEpisodes || anime.episodes) && (
+              <>
+                <TbCards />
+                {anime.totalEpisodes || anime.episodes}
+              </>
+            )}
+            {anime.rating && (
+              <>
+                <FaStar />
+                {anime.rating}
+              </>
+            )}
+          </CardDetails>
+        </div>
+      </StyledCardItem>
+    </StyledCardWrapper>
   );
 };
