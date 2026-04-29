@@ -105,6 +105,16 @@ const Tab = styled.div<{ $isActive: boolean }>`
 
   @media (max-width: 500px) {
     padding: 0.4rem 0.7rem;
+
+    &:hover,
+    &:active,
+    &:focus {
+      background: ${({ $isActive }) =>
+        $isActive ? 'var(--primary-accent)' : 'transparent'};
+      border-color: ${({ $isActive }) =>
+        $isActive ? 'var(--primary-accent)' : 'var(--global-border, rgba(0,0,0,0.1))'};
+    }
+  }
     font-size: 0.7rem;
   }
 `;
