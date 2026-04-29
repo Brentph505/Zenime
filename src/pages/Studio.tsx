@@ -10,6 +10,7 @@ import {
   type JikanProducer,
 } from '../index';
 import type { Anime } from '../hooks/animeInterface';
+import { SkeletonStudio } from '../components/Skeletons/Skeletons';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -416,19 +417,8 @@ function Studio() {
   const totalCount = data?.anime.total ?? 0;
   const airingCount = allAnime.filter((a) => a.status === 'Ongoing').length;
 
-  const skeletonCount = 17;
-
   if (loading && !data) {
-    return (
-      <PageLayout>
-        <StyledCardGrid style={{ height: '120px', borderRadius: 'var(--global-border-radius)' }} />
-        <StyledCardGrid>
-          {Array.from({ length: skeletonCount }, (_, i) => (
-            <SkeletonCard key={i} />
-          ))}
-        </StyledCardGrid>
-      </PageLayout>
-    );
+    return <SkeletonStudio />;
   }
 
   return (
@@ -510,7 +500,7 @@ function Studio() {
       <Section>
         {(loading || error) && !data ? (
           <StyledCardGrid>
-            {Array.from({ length: skeletonCount }, (_, i) => (
+            {Array.from({ length: 17 }, (_, i) => (
               <SkeletonCard key={i} />
             ))}
           </StyledCardGrid>

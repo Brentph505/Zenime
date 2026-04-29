@@ -14,8 +14,8 @@ import {
   Episode,
   Anime,
   CardItem as AnimeCardItem,
-  AnimeDataList,
 } from '../index';
+import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 
 // ─── Animations ───────────────────────────────────────────────────────────────
 
@@ -1000,7 +1000,7 @@ const Info: React.FC = () => {
   const recsNeedScroll = recommendations.length > 5;
   const relatedNeedScroll = relatedAnime.length > 5;
 
-  if (loading) return <Loader>Loading…</Loader>;
+  if (loading) return <SkeletonInfo />;
   if (error || !animeInfo) return (
     <ErrorWrap>
       <h2>Something went wrong</h2>

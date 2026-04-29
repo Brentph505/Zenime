@@ -136,6 +136,15 @@ export function Player({
   const { autoPlay, autoNext, autoSkip } = settings;
   const navigate = useNavigate();
 
+
+  // --- Fix for stale closure ---
+  const onEpisodeEndRef = useRef(onEpisodeEnd);
+  const autoNextRef = useRef(autoNext);
+  useEffect(() => {
+    onEpisodeEndRef.current = onEpisodeEnd;
+    autoNextRef.current = autoNext;
+  }, [onEpisodeEnd, autoNext]);
+
   const isEmbedded = sourceType === 'embedded';
 
   // Build the embedded URL, injecting autoplay=1 when the user has autoplay on
@@ -175,13 +184,27 @@ export function Player({
 
       if (isEnded) {
         console.log('[Player] iframe postMessage: video ended');
-        if (autoNext) handlePlaybackEnded();
+        if (autoNextRef.current) handlePlaybackEndedRef.current();
       }
+    };
+
+    // Use a ref for handlePlaybackEnded to avoid stale closure
+    const handlePlaybackEndedRef = {
+      current: async () => {
+        if (!autoNextRef.current) return;
+        try {
+          player.current?.pause();
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          await onEpisodeEndRef.current();
+        } catch (error) {
+          console.error('Error moving to the next episode:', error);
+        }
+      },
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [isEmbedded, autoNext]);
+  }, [isEmbedded]);
 
   // When switching TO embedded mode, clear the HLS src so MediaPlayer unmounts cleanly
   useEffect(() => {
@@ -393,11 +416,11 @@ export function Player({
     setSettings({ ...settings, autoSkip: !autoSkip });
 
   const handlePlaybackEnded = async () => {
-    if (!autoNext) return;
+    if (!autoNextRef.current) return;
     try {
       player.current?.pause();
       await new Promise((resolve) => setTimeout(resolve, 200));
-      await onEpisodeEnd();
+      await onEpisodeEndRef.current();
     } catch (error) {
       console.error('Error moving to the next episode:', error);
     }
