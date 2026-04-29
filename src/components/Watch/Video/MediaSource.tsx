@@ -16,6 +16,7 @@ interface MediaSourceProps {
   airingTime?: string;
   nextEpisodenumber?: string;
   availableServers?: string[];
+  embeddedServerName?: string;
 }
 
 // Adjust the Container for responsive layout
@@ -89,6 +90,23 @@ const ServerButton = styled.button`
   &.active {
     background-color: var(--primary-accent);
     border-color: var(--primary-accent);
+  }
+`;
+
+const ServerLabel = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  
+  .server-name {
+    font-size: 0.85rem;
+  }
+  
+  .em-badge {
+    font-size: 0.6rem;
+    color: #ff6b6b;
+    font-weight: bold;
+    text-transform: uppercase;
   }
 `;
 
@@ -187,6 +205,7 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   airingTime,
   nextEpisodenumber,
   availableServers = [],
+  embeddedServerName = 'Embedded',
 }) => {
   console.log('MediaSource RENDER - props:', { 
     sourceType, 
@@ -208,14 +227,19 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   const renderServerButtons = () => {
     console.log('renderServerButtons called with:', availableServers);
     if (!availableServers || availableServers.length === 0) {
-      console.log('No availableServers, returning default');
-      return [{ key: 'default', label: 'Default' }];
+      console.log('No availableServers, returning embedded only');
+      return [{ key: 'embedded', label: 'Default', isEmbedded: true }];
     }
     console.log('Mapping servers:', availableServers);
-    return availableServers.map((server) => ({
+    // Add "Embedded" option alongside regular servers
+    const servers = availableServers.map((server) => ({
       key: server,
       label: server.charAt(0).toUpperCase() + server.slice(1),
+      isEmbedded: false,
     }));
+    // Add Embedded option at the beginning with EM badge
+    servers.unshift({ key: 'embedded', label: embeddedServerName, isEmbedded: true });
+    return servers;
   };
 
   return (
@@ -268,7 +292,10 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
                 console.log('Called setSourceType with:', server.key);
               }}
             >
-              {server.label}
+              <ServerLabel>
+                <span className="server-name">{server.label}</span>
+                {server.isEmbedded && <span className="em-badge">EM</span>}
+              </ServerLabel>
             </ServerButton>
           ))}
         </ServerGrid>

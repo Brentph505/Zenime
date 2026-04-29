@@ -13,6 +13,7 @@ import {
   fetchAnimeData,
   fetchAnimeInfo,
   fetchAnimeStreamingLinks,
+  fetchAnimeEmbeddedEpisodes,
   SkeletonPlayer,
   useCountdown,
 } from '../index';
@@ -215,6 +216,11 @@ const Watch: React.FC = () => {
   );
   const [downloadLink, setDownloadLink] = useState('');
   const [availableServers, setAvailableServers] = useState<string[]>([]);
+  const [embeddedUrl, setEmbeddedUrl] = useState<string>('');
+  const [serverUrl, setServerUrl] = useState<string>('');
+  const [embeddedServerName, setEmbeddedServerName] = useState<string>('Default');
+  // Log for debugging
+  console.log('Embedded server name:', embeddedServerName);
   const nextEpisodeAiringTime =
     animeInfo && animeInfo.nextAiringEpisode
       ? animeInfo.nextAiringEpisode.airingTime * 1000
@@ -581,6 +587,41 @@ const Watch: React.FC = () => {
     }
   }, [currentEpisode.id, animeId]);
 
+  // Fetch embedded URL when sourceType is 'embedded'
+  useEffect(() => {
+    if (sourceType !== 'embedded' || !currentEpisode.id || currentEpisode.id === '0') {
+      setEmbeddedUrl('');
+      setServerUrl('');
+      return;
+    }
+
+    const fetchEmbeddedUrl = async () => {
+      try {
+        // Use fetchAnimeEmbeddedEpisodes to get servers with names
+        const response = await fetchAnimeEmbeddedEpisodes(currentEpisode.id, 'kickassanime');
+        console.log('Embedded server response:', response);
+        
+        if (response && response.length > 0) {
+          // Use the first server's URL as the embedded URL
+          const firstServer = response[0];
+          const serverUrlValue = firstServer.url;
+          const serverName = firstServer.name || 'Default';
+          if (serverUrlValue) {
+            setServerUrl(serverUrlValue);
+            setEmbeddedServerName(serverName);
+            // For embedded, we use the server URL directly as iframe src
+            setEmbeddedUrl(serverUrlValue);
+            console.log('Set embedded URL:', serverUrlValue, 'Name:', serverName);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching embedded URL:', error);
+      }
+    };
+
+    fetchEmbeddedUrl();
+  }, [sourceType, currentEpisode.id]);
+
   useEffect(() => {
     if (!currentEpisode.id || currentEpisode.id === '0') return;
 
@@ -786,6 +827,7 @@ const Watch: React.FC = () => {
                     episodeId={currentEpisode.id}
                     episodeNumber={currentEpisode.number}
                     malId={animeInfo?.malId}
+                    animeId={animeId}
                     banner={selectedBackgroundImage}
                     updateDownloadLink={updateDownloadLink}
                     onEpisodeEnd={handleEpisodeEnd}
@@ -795,6 +837,8 @@ const Watch: React.FC = () => {
                       animeInfo?.title?.english || animeInfo?.title?.romaji
                     }
                     sourceType={sourceType}
+                    embeddedUrl={embeddedUrl}
+                    serverUrl={serverUrl}
                   />
                 )}
               </VideoPlayerContainer>
@@ -835,6 +879,7 @@ const Watch: React.FC = () => {
               }
               nextEpisodenumber={nextEpisodenumber}
               availableServers={availableServers}
+              embeddedServerName={embeddedServerName}
             />
           )}
           {animeInfo && <AnimeData animeData={animeInfo} />}

@@ -20,6 +20,9 @@ if (PROXY_URL) {
 
 const API_KEY = import.meta.env.VITE_API_KEY as string;
 
+// M3U8 Proxy
+const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
+
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
 
@@ -173,13 +176,83 @@ const fetchAnimeEmbeddedEpisodesCache = createCache('Video Embedded Sources');
 const videoSourcesCache = createCache('Video Sources');
 const genreCache = createCache('AniListGenres');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// M3U8 Proxy Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+
+const isValidUrl = (url: string): boolean => {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Builds a proxied m3u8 URL with spoofed Referer/Origin headers.
+ *
+ * @param sourceUrl  The raw .m3u8 URL
+ * @param referer    The page the stream originates from (e.g. the iframe URL)
+ * @returns          Proxied URL string, or original URL if proxy is not configured
+ */
+export function buildM3U8ProxyUrl(sourceUrl: string, referer: string): string {
+  if (!M3U8_PROXY_URL) {
+    console.warn('⚠️ VITE_M3U8_PROXY_URL is not set. Returning original URL.');
+    return sourceUrl;
+  }
+
+  if (!isValidUrl(sourceUrl)) {
+    console.warn(`⚠️ Invalid source URL: ${sourceUrl}. Returning as-is.`);
+    return sourceUrl;
+  }
+
+  const proxyBase = M3U8_PROXY_URL.replace(/\/$/, '');
+  const origin = new URL(referer).origin;
+
+  const proxyHeaders = JSON.stringify({
+    Referer: referer,
+    Origin: origin,
+  });
+
+  const proxied = `${proxyBase}/m3u8-proxy?url=${encodeURIComponent(sourceUrl)}&headers=${encodeURIComponent(proxyHeaders)}`;
+  console.log(`🔀 M3U8 proxied: ${sourceUrl} → ${proxied}`);
+  return proxied;
+}
+
+/**
+ * Processes a sources array and replaces raw .m3u8 URLs with proxied ones.
+ * Non-m3u8 sources are returned as-is.
+ *
+ * @param sources   Array of source objects with a `url` field
+ * @param referer   Referer to spoof (typically the player/iframe URL)
+ * @returns         Sources array with proxied URLs
+ */
+export function proxyM3U8Sources(sources: any[], referer: string): any[] {
+  if (!M3U8_PROXY_URL) return sources;
+
+  return sources.map((source) => {
+    if (source.url?.endsWith('.m3u8') && isValidUrl(source.url)) {
+      return {
+        ...source,
+        url: buildM3U8ProxyUrl(source.url, referer),
+      };
+    }
+    return source;
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AniList GraphQL — Genres
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Fetch all available genres from AniList GraphQL API.
  * Returns a cached array of genre strings.
  */
 export async function fetchAniListGenres(): Promise<string[]> {
   const cacheKey = 'genres';
-  
+
   const cached = genreCache.get(cacheKey);
   if (cached) {
     console.log('✅ AniList genres cache HIT');
@@ -213,12 +286,11 @@ export async function fetchAniListGenres(): Promise<string[]> {
 
     const genres = json?.data?.genres ?? [];
     console.log(`✅ AniList genres: ${genres.length} genres fetched`);
-    
+
     genreCache.set(cacheKey, genres);
     return genres;
   } catch (error) {
     console.error('❌ Failed to fetch AniList genres:', error);
-    // Return empty array on error - fallback will be used
     return [];
   }
 }
@@ -259,9 +331,6 @@ async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // AniList GraphQL — Airing Schedule
-// Uses the official https://graphql.anilist.co endpoint directly.
-// Timestamps are computed from the user's LOCAL timezone so the schedule
-// always reflects "today / tomorrow / …" in wherever the viewer is located.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const AIRING_SCHEDULE_QUERY = `
@@ -344,14 +413,10 @@ export interface AniListAiringItem {
 /**
  * Get the Unix timestamp boundaries (seconds) for the START and END of a local
  * calendar day offset from today.
- *
- * dayOffset = 0 → today in the user's timezone
- * dayOffset = 1 → tomorrow, etc.
  */
 function getLocalDayBounds(dayOffset: number): { start: number; end: number } {
   const now = new Date();
 
-  // Build a date representing midnight LOCAL time on the target day
   const target = new Date(
     now.getFullYear(),
     now.getMonth(),
@@ -381,9 +446,7 @@ export async function fetchAiringSchedule(
 ): Promise<AniListAiringItem[]> {
   const { start, end } = getLocalDayBounds(dayOffset);
 
-  // Use the local date string as part of the cache key so the cache
-  // correctly invalidates at midnight in the user's own timezone.
-  const localDateLabel = new Date(start * 1000).toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const localDateLabel = new Date(start * 1000).toLocaleDateString('en-CA');
   const cacheKey = generateCacheKey('anilistAiring', localDateLabel);
   const airingCache = createCache('AniListAiringSchedule');
 
@@ -412,7 +475,7 @@ export async function fetchAiringSchedule(
         body: JSON.stringify({
           query: AIRING_SCHEDULE_QUERY,
           variables: {
-            airingAt_greater: start - 1, // exclusive lower bound
+            airingAt_greater: start - 1,
             airingAt_lesser: end,
             page,
           },
@@ -420,7 +483,6 @@ export async function fetchAiringSchedule(
       });
 
       if (response.status === 429) {
-        // AniList rate-limit — back off and retry once
         console.warn('⚠️ AniList rate limit hit, waiting 2 s…');
         await new Promise((r) => setTimeout(r, 2000));
         continue;
@@ -441,7 +503,6 @@ export async function fetchAiringSchedule(
       if (!pageData) break;
 
       const schedules: AniListAiringItem[] = (pageData.airingSchedules ?? [])
-        // Filter out hentai / adult content at the API layer
         .filter((s: any) => !s.media?.isAdult);
 
       allItems.push(...schedules);
@@ -454,7 +515,6 @@ export async function fetchAiringSchedule(
     }
   }
 
-  // Sort ascending by airing time (API already sorts, but be defensive)
   allItems.sort((a, b) => a.airingAt - b.airingAt);
 
   console.log(`✅ AniList airing: ${allItems.length} items for offset ${dayOffset}`);
@@ -463,7 +523,7 @@ export async function fetchAiringSchedule(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// All existing API functions below are unchanged
+// All existing API functions
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchAdvancedSearch(
@@ -642,6 +702,61 @@ export async function fetchAnimeStreamingLinks(
   return fetchFromProxy(url, videoSourcesCache, cacheKey);
 }
 
+/**
+ * Fetches anime streaming links and automatically proxies any .m3u8 sources.
+ * Use this as a drop-in replacement for fetchAnimeStreamingLinks when you need
+ * proxied HLS streams.
+ *
+ * @param episodeId   Episode ID
+ * @param provider    Provider name (default: kickassanime)
+ * @param server      Optional server override
+ * @param referer     Referer URL to spoof in the proxy headers (e.g. iframe URL)
+ */
+export async function fetchAnimeStreamingLinksProxied(
+  episodeId: string,
+  provider: string = 'kickassanime',
+  server?: string,
+  referer?: string,
+) {
+  const data = await fetchAnimeStreamingLinks(episodeId, provider, server);
+
+  if (!M3U8_PROXY_URL) {
+    console.warn('⚠️ M3U8 proxy skipped: missing VITE_M3U8_PROXY_URL.');
+    return data;
+  }
+
+  // Extract server URL from response to use as referer/origin
+  let serverUrl = referer;
+  if (!serverUrl && data?.servers?.length > 0) {
+    // Find the matching server by name if server param was provided
+    if (server) {
+      const matchingServer = data.servers.find(
+        (s: any) => s.name?.toLowerCase() === server.toLowerCase()
+      );
+      if (matchingServer?.url) {
+        serverUrl = matchingServer.url;
+      }
+    }
+    // Fallback to first server if no specific server was requested
+    if (!serverUrl && data.servers[0]?.url) {
+      serverUrl = data.servers[0].url;
+    }
+  }
+
+  if (!serverUrl) {
+    console.warn('⚠️ M3U8 proxy skipped: no server URL available.');
+    return data;
+  }
+
+  console.log('[fetchAnimeStreamingLinksProxied] Using server URL as referer:', serverUrl);
+
+  if (Array.isArray(data?.sources)) {
+    data.sources = proxyM3U8Sources(data.sources, serverUrl);
+  }
+
+  return data;
+}
+
 interface FetchSkipTimesParams {
   malId: string;
   episodeNumber: string;
@@ -740,8 +855,6 @@ export async function fetchStudioJikan(studioId: string): Promise<JikanProducer 
   console.log(`🌐 Jikan studio fetch for ID: ${studioId}`);
 
   try {
-    // Use plain axios (not axiosInstance) so the global X-API-Key header is
-    // NOT sent — Jikan blocks requests that include unrecognised headers via CORS.
     const response = await axios.get(
       `https://api.jikan.moe/v4/producers/${studioId}`,
       { timeout: 10000 }

@@ -13,7 +13,7 @@ import {
 import styled from 'styled-components';
 import {
   fetchSkipTimes,
-  fetchAnimeStreamingLinks,
+  fetchAnimeStreamingLinksProxied,
   useSettings,
 } from '../../../index';
 import {
@@ -60,12 +60,15 @@ type PlayerProps = {
   episodeNumber?: number;
   banner?: string;
   malId?: string;
+  animeId?: string;
   updateDownloadLink: (link: string) => void;
   onEpisodeEnd: () => Promise<void>;
   onPrevEpisode: () => void;
   onNextEpisode: () => void;
   animeTitle?: string;
   sourceType?: string;
+  embeddedUrl?: string;
+  serverUrl?: string;
 };
 
 type StreamingSource = {
@@ -104,12 +107,15 @@ export function Player({
   episodeNumber: propEpisodeNumber,
   banner,
   malId,
+  animeId,
   updateDownloadLink,
   onEpisodeEnd,
   onPrevEpisode,
   onNextEpisode,
   animeTitle,
   sourceType = 'default',
+  embeddedUrl,
+  serverUrl,
 }: PlayerProps) {
   const player = useRef<MediaPlayerInstance>(null);
   const [src, setSrc] = useState<string>('');
@@ -299,7 +305,8 @@ export function Player({
         serverParam,
       });
 
-      const response: StreamingResponse = await fetchAnimeStreamingLinks(
+      // Server URL will be automatically extracted from API response
+      const response: StreamingResponse = await fetchAnimeStreamingLinksProxied(
         episodeId,
         'kickassanime',
         serverParam,
@@ -386,6 +393,21 @@ export function Player({
 
   return (
     <div style={{ animation: 'popIn 0.25s ease-in-out' }}>
+      {/* Embedded iframe player */}
+      {embeddedUrl && (
+        <div style={{ width: '100%', aspectRatio: '16/9' }}>
+          <iframe
+            src={embeddedUrl}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+            allowFullScreen
+            allow="autoplay; fullscreen"
+            title={`${animeVideoTitle} - Episode ${episodeNumber}`}
+          />
+        </div>
+      )}
+
+      {/* Regular video player */}
+      {!embeddedUrl && (
       <MediaPlayer
         className='player'
         title={`${animeVideoTitle} - Episode ${episodeNumber}`}
@@ -427,6 +449,7 @@ export function Player({
         <DefaultAudioLayout icons={defaultLayoutIcons} />
         <DefaultVideoLayout icons={defaultLayoutIcons} />
       </MediaPlayer>
+      )}
       <div
         className='player-menu'
         style={{
