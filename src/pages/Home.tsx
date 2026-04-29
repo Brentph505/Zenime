@@ -221,6 +221,8 @@ const loadingKeyMap: Record<string, 'trending' | 'popular' | 'topRated' | 'topAi
   trending: 'trending',
   popular: 'popular',
   topRated: 'topRated',
+  topAiring: 'topAiring',
+  Upcoming: 'Upcoming',
   latest: 'latest',
 };
 
@@ -265,6 +267,8 @@ const Home = () => {
     trending: defaultPaging,
     popular: defaultPaging,
     topRated: defaultPaging,
+    topAiring: defaultPaging,
+    Upcoming: defaultPaging,
     latest: defaultPaging,
   });
 
@@ -287,63 +291,64 @@ const Home = () => {
     }
   }, []);
 
-  // ✅ FIX: Single source of truth for page-1 data. Removed the second
-  // useEffect that watched activeTab and tried to re-fetch page 1 — it was
-  // the source of the race condition. The initial fetch below covers all tabs.
+  // ✅ FIX: Only fetch data for the active tab to reduce server load
   useEffect(() => {
     const fetchCount = Math.ceil(itemsCount * 1.4);
 
+    const fetchers: Record<string, () => Promise<Paging>> = {
+      trending: () => fetchTrendingAnime(1, fetchCount),
+      popular: () => fetchPopularAnime(1, fetchCount),
+      topRated: () => fetchTopAnime(1, fetchCount),
+      topAiring: () => fetchTopAiringAnime(1, fetchCount),
+      Upcoming: () => fetchUpcomingSeasons(1, fetchCount),
+      latest: () => fetchRecentEpisodes(1, fetchCount, 'kickassanime'),
+    };
+
+    const dataKeys: Record<string, string> = {
+      trending: 'trendingAnime',
+      popular: 'popularAnime',
+      topRated: 'topAnime',
+      topAiring: 'topAiring',
+      Upcoming: 'Upcoming',
+      latest: 'latestAnime',
+    };
+
+    const fetcher = fetchers[activeTab];
+    const dataKey = dataKeys[activeTab];
+    const loadingKey = loadingKeyMap[activeTab];
+
+    if (!fetcher || !dataKey || !loadingKey) return;
+
+    // Skip if already loaded
+    const currentData = state[dataKey as keyof typeof state];
+    if (Array.isArray(currentData) && currentData.length > 0) return;
+
     const fetchData = async () => {
+      setState((prev) => ({ ...prev, loading: { ...prev.loading, [loadingKey]: true } }));
+
       try {
-        setState((prev) => ({ ...prev, error: null }));
+        const result = await fetcher();
+        const raw = result.results.slice(0, itemsCount);
+        const trimmed = activeTab === 'latest' ? raw.map(normalizeEpisodeToAnime) : raw;
 
-        const [trending, popular, topRated, topAiring, Upcoming, latest] =
-          await Promise.all([
-            fetchTrendingAnime(1, fetchCount),
-            fetchPopularAnime(1, fetchCount),
-            fetchTopAnime(1, fetchCount),
-            fetchTopAiringAnime(1, 6),
-            fetchUpcomingSeasons(1, 6),
-            fetchRecentEpisodes(1, fetchCount, 'kickassanime'),
-          ]);
-
-        const trim = (p: Paging) => p.results.slice(0, itemsCount);
-
-        setState((prev) => ({
+        setState((prev) => ({ ...prev, [dataKey]: trimmed }));
+        setPaging((prev) => ({
           ...prev,
-          trendingAnime: trim(trending),
-          popularAnime: trim(popular),
-          topAnime: trim(topRated),
-          topAiring: trim(topAiring),
-          Upcoming: trim(Upcoming),
-          latestAnime: trim(latest).map(normalizeEpisodeToAnime),
+          [activeTab]: {
+            page: 1,
+            hasNext: result.hasNextPage ?? false,
+            hasPrev: false,
+          },
         }));
-
-        setPaging({
-          trending: { page: 1, hasNext: trending.hasNextPage ?? false, hasPrev: false },
-          popular:  { page: 1, hasNext: popular.hasNextPage  ?? false, hasPrev: false },
-          topRated: { page: 1, hasNext: topRated.hasNextPage ?? false, hasPrev: false },
-          latest:   { page: 1, hasNext: latest.hasNextPage   ?? false, hasPrev: false },
-        });
       } catch {
         setState((prev) => ({ ...prev, error: 'An unexpected error occurred' }));
       } finally {
-        setState((prev) => ({
-          ...prev,
-          loading: {
-            trending: false,
-            popular: false,
-            topRated: false,
-            topAiring: false,
-            Upcoming: false,
-            latest: false,
-          },
-        }));
+        setState((prev) => ({ ...prev, loading: { ...prev.loading, [loadingKey]: false } }));
       }
     };
 
     fetchData();
-  }, [itemsCount]);
+  }, [activeTab, itemsCount]);
 
   useEffect(() => {
     document.title = `Zenime | Watch Anime Online, Free Anime Streaming`;
@@ -363,6 +368,8 @@ const Home = () => {
       trending: fetchTrendingAnime,
       popular: fetchPopularAnime,
       topRated: fetchTopAnime,
+      topAiring: fetchTopAiringAnime,
+      Upcoming: fetchUpcomingSeasons,
       latest: (p, c) => fetchRecentEpisodes(p, c, 'kickassanime'),
     };
 
@@ -385,6 +392,8 @@ const Home = () => {
         trending: 'trendingAnime',
         popular: 'popularAnime',
         topRated: 'topAnime',
+        topAiring: 'topAiring',
+        Upcoming: 'Upcoming',
         latest: 'latestAnime',
       };
 
@@ -440,6 +449,8 @@ const Home = () => {
     trending: state.trendingAnime,
     popular: state.popularAnime,
     topRated: state.topAnime,
+    topAiring: state.topAiring,
+    Upcoming: state.Upcoming,
     latest: state.latestAnime,
   };
 
@@ -451,6 +462,8 @@ const Home = () => {
     { key: 'trending', label: 'TRENDING' },
     { key: 'popular',  label: 'POPULAR'  },
     { key: 'topRated', label: 'TOP RATED' },
+    { key: 'topAiring', label: 'TOP AIRING' },
+    { key: 'Upcoming', label: 'UPCOMING' },
     { key: 'latest',   label: 'LATEST'   },
   ];
 
