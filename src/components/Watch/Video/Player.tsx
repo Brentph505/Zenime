@@ -10,6 +10,7 @@ import {
   type MediaProviderAdapter,
   type MediaProviderChangeEvent,
   type MediaPlayerInstance,
+  type PlayerSrc,
 } from '@vidstack/react';
 import styled from 'styled-components';
 import {
@@ -59,6 +60,7 @@ const Button = styled.button<{ $autoskip?: boolean }>`
 type PlayerProps = {
   episodeId: string;
   episodeNumber?: number;
+  episodeProvider?: string;
   banner?: string;
   malId?: string;
   animeId?: string;
@@ -106,6 +108,7 @@ type FetchSkipTimesResponse = {
 export function Player({
   episodeId,
   episodeNumber: propEpisodeNumber,
+  episodeProvider = 'kickassanime',
   banner,
   malId,
   animeId,
@@ -119,7 +122,7 @@ export function Player({
   serverUrl,
 }: PlayerProps) {
   const player = useRef<MediaPlayerInstance>(null);
-  const [src, setSrc] = useState<string>('');
+  const [src, setSrc] = useState<PlayerSrc>('');
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const [vttUrl, setVttUrl] = useState<string>('');
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -127,6 +130,7 @@ export function Player({
   const [totalDuration, setTotalDuration] = useState<number>(0);
   const [vttGenerated, setVttGenerated] = useState<boolean>(false);
   const [canPlay, setCanPlay] = useState<boolean>(false);
+  const [userInteracted, setUserInteracted] = useState<boolean>(false);
   const episodeNumber = propEpisodeNumber
     ? String(propEpisodeNumber)
     : getEpisodeNumber(episodeId);
@@ -229,14 +233,32 @@ export function Player({
   }, [episodeId, malId, updateDownloadLink, sourceType]);
 
   useEffect(() => {
-    if (autoPlay && canPlay && player.current) {
+    if (autoPlay && userInteracted && canPlay && player.current) {
       player.current
         .play()
         .catch((e) =>
           console.log('Playback failed to start automatically:', e),
         );
     }
-  }, [autoPlay, src, canPlay]);
+  }, [autoPlay, src, canPlay, userInteracted]);
+
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      if (!userInteracted) {
+        setUserInteracted(true);
+      }
+    };
+
+    window.addEventListener('mousedown', handleUserInteraction);
+    window.addEventListener('touchstart', handleUserInteraction);
+    window.addEventListener('keydown', handleUserInteraction);
+
+    return () => {
+      window.removeEventListener('mousedown', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+    };
+  }, [userInteracted]);
 
   useEffect(() => {
     if (player.current && currentTime) {
@@ -358,12 +380,13 @@ export function Player({
         ? sourceType.toLowerCase()
         : undefined;
 
-      console.log('[Player] fetchAndSetAnimeSource:', { episodeId, sourceType, serverParam });
+      console.log('[Player] fetchAndSetAnimeSource:', { episodeId, sourceType, serverParam, serverUrl });
 
       const response: StreamingResponse = await fetchAnimeStreamingLinksProxied(
         episodeId,
-        'kickassanime',
+        episodeProvider || 'kickassanime',
         serverParam,
+        serverUrl,
       );
 
       if (response.sources && response.sources.length > 0) {
@@ -372,8 +395,11 @@ export function Player({
         );
 
         if (m3u8Sources.length > 0) {
-          setSrc(m3u8Sources[0].url);
-          console.log('[Player] Set src:', m3u8Sources[0].url);
+          setSrc({
+            src: m3u8Sources[0].url,
+            type: 'application/vnd.apple.mpegurl',
+          });
+          console.log('[Player] Set HLS src:', m3u8Sources[0].url);
         } else {
           console.error('No M3U8 sources found');
         }
@@ -479,7 +505,7 @@ export function Player({
           className='player'
           title={`${animeVideoTitle} - Episode ${episodeNumber}`}
           src={src}
-          autoplay={autoPlay}
+          autoplay={autoPlay && userInteracted}
           muted={false}
           crossorigin
           playsinline

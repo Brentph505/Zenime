@@ -20,8 +20,9 @@ if (PROXY_URL) {
 
 const API_KEY = import.meta.env.VITE_API_KEY as string;
 
-// M3U8 Proxy
+// M3U8 Proxy configuration
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
+const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
 
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
@@ -196,9 +197,22 @@ const isValidUrl = (url: string): boolean => {
  * @param referer    The page the stream originates from (e.g. the iframe URL)
  * @returns          Proxied URL string, or original URL if proxy is not configured
  */
-export function buildM3U8ProxyUrl(sourceUrl: string, referer: string): string {
-  if (!M3U8_PROXY_URL) {
-    console.warn('⚠️ VITE_M3U8_PROXY_URL is not set. Returning original URL.');
+export function buildM3U8ProxyUrl(
+  sourceUrl: string,
+  referer: string,
+  proxyUrl?: string,
+  includeHeaders: boolean = true,
+): string {
+  const selectedProxy = proxyUrl || M3U8_PROXY_URL;
+
+  if (!selectedProxy) {
+    console.warn('⚠️ No M3U8 proxy is configured. Returning original URL.');
+    return sourceUrl;
+  }
+
+  // Skip if already proxied by the same proxy
+  if (sourceUrl.includes(selectedProxy)) {
+    console.log(`ℹ️ URL already proxied by ${selectedProxy.replace(/\/$/, '')}, skipping double-wrap`);
     return sourceUrl;
   }
 
@@ -207,15 +221,18 @@ export function buildM3U8ProxyUrl(sourceUrl: string, referer: string): string {
     return sourceUrl;
   }
 
-  const proxyBase = M3U8_PROXY_URL.replace(/\/$/, '');
-  const origin = new URL(referer).origin;
+  const proxyBase = selectedProxy.replace(/\/$/, '');
+  let proxied = `${proxyBase}/m3u8-proxy?url=${encodeURIComponent(sourceUrl)}`;
 
-  const proxyHeaders = JSON.stringify({
-    Referer: referer,
-    Origin: origin,
-  });
+  if (includeHeaders) {
+    const origin = new URL(referer).origin;
+    const proxyHeaders = JSON.stringify({
+      Referer: referer,
+      Origin: origin,
+    });
+    proxied += `&headers=${encodeURIComponent(proxyHeaders)}`;
+  }
 
-  const proxied = `${proxyBase}/m3u8-proxy?url=${encodeURIComponent(sourceUrl)}&headers=${encodeURIComponent(proxyHeaders)}`;
   console.log(`🔀 M3U8 proxied: ${sourceUrl} → ${proxied}`);
   return proxied;
 }
@@ -223,19 +240,31 @@ export function buildM3U8ProxyUrl(sourceUrl: string, referer: string): string {
 /**
  * Processes a sources array and replaces raw .m3u8 URLs with proxied ones.
  * Non-m3u8 sources are returned as-is.
+ * Skips URLs that are already proxied.
  *
  * @param sources   Array of source objects with a `url` field
  * @param referer   Referer to spoof (typically the player/iframe URL)
  * @returns         Sources array with proxied URLs
  */
-export function proxyM3U8Sources(sources: any[], referer: string): any[] {
-  if (!M3U8_PROXY_URL) return sources;
+export function proxyM3U8Sources(
+  sources: any[],
+  referer: string,
+  proxyUrl?: string,
+  includeHeaders: boolean = true,
+): any[] {
+  const selectedProxy = proxyUrl || M3U8_PROXY_URL;
+  if (!selectedProxy) return sources;
 
   return sources.map((source) => {
     if (source.url?.endsWith('.m3u8') && isValidUrl(source.url)) {
+      // Skip if already proxied by the same proxy
+      if (source.url.includes(selectedProxy)) {
+        console.log(`ℹ️ Source already proxied, skipping: ${source.url.substring(0, 80)}...`);
+        return source;
+      }
       return {
         ...source,
-        url: buildM3U8ProxyUrl(source.url, referer),
+        url: buildM3U8ProxyUrl(source.url, referer, proxyUrl, includeHeaders),
       };
     }
     return source;
@@ -561,7 +590,31 @@ export async function fetchAnimeData(
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/data/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey('animeData', animeId, finalProvider);
-  return fetchFromProxy(url, animeDataCache, cacheKey);
+  
+  try {
+    const data = await fetchFromProxy(url, animeDataCache, cacheKey);
+    
+    // If data is empty and not using animekai, try animekai
+    if ((!data || (typeof data === 'object' && Object.keys(data).length === 0)) && finalProvider !== 'animekai') {
+      console.log(`⚠️ No data from ${finalProvider}, trying animekai...`);
+      const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+      const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
+      const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
+      return await fetchFromProxy(fallbackUrl, animeDataCache, fallbackCacheKey);
+    }
+    
+    return data;
+  } catch (error) {
+    // If error and not animekai, try fallback
+    if (finalProvider !== 'animekai') {
+      console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
+      const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+      const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
+      const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
+      return await fetchFromProxy(fallbackUrl, animeDataCache, fallbackCacheKey);
+    }
+    throw error;
+  }
 }
 
 export async function fetchAnimeInfo(
@@ -572,7 +625,31 @@ export async function fetchAnimeInfo(
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/info/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey('animeInfo', animeId, finalProvider);
-  return fetchFromProxy(url, animeInfoCache, cacheKey);
+  
+  try {
+    const info = await fetchFromProxy(url, animeInfoCache, cacheKey);
+    
+    // If info is empty and not using animekai, try animekai
+    if ((!info || (typeof info === 'object' && Object.keys(info).length === 0)) && finalProvider !== 'animekai') {
+      console.log(`⚠️ No info from ${finalProvider}, trying animekai...`);
+      const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+      const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
+      const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
+      return await fetchFromProxy(fallbackUrl, animeInfoCache, fallbackCacheKey);
+    }
+    
+    return info;
+  } catch (error) {
+    // If error and not animekai, try fallback
+    if (finalProvider !== 'animekai') {
+      console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
+      const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+      const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
+      const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
+      return await fetchFromProxy(fallbackUrl, animeInfoCache, fallbackCacheKey);
+    }
+    throw error;
+  }
 }
 
 async function fetchList(
@@ -666,7 +743,68 @@ export async function fetchAnimeEpisodes(
     finalProvider,
     dub ? 'dub' : 'sub',
   );
-  return fetchFromProxy(url, animeEpisodesCache, cacheKey);
+
+  const attachProvider = (items: any, providerName: string) => {
+    if (Array.isArray(items)) {
+      return items.map((item) => ({ ...item, provider: providerName }));
+    }
+    return items;
+  };
+
+  try {
+    const episodes = attachProvider(
+      await fetchFromProxy(url, animeEpisodesCache, cacheKey),
+      finalProvider,
+    );
+
+    // If episodes is empty and not using animekai, try animekai
+    if (
+      (!episodes ||
+        (Array.isArray(episodes) && episodes.length === 0) ||
+        (typeof episodes === 'object' && Object.keys(episodes).length === 0)) &&
+      finalProvider !== 'animekai'
+    ) {
+      console.log(`⚠️ No episodes from ${finalProvider}, trying animekai...`);
+      const fallbackParams = new URLSearchParams({
+        provider: 'animekai',
+        dub: dub ? 'true' : 'false',
+      });
+      const fallbackUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${fallbackParams.toString()}`;
+      const fallbackCacheKey = generateCacheKey(
+        'animeEpisodes',
+        animeId,
+        'animekai',
+        dub ? 'dub' : 'sub',
+      );
+      return attachProvider(
+        await fetchFromProxy(fallbackUrl, animeEpisodesCache, fallbackCacheKey),
+        'animekai',
+      );
+    }
+
+    return episodes;
+  } catch (error) {
+    // If error and not animekai, try fallback
+    if (finalProvider !== 'animekai') {
+      console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
+      const fallbackParams = new URLSearchParams({
+        provider: 'animekai',
+        dub: dub ? 'true' : 'false',
+      });
+      const fallbackUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${fallbackParams.toString()}`;
+      const fallbackCacheKey = generateCacheKey(
+        'animeEpisodes',
+        animeId,
+        'animekai',
+        dub ? 'dub' : 'sub',
+      );
+      return attachProvider(
+        await fetchFromProxy(fallbackUrl, animeEpisodesCache, fallbackCacheKey),
+        'animekai',
+      );
+    }
+    throw error;
+  }
 }
 
 export async function fetchAnimeEmbeddedEpisodes(
@@ -718,20 +856,34 @@ export async function fetchAnimeStreamingLinksProxied(
   server?: string,
   referer?: string,
 ) {
-  const data = await fetchAnimeStreamingLinks(episodeId, provider, server);
+  const finalProvider = provider || 'kickassanime';
+  const data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server);
 
-  if (!M3U8_PROXY_URL) {
-    console.warn('⚠️ M3U8 proxy skipped: missing VITE_M3U8_PROXY_URL.');
+  const proxyUrl = finalProvider === 'animekai'
+    ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
+    : M3U8_PROXY_URL;
+
+  if (!proxyUrl) {
+    console.warn('⚠️ M3U8 proxy skipped: missing proxy configuration.');
     return data;
   }
 
-  // Extract server URL from response to use as referer/origin
-  let serverUrl = referer;
+  if (finalProvider === 'animekai' && !M3U8_PROXY_URL_2) {
+    console.warn(
+      '⚠️ Animekai is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_2 is not set.',
+    );
+  }
+
+  const ANIKAI_REFERER = 'https://anikai.to';
+
+  // Extract server URL from response to use as referer/origin.
+  // For animekai, use anikai.to as the referer to satisfy upstream validation.
+  let serverUrl = finalProvider === 'animekai' ? ANIKAI_REFERER : referer;
   if (!serverUrl && data?.servers?.length > 0) {
     // Find the matching server by name if server param was provided
     if (server) {
       const matchingServer = data.servers.find(
-        (s: any) => s.name?.toLowerCase() === server.toLowerCase()
+        (s: any) => s.name?.toLowerCase() === server.toLowerCase(),
       );
       if (matchingServer?.url) {
         serverUrl = matchingServer.url;
@@ -748,10 +900,17 @@ export async function fetchAnimeStreamingLinksProxied(
     return data;
   }
 
-  console.log('[fetchAnimeStreamingLinksProxied] Using server URL as referer:', serverUrl);
+  console.log(
+    `[fetchAnimeStreamingLinksProxied] Using server URL as referer: ${serverUrl} (provider=${finalProvider})`,
+  );
 
   if (Array.isArray(data?.sources)) {
-    data.sources = proxyM3U8Sources(data.sources, serverUrl);
+    data.sources = proxyM3U8Sources(
+      data.sources,
+      serverUrl,
+      proxyUrl,
+      true,
+    );
   }
 
   return data;

@@ -18,6 +18,8 @@ import {
 } from '../index';
 import { Episode } from '../index';
 
+type WatchEpisode = Episode & { provider?: string };
+
 const WatchContainer = styled.div``;
 
 const WatchWrapper = styled.div`
@@ -156,8 +158,6 @@ const LOCAL_STORAGE_KEYS = {
 const Watch: React.FC = () => {
   const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
   const [videoPlayerWidth, setVideoPlayerWidth] = useState('100%');
-  const getSourceTypeKey = (animeId: string | undefined) =>
-    `source-[${animeId}]`;
   const getLanguageKey = (animeId: string | undefined) =>
     `subOrDub-[${animeId}]`;
   
@@ -195,8 +195,8 @@ const Watch: React.FC = () => {
   const navigate = useNavigate();
   const [selectedBackgroundImage, setSelectedBackgroundImage] =
     useState<string>('');
-  const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [currentEpisode, setCurrentEpisode] = useState<Episode>({
+  const [episodes, setEpisodes] = useState<WatchEpisode[]>([]);
+  const [currentEpisode, setCurrentEpisode] = useState<WatchEpisode>({
     id: '0',
     number: 1,
     title: '',
@@ -204,6 +204,7 @@ const Watch: React.FC = () => {
     description: '',
     imageHash: '',
     airDate: '',
+    provider: 'kickassanime',
   });
   const [animeInfo, setAnimeInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -215,6 +216,9 @@ const Watch: React.FC = () => {
   );
   const [downloadLink, setDownloadLink] = useState('');
   const [availableServers, setAvailableServers] = useState<string[]>([]);
+  const [serverEntries, setServerEntries] = useState<
+    Array<{ name: string; url: string; type: string }>
+  >([]);
   const [embeddedUrl, setEmbeddedUrl] = useState<string>('');
   const [serverUrl, setServerUrl] = useState<string>('');
   const [embeddedServerName, setEmbeddedServerName] = useState<string>('');
@@ -260,7 +264,7 @@ const Watch: React.FC = () => {
 
   // TODO UPDATES CURRENT EPISODE INFORMATION, UPDATES WATCHED EPISODES AND NAVIGATES TO NEW URL
   const handleEpisodeSelect = useCallback(
-    async (selectedEpisode: Episode) => {
+    async (selectedEpisode: Episode & { provider?: string }) => {
       setCurrentEpisode({
         id: selectedEpisode.id,
         number: selectedEpisode.number,
@@ -269,6 +273,7 @@ const Watch: React.FC = () => {
         description: selectedEpisode.description,
         imageHash: selectedEpisode.imageHash,
         airDate: selectedEpisode.airDate,
+        provider: selectedEpisode.provider || 'kickassanime',
       });
 
       localStorage.setItem(
@@ -410,6 +415,7 @@ const Watch: React.FC = () => {
               
               return {
                 ...ep,
+                provider: ep.provider || 'kickassanime',
                 number: episodeNumber,
                 id: ep.id,
                 title: episodeTitle || `Episode ${episodeNumber}`,
@@ -455,6 +461,7 @@ const Watch: React.FC = () => {
               description: navigateToEpisode.description,
               imageHash: navigateToEpisode.imageHash,
               airDate: navigateToEpisode.airDate,
+              provider: navigateToEpisode.provider,
             });
 
             navigate(
@@ -471,6 +478,7 @@ const Watch: React.FC = () => {
               description: navigateToEpisode.description,
               imageHash: navigateToEpisode.imageHash,
               airDate: navigateToEpisode.airDate,
+              provider: navigateToEpisode.provider,
             });
             setLanguageChanged(false);
           }
@@ -586,11 +594,40 @@ const Watch: React.FC = () => {
     if (currentEpisode.id && currentEpisode.id !== '0') {
       setSourceType('');
       setAvailableServers([]);
+      setServerEntries([]);
       setEmbeddedServerName('');
       setEmbeddedUrl('');
       setServerUrl('');
     }
   }, [currentEpisode.id]);
+
+  // Update animekai server URL when the selected source changes.
+  useEffect(() => {
+    if (
+      !currentEpisode.id ||
+      currentEpisode.id === '0' ||
+      currentEpisode.provider !== 'animekai' ||
+      !sourceType ||
+      serverEntries.length === 0
+    ) {
+      return;
+    }
+
+    const normalizedSource = sourceType.toLowerCase();
+    const matchingServer =
+      serverEntries.find(
+        (entry) => entry.name.toLowerCase() === normalizedSource,
+      ) || serverEntries.find((entry) => entry.type === language) ||
+      serverEntries[0];
+
+    if (matchingServer?.url) {
+      setServerUrl(matchingServer.url);
+      if (embeddedUrl !== matchingServer.url) {
+        setEmbeddedUrl(matchingServer.url);
+        setEmbeddedServerName(matchingServer.name);
+      }
+    }
+  }, [currentEpisode.id, currentEpisode.provider, sourceType, serverEntries, language, embeddedUrl]);
 
   // Fetch available servers for this episode.
   // The streaming links response already contains:
@@ -604,29 +641,46 @@ const Watch: React.FC = () => {
     const fetchAvailableServers = async () => {
       console.log('Fetching available servers for episode:', currentEpisode.id);
       try {
-        const response = await fetchAnimeStreamingLinks(currentEpisode.id, 'kickassanime');
+        const episodeProvider = currentEpisode.provider || 'kickassanime';
+        const response = await fetchAnimeStreamingLinks(currentEpisode.id, episodeProvider);
         console.log('Streaming links response:', response);
 
+        const serverEntriesFromResponse = Array.isArray(response?.servers)
+          ? response.servers
+              .map((server: any) => ({
+                name: server?.name || '',
+                url: server?.url || '',
+                type: server?.type || '',
+              }))
+              .filter((server: any) => server.name && server.url)
+          : [];
+        setServerEntries(serverEntriesFromResponse);
+
+        const firstServer = serverEntriesFromResponse[0];
+
         // Extract the embedded (iframe) server name and URL from servers[0]
-        if (response?.servers?.length > 0) {
-          const firstServer = response.servers[0];
-          if (firstServer.name) setEmbeddedServerName(firstServer.name);
-          if (firstServer.url) {
-            setEmbeddedUrl(firstServer.url);
-            setServerUrl(firstServer.url);
-            console.log('Embedded server:', firstServer.name, '→', firstServer.url);
-          }
+        if (firstServer) {
+          setEmbeddedServerName(firstServer.name);
+          setEmbeddedUrl(firstServer.url);
+          setServerUrl(firstServer.url);
+          console.log('Embedded server:', firstServer.name, '→', firstServer.url);
         }
 
-        // Build the list of HLS server names to verify
+        // Build the list of HLS server names to verify.
+        // The embedded iframe server is handled separately and should not be shown
+        // as an HLS proxy server option.
         let servers: string[] = [];
         if (response?.availableServers?.length > 0) {
-          servers = response.availableServers.map((s: string) => s.toLowerCase());
-        } else if (response?.servers?.length > 0) {
-          servers = response.servers
-            .map((s: any) => (typeof s === 'string' ? s : s.name) || null)
-            .filter(Boolean)
-            .map((s: string) => s.toLowerCase());
+          servers = response.availableServers.map(
+            (s: string) => s.toLowerCase(),
+          );
+        } else if (serverEntriesFromResponse.length > 0) {
+          const embeddedServerNameLower = firstServer?.name.toLowerCase() || '';
+          servers = serverEntriesFromResponse
+            .map((server: { name: string; url: string; type: string }) =>
+              server.name.toLowerCase(),
+            )
+            .filter((name: string) => name !== embeddedServerNameLower);
         } else {
           servers = ['vidstreaming', 'duckstream', 'birdstream'];
         }
@@ -634,13 +688,21 @@ const Watch: React.FC = () => {
         // Deduplicate and strip any generic placeholder
         servers = [...new Set(servers)].filter((s) => s !== 'default');
 
-        // Verify each server actually returns M3U8 sources
+        // For animekai, skip per-server verification since the backend doesn't handle server params well
+        if (episodeProvider === 'animekai') {
+          console.log('Animekai: skipping per-server verification, using available servers directly');
+          setAvailableServers(servers);
+          return;
+        }
+
+        // Verify each server actually returns M3U8 sources (kickassanime only)
         const verifiedServers: string[] = [];
         for (const server of servers) {
           try {
+            const episodeProvider = currentEpisode.provider || 'kickassanime';
             const serverResponse = await fetchAnimeStreamingLinks(
               currentEpisode.id,
-              'kickassanime',
+              episodeProvider,
               server,
             );
             const hasM3U8 = serverResponse.sources?.some(
@@ -793,6 +855,7 @@ const Watch: React.FC = () => {
                   <Player
                     episodeId={currentEpisode.id}
                     episodeNumber={currentEpisode.number}
+                    episodeProvider={currentEpisode.provider}
                     malId={animeInfo?.malId}
                     animeId={animeId}
                     banner={selectedBackgroundImage}
