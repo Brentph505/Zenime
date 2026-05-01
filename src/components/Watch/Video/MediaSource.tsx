@@ -222,26 +222,27 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   };
 
   /**
-   * Build the server button list:
-   * - One "Embedded" button (iframe-based) always shown first with real server name
-   * - Then all verified M3U8 servers with their real names
+   * Build the server button list from verified HLS servers only.
    */
   const buildServerButtons = () => {
-    const buttons: { key: string; label: string; isEmbedded: boolean }[] = [];
+    // Always show all servers: Zen Sub/Dub (embedded) + all verified HLS servers.
+    // Filter 'embedded' string out of availableServers to avoid duplicating the Zen button.
+    const filteredAvailableServers = availableServers.filter(
+      (server) => server !== 'embedded',
+    );
 
-    // Show real embedded server name; fallback to 'Embedded' while loading
-    buttons.push({
-      key: 'embedded',
-      label: embeddedServerName || 'Embedded',
-      isEmbedded: true,
-    });
+    const buttons = filteredAvailableServers.map((server) => ({
+      key: server,
+      label: server.charAt(0).toUpperCase() + server.slice(1),
+      isEmbedded: false,
+    }));
 
-    // Real verified servers with their actual names
-    for (const server of availableServers) {
-      buttons.push({
-        key: server,
-        label: server.charAt(0).toUpperCase() + server.slice(1),
-        isEmbedded: false,
+    // Prepend Zen Sub / Zen Dub when the embedded player is configured.
+    if (embeddedServerName) {
+      buttons.unshift({
+        key: 'embedded',
+        label: embeddedServerName,
+        isEmbedded: true,
       });
     }
 
@@ -249,7 +250,8 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   };
 
   const serverButtons = buildServerButtons();
-  const isLoadingServers = availableServers.length === 0 && !sourceType;
+  const isLoadingServers =
+    availableServers.length === 0 && !embeddedServerName && !sourceType;
 
   return (
     <UpdatedContainer>

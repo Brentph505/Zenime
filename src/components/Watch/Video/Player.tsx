@@ -167,32 +167,14 @@ export function Player({
     console.log('[Player] sourceType changed:', sourceType, '| isEmbedded:', isEmbedded);
   }, [sourceType]);
 
-  // Listen for postMessage events from the cross-origin iframe.
-  // Most embeddable players (vidstack, plyr, jwplayer, custom) broadcast an
-  // 'ended' signal so we can trigger auto-next without direct DOM access.
+  // ─── iframe postMessage event bridge ────────────────────────────────────────
+  // Handles MegaCloud/MegaPlay structured events AND generic "ended" signals
+  // from other embeddable players so auto-next and watch-time tracking both
+  // work regardless of which embedded server the user has selected.
   useEffect(() => {
     if (!isEmbedded) return;
 
-    const handleMessage = (event: MessageEvent) => {
-      const d = event.data;
-      if (!d) return;
-
-      const isEnded =
-        d === 'ended' ||
-        d?.type === 'ended' ||
-        d?.event === 'ended' ||
-        d?.action === 'ended' ||
-        d?.type === 'video:ended' ||
-        d?.name === 'ended' ||
-        (typeof d === 'string' && d.toLowerCase().includes('ended'));
-
-      if (isEnded) {
-        console.log('[Player] iframe postMessage: video ended');
-        if (autoNextRef.current) handlePlaybackEndedRef.current();
-      }
-    };
-
-    // Use a ref for handlePlaybackEnded to avoid stale closure
+    // Stable ref so the async callback never captures a stale closure.
     const handlePlaybackEndedRef = {
       current: async () => {
         if (!autoNextRef.current) return;
@@ -200,15 +182,101 @@ export function Player({
           player.current?.pause();
           await new Promise((resolve) => setTimeout(resolve, 200));
           await onEpisodeEndRef.current();
-        } catch (error) {
-          console.error('Error moving to the next episode:', error);
+        } catch (err) {
+          console.error('[Player] auto-next error:', err);
         }
       },
     };
 
+    // Persist iframe playback progress to localStorage in the same format
+    // the HLS player uses so resume-position works across both modes.
+    const saveIframeProgress = (currentTime: number, duration: number) => {
+      if (!episodeId || duration <= 0) return;
+      const playbackPercentage = (currentTime / duration) * 100;
+      try {
+        const all = JSON.parse(
+          localStorage.getItem('all_episode_times') || '{}',
+        );
+        all[episodeId] = { currentTime, playbackPercentage };
+        localStorage.setItem('all_episode_times', JSON.stringify(all));
+      } catch {
+        // localStorage unavailable — ignore
+      }
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      // Parse if the payload arrived as a JSON string
+      let data = event.data;
+      if (typeof data === 'string') {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return; // unparseable string — ignore
+        }
+      }
+      if (!data || typeof data !== 'object') return;
+
+      // ── MegaCloud channel ──────────────────────────────────────────────────
+      if (data.channel === 'megacloud') {
+        switch (data.event) {
+          case 'complete':
+            // Episode finished — trigger auto-next if enabled
+            console.log('[Player] MegaCloud: episode complete');
+            if (autoNextRef.current) handlePlaybackEndedRef.current();
+            break;
+
+          case 'time':
+            // Periodic progress update: { event, time, duration, percent }
+            if (
+              typeof data.time === 'number' &&
+              typeof data.duration === 'number'
+            ) {
+              saveIframeProgress(data.time, data.duration);
+            }
+            break;
+
+          case 'error':
+            console.error('[Player] MegaCloud playback error:', data);
+            break;
+
+          default:
+            console.log('[Player] MegaCloud event:', data);
+        }
+        return; // MegaCloud events are fully handled above
+      }
+
+      // ── watching-log (MegaPlay / HiAnime style) ───────────────────────────
+      // { type: "watching-log", currentTime: number, duration: number }
+      if (data.type === 'watching-log') {
+        if (
+          typeof data.currentTime === 'number' &&
+          typeof data.duration === 'number'
+        ) {
+          saveIframeProgress(data.currentTime, data.duration);
+        }
+        return;
+      }
+
+      // ── Generic fallback for other embeddable players ─────────────────────
+      // Catches raw "ended" strings and common event-object shapes so that
+      // players which don't use the MegaCloud channel still trigger auto-next.
+      const isEnded =
+        data === 'ended' ||
+        data?.event === 'ended' ||
+        data?.type === 'ended' ||
+        data?.type === 'video:ended' ||
+        data?.action === 'ended' ||
+        data?.name === 'ended';
+
+      if (isEnded) {
+        console.log('[Player] iframe postMessage: video ended (generic)');
+        if (autoNextRef.current) handlePlaybackEndedRef.current();
+      }
+    };
+
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [isEmbedded]);
+  }, [isEmbedded, episodeId]);
 
   // When switching TO embedded mode, clear the HLS src so MediaPlayer unmounts cleanly
   useEffect(() => {
@@ -381,6 +449,45 @@ export function Player({
         : undefined;
 
       console.log('[Player] fetchAndSetAnimeSource:', { episodeId, sourceType, serverParam, serverUrl });
+
+      // Special handling for Megaplay servers
+      if (sourceType?.startsWith('megaplay') && serverUrl) {
+        console.log('[Megaplay] Fetching from:', serverUrl);
+        try {
+          const response = await fetch(serverUrl);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          
+          const data = await response.json();
+          console.log('[Megaplay] Response:', data);
+
+          if (data.sources && data.sources.length > 0) {
+            const m3u8Sources = data.sources.filter(
+              (source: any) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+            );
+
+            if (m3u8Sources.length > 0) {
+              setSrc({
+                src: m3u8Sources[0].url,
+                type: 'application/vnd.apple.mpegurl',
+              });
+              console.log('[Megaplay] Set HLS src:', m3u8Sources[0].url);
+            } else {
+              console.error('[Megaplay] No M3U8 sources found');
+            }
+
+            if (data.download) {
+              updateDownloadLink(data.download);
+            }
+          }
+
+          if (data.subtitles && data.subtitles.length > 0) {
+            setSubtitles(data.subtitles);
+          }
+        } catch (megaplayError) {
+          console.error('[Megaplay] Failed to fetch:', megaplayError);
+        }
+        return;
+      }
 
       const response: StreamingResponse = await fetchAnimeStreamingLinksProxied(
         episodeId,
