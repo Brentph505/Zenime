@@ -7,10 +7,13 @@ import {
   MediaProvider,
   Poster,
   Track,
+  type MediaErrorDetail,
+  type MediaErrorEvent,
   type MediaProviderAdapter,
   type MediaProviderChangeEvent,
   type MediaPlayerInstance,
   type PlayerSrc,
+  formatTime,
 } from '@vidstack/react';
 import styled from 'styled-components';
 import {
@@ -72,6 +75,12 @@ type PlayerProps = {
   sourceType?: string;
   embeddedUrl?: string;
   serverUrl?: string;
+  /** Set of server keys that should render as iframes (includes 'embedded' + animekai iframe servers) */
+  embeddedServerKeys?: Set<string>;
+  /** Direct M3U8 URL to use for animekai HLS servers (bypasses API fetch) */
+  hlsDirectUrl?: string;
+  /** Subtitles to inject when using hlsDirectUrl (animekai HLS playback) */
+  externalSubtitles?: Array<{ url: string; lang: string }>;
 };
 
 type StreamingSource = {
@@ -105,6 +114,11 @@ type FetchSkipTimesResponse = {
   results: SkipTime[];
 };
 
+const getEpisodeNumber = (episodeId: string): string => {
+  const match = episodeId.match(/(\d+)$/);
+  return match ? match[1] : '1';
+};
+
 export function Player({
   episodeId,
   episodeNumber: propEpisodeNumber,
@@ -120,6 +134,9 @@ export function Player({
   sourceType = '',
   embeddedUrl,
   serverUrl,
+  embeddedServerKeys,
+  hlsDirectUrl,
+  externalSubtitles,
 }: PlayerProps) {
   const player = useRef<MediaPlayerInstance>(null);
   const [src, setSrc] = useState<PlayerSrc>('');
@@ -131,6 +148,10 @@ export function Player({
   const [vttGenerated, setVttGenerated] = useState<boolean>(false);
   const [canPlay, setCanPlay] = useState<boolean>(false);
   const [userInteracted, setUserInteracted] = useState<boolean>(false);
+  const hlsUrlCandidatesRef = useRef<string[]>([]);
+  const currentHlsUrlIndexRef = useRef<number>(0);
+  const hlsRetryCountRef = useRef<number>(0);
+  const retryTimerRef = useRef<number | null>(null);
   const episodeNumber = propEpisodeNumber
     ? String(propEpisodeNumber)
     : getEpisodeNumber(episodeId);
@@ -140,7 +161,6 @@ export function Player({
   const { autoPlay, autoNext, autoSkip } = settings;
   const navigate = useNavigate();
 
-
   // --- Fix for stale closure ---
   const onEpisodeEndRef = useRef(onEpisodeEnd);
   const autoNextRef = useRef(autoNext);
@@ -149,32 +169,38 @@ export function Player({
     autoNextRef.current = autoNext;
   }, [onEpisodeEnd, autoNext]);
 
-  const isEmbedded = sourceType === 'embedded';
+  // Determine whether to show the iframe player or the HLS player.
+  const isEmbedded = embeddedServerKeys
+    ? embeddedServerKeys.has(sourceType)
+    : sourceType === 'embedded' ||
+      (episodeProvider === 'animekai' && !!sourceType && sourceType !== '');
 
   // Build the embedded URL, injecting autoplay=1 when the user has autoplay on
   const builtEmbeddedUrl = React.useMemo(() => {
     if (!embeddedUrl) return '';
     try {
       const u = new URL(embeddedUrl);
-      if (autoPlay) u.searchParams.set('autoplay', '1');
+      if (autoPlay) {
+        if (episodeProvider === 'animekai') {
+          u.searchParams.set('autostart', 'true');
+        } else {
+          u.searchParams.set('autoplay', '1');
+        }
+      }
       return u.toString();
     } catch {
       return embeddedUrl;
     }
-  }, [embeddedUrl, autoPlay]);
+  }, [embeddedUrl, autoPlay, episodeProvider]);
 
   useEffect(() => {
     console.log('[Player] sourceType changed:', sourceType, '| isEmbedded:', isEmbedded);
   }, [sourceType]);
 
   // ─── iframe postMessage event bridge ────────────────────────────────────────
-  // Handles MegaCloud/MegaPlay structured events AND generic "ended" signals
-  // from other embeddable players so auto-next and watch-time tracking both
-  // work regardless of which embedded server the user has selected.
   useEffect(() => {
     if (!isEmbedded) return;
 
-    // Stable ref so the async callback never captures a stale closure.
     const handlePlaybackEndedRef = {
       current: async () => {
         if (!autoNextRef.current) return;
@@ -188,8 +214,6 @@ export function Player({
       },
     };
 
-    // Persist iframe playback progress to localStorage in the same format
-    // the HLS player uses so resume-position works across both modes.
     const saveIframeProgress = (currentTime: number, duration: number) => {
       if (!episodeId || duration <= 0) return;
       const playbackPercentage = (currentTime / duration) * 100;
@@ -205,13 +229,12 @@ export function Player({
     };
 
     const handleMessage = (event: MessageEvent) => {
-      // Parse if the payload arrived as a JSON string
       let data = event.data;
       if (typeof data === 'string') {
         try {
           data = JSON.parse(data);
         } catch {
-          return; // unparseable string — ignore
+          return;
         }
       }
       if (!data || typeof data !== 'object') return;
@@ -220,13 +243,11 @@ export function Player({
       if (data.channel === 'megacloud') {
         switch (data.event) {
           case 'complete':
-            // Episode finished — trigger auto-next if enabled
             console.log('[Player] MegaCloud: episode complete');
             if (autoNextRef.current) handlePlaybackEndedRef.current();
             break;
 
           case 'time':
-            // Periodic progress update: { event, time, duration, percent }
             if (
               typeof data.time === 'number' &&
               typeof data.duration === 'number'
@@ -242,11 +263,10 @@ export function Player({
           default:
             console.log('[Player] MegaCloud event:', data);
         }
-        return; // MegaCloud events are fully handled above
+        return;
       }
 
       // ── watching-log (MegaPlay / HiAnime style) ───────────────────────────
-      // { type: "watching-log", currentTime: number, duration: number }
       if (data.type === 'watching-log') {
         if (
           typeof data.currentTime === 'number' &&
@@ -257,9 +277,7 @@ export function Player({
         return;
       }
 
-      // ── Generic fallback for other embeddable players ─────────────────────
-      // Catches raw "ended" strings and common event-object shapes so that
-      // players which don't use the MegaCloud channel still trigger auto-next.
+      // ── Generic fallback ──────────────────────────────────────────────────
       const isEnded =
         data === 'ended' ||
         data?.event === 'ended' ||
@@ -286,9 +304,7 @@ export function Player({
   }, [isEmbedded]);
 
   useEffect(() => {
-    // Skip fetching if episodeId is not valid
     if (!episodeId || episodeId === '0') return;
-    // Skip HLS fetch entirely when in embedded mode — the iframe handles playback
     if (isEmbedded) return;
 
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
@@ -299,6 +315,103 @@ export function Player({
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
   }, [episodeId, malId, updateDownloadLink, sourceType]);
+
+  useEffect(() => {
+    return () => {
+      if (retryTimerRef.current) {
+        window.clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const clearHlsRetryTimer = () => {
+    if (retryTimerRef.current) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  };
+
+  const resetHlsRetryState = () => {
+    hlsRetryCountRef.current = 0;
+    currentHlsUrlIndexRef.current = 0;
+    clearHlsRetryTimer();
+  };
+
+  const getCurrentHlsUrl = () =>
+    hlsUrlCandidatesRef.current[currentHlsUrlIndexRef.current];
+
+  const scheduleHlsRetry = (message: string) => {
+    const currentUrl = getCurrentHlsUrl();
+    if (!currentUrl) return;
+
+    const nextCandidateIndex = currentHlsUrlIndexRef.current + 1;
+    const hasNextCandidate =
+      nextCandidateIndex < hlsUrlCandidatesRef.current.length;
+    const maxRetries = 2;
+    const retryDelay = 2500;
+
+    clearHlsRetryTimer();
+
+    if (hasNextCandidate) {
+      console.warn(
+        '[Player] HLS source failed, switching to next candidate after delay:',
+        currentUrl,
+      );
+      retryTimerRef.current = window.setTimeout(() => {
+        currentHlsUrlIndexRef.current = nextCandidateIndex;
+        const nextUrl = getCurrentHlsUrl();
+        if (nextUrl) {
+          setSrc({ src: nextUrl, type: 'application/vnd.apple.mpegurl' });
+          console.log('[Player] HLS retry: next candidate:', nextUrl);
+        }
+      }, retryDelay);
+      return;
+    }
+
+    if (hlsRetryCountRef.current < maxRetries) {
+      hlsRetryCountRef.current += 1;
+      console.warn(
+        '[Player] HLS source failed, retrying same URL:',
+        currentUrl,
+        'attempt',
+        hlsRetryCountRef.current,
+        'message:',
+        message,
+      );
+      retryTimerRef.current = window.setTimeout(() => {
+        setSrc({ src: currentUrl, type: 'application/vnd.apple.mpegurl' });
+      }, retryDelay);
+    } else {
+      console.error(
+        '[Player] HLS source failed after retries:',
+        currentUrl,
+        'message:',
+        message,
+      );
+      clearHlsRetryTimer();
+    }
+  };
+
+  const onMediaError = (
+    detail: MediaErrorDetail,
+    nativeEvent: MediaErrorEvent,
+  ) => {
+    const message =
+      detail.message ||
+      detail.error?.message ||
+      detail.mediaError?.message ||
+      'Unknown HLS error';
+
+    console.error('[Player] HLS media error:', message, nativeEvent);
+
+    if (!hlsUrlCandidatesRef.current.length) return;
+
+    const shouldRetry = /403|network|failed|error/i.test(message);
+    if (!shouldRetry) return;
+
+    scheduleHlsRetry(message);
+  };
 
   useEffect(() => {
     if (autoPlay && userInteracted && canPlay && player.current) {
@@ -443,65 +556,113 @@ export function Player({
   }
 
   async function fetchAndSetAnimeSource() {
-    try {
-      const serverParam = sourceType && sourceType !== 'default'
+    // If a direct M3U8 URL was provided (animekai HLS server), use it immediately.
+    if (hlsDirectUrl) {
+      resetHlsRetryState();
+      hlsUrlCandidatesRef.current = [hlsDirectUrl];
+      setSrc({
+        src: hlsDirectUrl,
+        type: 'application/vnd.apple.mpegurl',
+      });
+      console.log('[Player] Using hlsDirectUrl:', hlsDirectUrl);
+      if (externalSubtitles && externalSubtitles.length > 0) {
+        setSubtitles(externalSubtitles);
+      }
+      return;
+    }
+
+    // 'direct' is a synthetic KAA server key meaning "use the default API fetch".
+    const serverParam =
+      sourceType && sourceType !== 'default' && sourceType !== 'direct'
         ? sourceType.toLowerCase()
         : undefined;
 
-      console.log('[Player] fetchAndSetAnimeSource:', { episodeId, sourceType, serverParam, serverUrl });
+    console.log('[Player] fetchAndSetAnimeSource:', {
+      episodeId,
+      sourceType,
+      serverParam,
+      serverUrl,
+    });
 
-      // Special handling for Megaplay servers
-      if (sourceType?.startsWith('megaplay') && serverUrl) {
-        console.log('[Megaplay] Fetching from:', serverUrl);
-        try {
-          const response = await fetch(serverUrl);
-          if (!response.ok) throw new Error(`HTTP ${response.status}`);
-          
-          const data = await response.json();
-          console.log('[Megaplay] Response:', data);
+    // Special handling for Megaplay servers
+    if (sourceType?.startsWith('megaplay') && serverUrl) {
+      console.log('[Megaplay] Fetching from:', serverUrl);
+      try {
+        const response = await fetch(serverUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-          if (data.sources && data.sources.length > 0) {
-            const m3u8Sources = data.sources.filter(
-              (source: any) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+        const data = await response.json();
+        console.log('[Megaplay] Response:', data);
+
+        if (data.sources && data.sources.length > 0) {
+          const m3u8Sources = data.sources.filter(
+            (source: any) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+          );
+
+          if (m3u8Sources.length > 0) {
+            resetHlsRetryState();
+            hlsUrlCandidatesRef.current = m3u8Sources.map(
+              (source: any) => source.url,
             );
-
-            if (m3u8Sources.length > 0) {
-              setSrc({
-                src: m3u8Sources[0].url,
-                type: 'application/vnd.apple.mpegurl',
-              });
-              console.log('[Megaplay] Set HLS src:', m3u8Sources[0].url);
-            } else {
-              console.error('[Megaplay] No M3U8 sources found');
-            }
-
-            if (data.download) {
-              updateDownloadLink(data.download);
-            }
+            setSrc({
+              src: m3u8Sources[0].url,
+              type: 'application/vnd.apple.mpegurl',
+            });
+            console.log('[Megaplay] Set HLS src:', m3u8Sources[0].url);
+          } else {
+            console.error('[Megaplay] No M3U8 sources found');
+            hlsUrlCandidatesRef.current = [];
           }
 
-          if (data.subtitles && data.subtitles.length > 0) {
-            setSubtitles(data.subtitles);
+          if (data.download) {
+            updateDownloadLink(data.download);
           }
-        } catch (megaplayError) {
-          console.error('[Megaplay] Failed to fetch:', megaplayError);
         }
-        return;
+
+        if (data.subtitles?.length) {
+          setSubtitles(data.subtitles);
+        }
+      } catch (megaplayError) {
+        console.error('[Megaplay] Failed to fetch:', megaplayError);
       }
+      return;
+    }
 
-      const response: StreamingResponse = await fetchAnimeStreamingLinksProxied(
-        episodeId,
-        episodeProvider || 'kickassanime',
-        serverParam,
-        serverUrl,
-      );
-
-      if (response.sources && response.sources.length > 0) {
-        const m3u8Sources = response.sources.filter(
-          (source) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+    try {
+      const response: StreamingResponse =
+        await fetchAnimeStreamingLinksProxied(
+          episodeId,
+          episodeProvider || 'kickassanime',
+          serverParam,
+          serverUrl,
         );
 
+      if (response.sources && response.sources.length > 0) {
+        const isDubServer =
+          episodeProvider === 'animekai'
+            ? sourceType?.toLowerCase().includes('dub') ?? false
+            : undefined;
+
+        const candidateSources = response.sources.filter(
+          (source: any) =>
+            (source.isM3U8 || source.url?.endsWith('.m3u8')) &&
+            (isDubServer === undefined ||
+              (source as any).isDub === isDubServer),
+        );
+
+        // Fall back to any M3U8 if the language-filtered list is empty.
+        const m3u8Sources =
+          candidateSources.length > 0
+            ? candidateSources
+            : response.sources.filter(
+                (source) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+              );
+
         if (m3u8Sources.length > 0) {
+          resetHlsRetryState();
+          hlsUrlCandidatesRef.current = m3u8Sources.map(
+            (source) => source.url,
+          );
           setSrc({
             src: m3u8Sources[0].url,
             type: 'application/vnd.apple.mpegurl',
@@ -509,6 +670,7 @@ export function Player({
           console.log('[Player] Set HLS src:', m3u8Sources[0].url);
         } else {
           console.error('No M3U8 sources found');
+          hlsUrlCandidatesRef.current = [];
         }
 
         if (response.download) {
@@ -518,28 +680,13 @@ export function Player({
         console.error('No video sources in response');
       }
 
-      if (response.subtitles && response.subtitles.length > 0) {
+      if (response.subtitles?.length) {
         setSubtitles(response.subtitles);
       }
     } catch (error) {
       console.error('Failed to fetch anime streaming links', error);
     }
-  }
-
-  function formatTime(seconds: number): string {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = Math.floor(seconds % 60);
-    return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
-  }
-
-  function getEpisodeNumber(id: string): string {
-    const epMatch = id.match(/ep[-_]?(\d+)/i);
-    if (epMatch) return epMatch[1];
-    const parts = id.split(/[-/]/);
-    const lastPart = parts[parts.length - 1];
-    const num = parseInt(lastPart, 10);
-    return isNaN(num) ? '1' : num.toString();
-  }
+  } // ← closes fetchAndSetAnimeSource
 
   const toggleAutoPlay = () =>
     setSettings({ ...settings, autoPlay: !autoPlay });
@@ -578,7 +725,7 @@ export function Player({
               }}
               allowFullScreen
               allow="autoplay; fullscreen; picture-in-picture"
-              title={`${animeVideoTitle} - Episode ${episodeNumber}`}
+              title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
             />
           </div>
           {/* Controls overlay — mirrors the HLS player-menu for the iframe */}
@@ -608,76 +755,77 @@ export function Player({
       {/* HLS video player — only shown when NOT in embedded mode */}
       {!isEmbedded && (
         <>
-        <MediaPlayer
-          className='player'
-          title={`${animeVideoTitle} - Episode ${episodeNumber}`}
-          src={src}
-          autoplay={autoPlay && userInteracted}
-          muted={false}
-          crossorigin
-          playsinline
-          onLoadedMetadata={onLoadedMetadata}
-          onCanPlay={onCanPlay}
-          onProviderChange={onProviderChange}
-          onTimeUpdate={onTimeUpdate}
-          ref={player}
-          aspectRatio='16/9'
-          load='eager'
-          posterLoad='eager'
-          streamType='on-demand'
-          storage='storage-key'
-          keyTarget='player'
-          onEnded={handlePlaybackEnded}
-        >
-          <MediaProvider>
-            <Poster 
-              className='vds-poster' 
-              src={banner} 
-              alt='' 
-              onClick={() => animeId && navigate(`/info/${animeId}`)}
-              style={{ cursor: 'pointer' }}
-            />
-            {vttUrl && (
-              <Track kind='chapters' src={vttUrl} default label='Skip Times' />
-            )}
-            {subtitles &&
-              subtitles.length > 0 &&
-              subtitles.map((subtitle, index) => (
-                <Track
-                  key={`subtitle-${index}`}
-                  kind='subtitles'
-                  src={subtitle.url}
-                  label={subtitle.lang}
-                  default={subtitle.lang === 'English' || index === 0}
-                />
-              ))}
-          </MediaProvider>
-          <DefaultAudioLayout icons={defaultLayoutIcons} />
-          <DefaultVideoLayout icons={defaultLayoutIcons} />
-        </MediaPlayer>
-        <div
-          className='player-menu'
-          style={{
-            backgroundColor: 'var(--global-div-tr)',
-            borderRadius: 'var(--global-border-radius)',
-          }}
-        >
-          <Button onClick={toggleAutoPlay}>
-            {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
-          </Button>
-          <Button $autoskip onClick={toggleAutoSkip}>
-            {autoSkip ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Skip
-          </Button>
-          <Button onClick={onPrevEpisode}>
-            <TbPlayerTrackPrev /> Prev
-          </Button>
-          <Button onClick={onNextEpisode}>
-            <TbPlayerTrackNext /> Next
-          </Button>
-          <Button onClick={toggleAutoNext}>
-            {autoNext ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Next
-          </Button>
-        </div>
+          <MediaPlayer
+            className='player'
+            title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
+            src={src}
+            autoplay={autoPlay && userInteracted}
+            muted={false}
+            crossorigin
+            playsinline
+            onLoadedMetadata={onLoadedMetadata}
+            onCanPlay={onCanPlay}
+            onError={onMediaError}
+            onProviderChange={onProviderChange}
+            onTimeUpdate={onTimeUpdate}
+            ref={player}
+            aspectRatio='16/9'
+            load='eager'
+            posterLoad='eager'
+            streamType='on-demand'
+            storage='storage-key'
+            keyTarget='player'
+            onEnded={handlePlaybackEnded}
+          >
+            <MediaProvider>
+              <Poster
+                className='vds-poster'
+                src={banner}
+                alt=''
+                onClick={() => animeId && navigate(`/info/${animeId}`)}
+                style={{ cursor: 'pointer' }}
+              />
+              {vttUrl && (
+                <Track kind='chapters' src={vttUrl} default label='Skip Times' />
+              )}
+              {subtitles &&
+                subtitles.length > 0 &&
+                subtitles.map((subtitle, index) => (
+                  <Track
+                    key={`subtitle-${index}`}
+                    kind='subtitles'
+                    src={subtitle.url}
+                    label={subtitle.lang}
+                    default={subtitle.lang === 'English' || index === 0}
+                  />
+                ))}
+            </MediaProvider>
+            <DefaultAudioLayout icons={defaultLayoutIcons} />
+            <DefaultVideoLayout icons={defaultLayoutIcons} />
+          </MediaPlayer>
+          <div
+            className='player-menu'
+            style={{
+              backgroundColor: 'var(--global-div-tr)',
+              borderRadius: 'var(--global-border-radius)',
+            }}
+          >
+            <Button onClick={toggleAutoPlay}>
+              {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
+            </Button>
+            <Button $autoskip onClick={toggleAutoSkip}>
+              {autoSkip ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Skip
+            </Button>
+            <Button onClick={onPrevEpisode}>
+              <TbPlayerTrackPrev /> Prev
+            </Button>
+            <Button onClick={onNextEpisode}>
+              <TbPlayerTrackNext /> Next
+            </Button>
+            <Button onClick={toggleAutoNext}>
+              {autoNext ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Next
+            </Button>
+          </div>
         </>
       )}
     </div>

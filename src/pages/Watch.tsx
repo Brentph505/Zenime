@@ -216,12 +216,27 @@ const Watch: React.FC = () => {
   );
   const [downloadLink, setDownloadLink] = useState('');
   const [availableServers, setAvailableServers] = useState<string[]>([]);
+  const [hasFetchedServers, setHasFetchedServers] = useState<boolean>(false);
   const [serverEntries, setServerEntries] = useState<
     Array<{ name: string; url: string; type: string }>
   >([]);
   const [embeddedUrl, setEmbeddedUrl] = useState<string>('');
   const [serverUrl, setServerUrl] = useState<string>('');
   const [embeddedServerName, setEmbeddedServerName] = useState<string>('');
+  // Tracks which server keys render as iframes vs HLS
+  const [embeddedServerKeys, setEmbeddedServerKeys] = useState<Set<string>>(
+    new Set(['embedded']),
+  );
+  // HLS (M3U8) sources extracted from animekai API response
+  const [animekaiHlsSources, setAnimekaiHlsSources] = useState<
+    Array<{ name: string; url: string }>
+  >([]);
+  // Direct M3U8 URL to pass to Player when an animekai HLS server is selected
+  const [hlsDirectUrl, setHlsDirectUrl] = useState<string>('');
+  // Subtitles extracted from animekai API response (used for HLS playback)
+  const [animekaiSubtitles, setAnimekaiSubtitles] = useState<
+    Array<{ url: string; lang: string }>
+  >([]);
   const EMBEDDED_PLAYER_1 = (import.meta.env.VITE_EMBEDDED_PLAYER_1 as string) || '';
   const hasEmbeddedPlayer = Boolean(EMBEDDED_PLAYER_1?.trim());
 
@@ -236,7 +251,13 @@ const Watch: React.FC = () => {
     if (!hasEmbeddedPlayer || !animeId || !episodeNumber) return '';
     const cleanBase = EMBEDDED_PLAYER_1.replace(/\/+$/, '');
     const type = lang === 'dub' ? 'dub' : 'sub';
-    return `${cleanBase}/stream/ani/${animeId}/${episodeNumber}/${type}`;
+    const originalUrl = `${cleanBase}/stream/ani/${animeId}/${episodeNumber}/${type}`;
+    const proxyUrl = import.meta.env.VITE_PROXY_URL;
+    if (proxyUrl) {
+      return `${proxyUrl}?url=${encodeURIComponent(originalUrl)}`;
+    } else {
+      return originalUrl;
+    }
   };
 
   const nextEpisodeAiringTime =
@@ -602,7 +623,7 @@ const Watch: React.FC = () => {
 
   // When available servers are fetched, auto-select: restore saved server or pick first available
   useEffect(() => {
-    if (availableServers.length === 0 && !hasEmbeddedPlayer) return;
+    if (!hasFetchedServers) return;
 
     const savedServer = getSavedServerForEpisode(animeId, currentEpisode.id);
     if (
@@ -618,7 +639,7 @@ const Watch: React.FC = () => {
       console.log('Auto-selecting embedded player');
       setSourceType('embedded');
     }
-  }, [availableServers, hasEmbeddedPlayer]);
+  }, [availableServers, hasEmbeddedPlayer, hasFetchedServers]);
 
   // Reset everything when the episode changes so stale values never flash.
   // NOTE: embeddedServerName is intentionally NOT reset here — it is derived
@@ -631,60 +652,127 @@ const Watch: React.FC = () => {
     if (currentEpisode.id && currentEpisode.id !== '0') {
       setSourceType('');
       setAvailableServers([]);
+      setHasFetchedServers(false);
       setServerEntries([]);
       setEmbeddedUrl('');
       setServerUrl('');
+      setHlsDirectUrl('');
+      setAnimekaiHlsSources([]);
+      setAnimekaiSubtitles([]);
+      setEmbeddedServerKeys(new Set(['embedded']));
     }
   }, [currentEpisode.id]);
 
-  // Update animekai server URL when the selected source changes.
+  // Resolve the correct player URL/source whenever the selected server changes.
+  // For animekai:
+  //   - 'embedded'         → Zen Sub/Dub iframe (restore EMBEDDED_PLAYER_1 URL)
+  //   - iframe server name → set embeddedUrl to that server's iframe URL
+  //   - HLS server name    → set hlsDirectUrl to the M3U8 URL (HLS player)
+  // For kickassanime:
+  //   - 'embedded'         → Zen Sub/Dub iframe (handled by existing embeddedUrl state)
+  //   - 'direct'           → HLS player via default API fetch (no extra action needed)
   useEffect(() => {
     if (
       !currentEpisode.id ||
       currentEpisode.id === '0' ||
       currentEpisode.provider !== 'animekai' ||
-      !sourceType ||
-      sourceType === 'embedded' ||
-      serverEntries.length === 0
+      !sourceType
     ) {
       return;
     }
 
+    if (sourceType === 'embedded') {
+      // Zen selected — make sure embeddedUrl points to the Zen player URL
+      if (hasEmbeddedPlayer) {
+        setEmbeddedUrl(
+          buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
+        );
+      }
+      setHlsDirectUrl('');
+      return;
+    }
+
+    // Check if the selected server is one of the animekai HLS sources
+    const hlsSource = animekaiHlsSources.find((s) => s.name === sourceType);
+    if (hlsSource) {
+      setHlsDirectUrl(hlsSource.url);
+      // No embeddedUrl change needed — isEmbedded will be false for this server
+      return;
+    }
+
+    // Otherwise it's an animekai iframe server (e.g. Megaup Sub/Dub)
+    setHlsDirectUrl('');
+    if (serverEntries.length === 0) return;
+
     const normalizedSource = sourceType.toLowerCase();
-    const matchingServer =
-      serverEntries.find(
-        (entry) => entry.name.toLowerCase() === normalizedSource,
-      ) || serverEntries.find((entry) => entry.type === language) ||
+
+    // Extract base name and occurrence index from names like "Megaup Sub 1 (2)"
+    const indexMatch = normalizedSource.match(/^(.+?)\s*\((\d+)\)$/);
+    let baseName = normalizedSource;
+    let targetIndex = 1;
+    if (indexMatch) {
+      baseName = indexMatch[1].trim();
+      targetIndex = parseInt(indexMatch[2], 10);
+    }
+
+    // Find the nth matching server entry
+    let matchCount = 0;
+    let matchingServer: (typeof serverEntries)[number] | null = null;
+    for (const entry of serverEntries) {
+      if (entry.name.toLowerCase() === baseName) {
+        matchCount++;
+        if (matchCount === targetIndex) {
+          matchingServer = entry;
+          break;
+        }
+      }
+    }
+    // Fallback to first match
+    matchingServer =
+      matchingServer ||
+      serverEntries.find((e) => e.name.toLowerCase() === baseName) ||
       serverEntries[0];
 
     if (matchingServer?.url) {
+      // Override embeddedUrl with this specific server's iframe URL
+      setEmbeddedUrl(matchingServer.url);
       setServerUrl(matchingServer.url);
-      if (embeddedUrl !== matchingServer.url) {
-        setEmbeddedUrl(matchingServer.url);
-        setEmbeddedServerName(matchingServer.name);
-      }
     }
-  }, [currentEpisode.id, currentEpisode.provider, sourceType, serverEntries, language, embeddedUrl]);
+  }, [
+    currentEpisode.id,
+    currentEpisode.provider,
+    sourceType,
+    serverEntries,
+    animekaiHlsSources,
+    language,
+    hasEmbeddedPlayer,
+    animeId,
+  ]);
 
   // Fetch available servers for this episode.
-  // The streaming links response already contains:
-  //   servers[0].name  → display name (e.g. "VidStreaming")
-  //   servers[0].url   → iframe src for embedded playback
-  //   sources[]        → HLS streams
-  // So we get everything in one call — no separate embedded fetch needed.
+  // For animekai: servers are treated as embedded iframes (no M3U8 loading).
+  // For other providers: M3U8 verification (existing behavior).
   useEffect(() => {
     if (!currentEpisode.id || currentEpisode.id === '0') return;
 
+    let isMounted = true;
+
     const fetchAvailableServers = async () => {
+      setHasFetchedServers(false);
       console.log('Fetching available servers for episode:', currentEpisode.id);
       try {
         const episodeProvider = currentEpisode.provider || 'kickassanime';
         const response = await fetchAnimeStreamingLinks(currentEpisode.id, episodeProvider);
         console.log('Streaming links response:', response);
 
-        const serverEntriesFromResponse = Array.isArray(response?.servers)
+        const isAnimekai = episodeProvider === 'animekai';
+
+        // For kickassanime, never expose API iframe servers — only Zen Sub/Dub is
+        // shown for that provider. For animekai, populate from the API filtered
+        // to the current language (sub/dub) WITHOUT deduplication to show all servers.
+        const serverEntriesFromResponse = Array.isArray(response?.servers) && isAnimekai
           ? response.servers
-              .filter((server: any) => !hasEmbeddedPlayer)
+              .filter((server: any) => server.type === language)
               .map((server: any) => ({
                 name: server?.name || '',
                 url: server?.url || '',
@@ -694,91 +782,66 @@ const Watch: React.FC = () => {
           : [];
         setServerEntries(serverEntriesFromResponse);
 
-        const firstServer = serverEntriesFromResponse[0];
-
         if (hasEmbeddedPlayer) {
+          // Always show Zen Sub/Dub when EMBEDDED_PLAYER_1 is configured, regardless of provider.
           setEmbeddedUrl(
             buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
           );
           setEmbeddedServerName(getEmbeddedServerName(language));
-          console.log(
-            'Embedded player ready:',
-            getEmbeddedServerName(language),
-            '→',
-            buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
-          );
-        } else if (firstServer) {
-          setEmbeddedServerName(firstServer.name);
-          setEmbeddedUrl(firstServer.url);
-          setServerUrl(firstServer.url);
-          console.log('Embedded server:', firstServer.name, '→', firstServer.url);
         }
 
-        // Build the list of HLS server names to verify.
-        // The embedded iframe server is handled separately and should not be shown
-        // as an HLS proxy server option.
         let servers: string[] = [];
-        if (response?.availableServers?.length > 0) {
-          servers = response.availableServers
-            .map((s: string) => s.toLowerCase())
-            .filter(
-              (name: string) =>
-                !name.includes('embed') && !name.includes('iframe'),
-            );
+
+        if (isAnimekai && serverEntriesFromResponse.length > 0) {
+          // For animekai: show iframe servers only, because M3U8 sources are unreliable.
+          // Prefer the API-provided availableServers list, which preserves sub/dub labels.
+          const availableAnimekaiServers = Array.isArray(response?.availableServers)
+            ? response.availableServers
+            : [];
+
+          const iframeServerKeys = availableAnimekaiServers.length
+            ? availableAnimekaiServers
+            : serverEntriesFromResponse.map((s: any) => s.name);
+
+          // Do not expose animekai M3U8/HLS sources in the UI; they are not always reliable.
+          setAnimekaiHlsSources([]);
+          setAnimekaiSubtitles([]);
+
+          // Iframe servers are embedded; HLS servers are not
+          setEmbeddedServerKeys(new Set(['embedded', ...iframeServerKeys]));
+
+          servers = [...iframeServerKeys];
+          console.log('Animekai servers (iframe EM only):', servers);
+        } else if (response?.availableServers?.length > 0) {
+          // For kickassanime: expose the available m3u8 server names directly.
+          // These are the real provider names like vidstreamz, catstream, etc.
+          servers = response.availableServers;
+        } else if (response?.sources?.length > 0) {
+          // If the API returned sources but did not list servers, fall back
+          // to the synthetic 'direct' option so the player still tries to load.
+          servers = ['direct'];
         } else if (serverEntriesFromResponse.length > 0) {
-          const embeddedServerNameLower = hasEmbeddedPlayer
-            ? ''
-            : firstServer?.name.toLowerCase() || '';
-          servers = serverEntriesFromResponse
-            .map((server: { name: string; url: string; type: string }) =>
-              server.name.toLowerCase(),
-            )
-            .filter((name: string) => name !== embeddedServerNameLower)
-            .filter(
-              (name: string) =>
-                !name.includes('embed') && !name.includes('iframe'),
-            );
-        } else {
-          servers = ['vidstreaming', 'duckstream', 'birdstream'];
+          // Fallback: provider has server entries but no sources/availableServers list.
+          // Use 'direct' so the HLS player attempts a default fetch.
+          servers = ['direct'];
         }
 
-        // Deduplicate and strip any generic placeholder
-        servers = [...new Set(servers)].filter((s) => s !== 'default');
-
-        // Verify each server actually returns M3U8 sources.
-        const verifiedServers: string[] = [];
-        for (const server of servers) {
-          try {
-            const episodeProvider = currentEpisode.provider || 'kickassanime';
-            const serverResponse = await fetchAnimeStreamingLinks(
-              currentEpisode.id,
-              episodeProvider,
-              server,
-            );
-            const hasM3U8 = serverResponse.sources?.some(
-              (s: any) => s.isM3U8 || s.url?.endsWith('.m3u8'),
-            );
-            if (hasM3U8) {
-              verifiedServers.push(server);
-              console.log(`Server ${server} verified ✓`);
-            } else {
-              console.log(`Server ${server} has no M3U8 sources, skipping`);
-            }
-          } catch {
-            console.log(`Server ${server} check failed, skipping`);
-          }
-        }
-
-        console.log('Verified HLS servers:', verifiedServers);
-        setAvailableServers(verifiedServers);
+        console.log('Available servers:', servers);
+        setAvailableServers(servers);
       } catch (error) {
         console.error('Error fetching available servers:', error);
         setAvailableServers([]);
+      } finally {
+        setHasFetchedServers(true);
       }
     };
 
     fetchAvailableServers();
-  }, [currentEpisode.id, animeId]);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentEpisode.id, animeId, language]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -919,6 +982,13 @@ const Watch: React.FC = () => {
                     sourceType={sourceType}
                     embeddedUrl={embeddedUrl}
                     serverUrl={serverUrl}
+                    embeddedServerKeys={embeddedServerKeys}
+                    hlsDirectUrl={hlsDirectUrl}
+                    externalSubtitles={
+                      currentEpisode.provider === 'animekai'
+                        ? animekaiSubtitles
+                        : undefined
+                    }
                   />
                 )}
               </VideoPlayerContainer>
@@ -960,6 +1030,7 @@ const Watch: React.FC = () => {
               nextEpisodenumber={nextEpisodenumber}
               availableServers={availableServers}
               embeddedServerName={embeddedServerName}
+              embeddedServerKeys={embeddedServerKeys}
             />
           )}
           {animeInfo && <AnimeData animeData={animeInfo} />}

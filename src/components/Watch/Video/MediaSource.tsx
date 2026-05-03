@@ -17,6 +17,8 @@ interface MediaSourceProps {
   nextEpisodenumber?: string;
   availableServers?: string[];
   embeddedServerName?: string;
+  /** Server keys that should display with the EM (iframe) badge */
+  embeddedServerKeys?: Set<string>;
 }
 
 const UpdatedContainer = styled.div`
@@ -212,6 +214,7 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   nextEpisodenumber,
   availableServers = [],
   embeddedServerName = 'Embedded',
+  embeddedServerKeys,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -225,21 +228,31 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
    * Build the server button list from verified HLS servers only.
    */
   const buildServerButtons = () => {
-    // Always show all servers: Zen Sub/Dub (embedded) + all verified HLS servers.
-    // Filter 'embedded' string out of availableServers to avoid duplicating the Zen button.
+    // Filter out the synthetic 'direct' pseudo-server — it's never shown as a
+    // labelled button; the HLS player just uses it silently.
+    // Also filter the plain 'embedded' string to avoid duplicating the Zen button.
     const filteredAvailableServers = availableServers.filter(
-      (server) => server !== 'embedded',
+      (server) => server !== 'embedded' && server !== 'direct',
     );
 
-    const buttons = filteredAvailableServers.map((server) => ({
-      key: server,
-      label: server.charAt(0).toUpperCase() + server.slice(1),
-      isEmbedded: false,
-    }));
+    const buttons = filteredAvailableServers.map((server) => {
+      // Mark as embedded (EM badge) if the server key is in embeddedServerKeys,
+      // or fall back to the old heuristic (contains 'embed'/'iframe').
+      const isServerEmbedded = embeddedServerKeys
+        ? embeddedServerKeys.has(server)
+        : server.includes('embed') || server.includes('iframe');
 
-    // Prepend Zen Sub / Zen Dub when the embedded player is configured.
+      return {
+        key: server,
+        label: server.charAt(0).toUpperCase() + server.slice(1),
+        isEmbedded: isServerEmbedded,
+      };
+    });
+
+    // Append Zen Sub / Zen Dub when the embedded player is configured.
+    // This makes it a last-resort option instead of the primary source.
     if (embeddedServerName) {
-      buttons.unshift({
+      buttons.push({
         key: 'embedded',
         label: embeddedServerName,
         isEmbedded: true,

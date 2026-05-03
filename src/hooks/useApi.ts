@@ -829,7 +829,6 @@ export async function fetchAnimeStreamingLinks(
 ) {
   const finalProvider = provider || 'kickassanime';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
-  if (server) params.append('server', server);
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
   const cacheKey = generateCacheKey(
     'animeStreamingLinks',
