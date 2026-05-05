@@ -236,15 +236,17 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
     );
 
     const buttons = filteredAvailableServers.map((server) => {
-      // Mark as embedded (EM badge) if the server key is in embeddedServerKeys,
-      // or fall back to the old heuristic (contains 'embed'/'iframe').
+      // Mark as embedded (EM badge) if the server key is in embeddedServerKeys
       const isServerEmbedded = embeddedServerKeys
         ? embeddedServerKeys.has(server)
         : server.includes('embed') || server.includes('iframe');
 
+      // Strip internal __EM marker for display
+      const displayName = server.replace(/__EM$/, '');
+
       return {
         key: server,
-        label: server.charAt(0).toUpperCase() + server.slice(1),
+        label: displayName.charAt(0).toUpperCase() + displayName.slice(1),
         isEmbedded: isServerEmbedded,
       };
     });
