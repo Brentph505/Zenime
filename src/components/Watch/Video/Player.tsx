@@ -60,6 +60,37 @@ const Button = styled.button<{ $autoskip?: boolean }>`
   `}
 `;
 
+const EmbeddedPlayerWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+
+  .player-menu {
+    position: static !important;
+    width: 100%;
+    z-index: 1;
+  }
+`;
+
+const EmbeddedIframeWrapper = styled.div`
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 12rem;
+  background-color: black;
+  overflow: hidden;
+`;
+
+const EmbeddedIframe = styled.iframe`
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: none;
+  border-radius: var(--global-border-radius);
+  background-color: black;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+`;
+
 type PlayerProps = {
   episodeId: string;
   episodeNumber?: number;
@@ -711,25 +742,15 @@ export function Player({
     <div style={{ animation: 'popIn 0.25s ease-in-out' }}>
       {/* Embedded iframe player — key forces full remount when URL changes */}
       {isEmbedded && builtEmbeddedUrl && (
-        <div style={{ position: 'relative' }}>
-          <div
-            key={builtEmbeddedUrl}
-            style={{ width: '100%', aspectRatio: '16/9' }}
-          >
-            <iframe
+        <EmbeddedPlayerWrapper>
+          <EmbeddedIframeWrapper key={builtEmbeddedUrl}>
+            <EmbeddedIframe
               src={builtEmbeddedUrl}
-              style={{
-                width: '100%',
-                height: '100%',
-                border: 'none',
-                borderRadius: 'var(--global-border-radius)',
-              }}
               allowFullScreen
               allow="accelerometer; gyroscope; magnetometer; autoplay; fullscreen; picture-in-picture; screen-wake-lock"
               title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
             />
-          </div>
-          {/* Controls overlay — mirrors the HLS player-menu for the iframe */}
+          </EmbeddedIframeWrapper>
           <div
             className='player-menu'
             style={{
@@ -750,7 +771,7 @@ export function Player({
               {autoNext ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Next
             </Button>
           </div>
-        </div>
+        </EmbeddedPlayerWrapper>
       )}
 
       {/* HLS video player — only shown when NOT in embedded mode */}
