@@ -1022,47 +1022,47 @@ const Info: React.FC = () => {
   }, [animeInfo?.relations]);
 
   // Process recommendations - must be before early returns for hook consistency
-  const recommendations = useMemo(() => {
+  const recommendations = useMemo<Anime[]>(() => {
     const parentColor = animeInfo?.color ?? '#8b5cf6';
-    return (
-      animeInfo?.recommendations?.slice(0, 16).map((rec): Anime => ({
-        id: rec.id,
-        title: rec.title,
-        malId: rec.malId,
-        trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
-        synonyms: [],
-        isLicensed: false,
-        isAdult: false,
-        countryOfOrigin: '',
-        image: rec.image,
-        imageHash: rec.imageHash,
-        cover: rec.cover,
-        coverHash: rec.coverHash,
-        description: '',
-        status: rec.status,
-        type: rec.type,
-        releaseDate: 0,
-        totalEpisodes: rec.episodes,
-        currentEpisode: rec.episodes,
-        rating: rec.rating,
-        duration: 0,
-        genres: [],
-        studios: [],
-        studioIds: [],
-        subOrDub: 'sub',
-        season: '',
-        popularity: 0,
-        color: parentColor,
-        startDate: { year: 0, month: 0, day: 0 },
-        endDate: { year: 0, month: 0, day: 0 },
-        recommendations: [],
-        characters: [],
-        relations: [],
-        mappings: [],
-        artwork: [],
-        episodes: [],
-      }))
-    ) ?? [];
+    const recs = animeInfo?.recommendations?.slice(0, 16).map((rec): Anime => ({
+      id: rec.id,
+      title: rec.title,
+      malId: rec.malId,
+      trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
+      synonyms: [],
+      isLicensed: false,
+      isAdult: false,
+      countryOfOrigin: '',
+      image: rec.image,
+      imageHash: rec.imageHash,
+      cover: rec.cover,
+      coverHash: rec.coverHash,
+      description: '',
+      status: rec.status,
+      type: rec.type,
+      releaseDate: 0,
+      totalEpisodes: rec.episodes,
+      currentEpisode: rec.episodes,
+      rating: rec.rating,
+      duration: 0,
+      genres: [],
+      studios: [],
+      studioIds: [],
+      subOrDub: 'sub',
+      season: '',
+      popularity: 0,
+      color: parentColor,
+      startDate: { year: 0, month: 0, day: 0 },
+      endDate: { year: 0, month: 0, day: 0 },
+      recommendations: [],
+      characters: [],
+      relations: [],
+      mappings: [],
+      artwork: [],
+      episodes: [],
+    }));
+
+    return recs ?? [];
   }, [animeInfo?.recommendations, animeInfo?.color]);
 
   // Determine if scroll buttons are needed (more than 1 row worth of items)
