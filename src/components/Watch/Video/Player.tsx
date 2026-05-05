@@ -188,12 +188,6 @@ export function Player({
         }
       }
       
-      // Add fullscreen landscape parameters for animekai iframes
-      if (episodeProvider === 'animekai') {
-        u.searchParams.set('fs', '1');
-        u.searchParams.set('orientation', 'landscape');
-      }
-      
       return u.toString();
     } catch {
       return embeddedUrl;
@@ -731,9 +725,7 @@ export function Player({
                 borderRadius: 'var(--global-border-radius)',
               }}
               allowFullScreen
-              webkitallowfullscreen="true"
-              mozallowfullscreen="true"
-              allow="autoplay; fullscreen; picture-in-picture"
+              allow="accelerometer; gyroscope; magnetometer; autoplay; fullscreen; picture-in-picture; screen-wake-lock"
               title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
             />
           </div>

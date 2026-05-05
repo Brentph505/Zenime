@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import {
@@ -842,18 +842,11 @@ const StyledCardGrid = styled.div`
   -webkit-overflow-scrolling: touch;
 
   &::-webkit-scrollbar {
-    display: block;
-    height: 6px;
+    display: none;
+    height: 0;
   }
-  &::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  &::-webkit-scrollbar-thumb {
-    background: ${A.accent};
-    border-radius: 3px;
-  }
-  scrollbar-width: thin;
-  scrollbar-color: ${A.accent} transparent;
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
 
   & > * {
     flex: 0 0 auto;
@@ -864,8 +857,6 @@ const StyledCardGrid = styled.div`
   @media (max-width: 800px) {
     gap: 0.75rem;
     & > * { width: 130px; }
-    &::-webkit-scrollbar { display: none; }
-    scrollbar-width: none;
   }
 
   @media (max-width: 450px) {
@@ -875,11 +866,6 @@ const StyledCardGrid = styled.div`
 `;
 
 // ─── States ───────────────────────────────────────────────────────────────────
-
-const Loader = styled.div`
-  min-height: 60vh; display: flex; align-items: center; justify-content: center;
-  color: ${A.accent}; font-size: 0.9rem; letter-spacing: 0.2em; text-transform: uppercase;
-`;
 
 const ErrorWrap = styled.div`
   text-align: center; padding: 6rem 2rem;
@@ -908,6 +894,9 @@ const Info: React.FC = () => {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InfoTab>('overview');
+  const [provider, setProvider] = useState<'kickassanime' | 'animekai'>(() => {
+    return (localStorage.getItem('provider-preference') as 'kickassanime' | 'animekai') || 'kickassanime';
+  });
 
   // Episode controls
   const [epView,   setEpView]   = useState<EpView>('card');
@@ -924,24 +913,65 @@ const Info: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!animeId) { setError('Anime ID not found'); setLoading(false); return; }
+    if (!animeId) {
+      setError('Anime ID not found');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setAnimeInfo(null);
+
+    const providerOrder = provider === 'animekai'
+      ? ['animekai', 'kickassanime'] as const
+      : ['kickassanime', 'animekai'] as const;
+
+    const hasEpisodes = (data: Anime | null) => {
+      if (!data) return false;
+      if (!Array.isArray(data.episodes)) return false;
+      return data.episodes.length > 0;
+    };
+
     (async () => {
-      try {
-        const data = await fetchAnimeInfo(animeId, 'kickassanime');
-        setAnimeInfo(data);
-      } catch {
+      let loaded = false;
+
+      for (const provider of providerOrder) {
         try {
-          const data = await fetchAnimeData(animeId, 'kickassanime');
-          setAnimeInfo(data);
+          const data = await fetchAnimeInfo(animeId, provider);
+          if (hasEpisodes(data)) {
+            setAnimeInfo(data);
+            setProvider(provider);
+            localStorage.setItem('provider-preference', provider);
+            loaded = true;
+            break;
+          }
         } catch {
-          setError('Failed to load anime information.');
+          // continue to next provider
         }
-      } finally {
-        setLoading(false);
       }
+
+      if (!loaded) {
+        for (const provider of providerOrder) {
+          try {
+            const data = await fetchAnimeData(animeId, provider);
+            if (hasEpisodes(data)) {
+              setAnimeInfo(data);
+              setProvider(provider);
+              localStorage.setItem('provider-preference', provider);
+              loaded = true;
+              break;
+            }
+          } catch {
+            // continue to next provider
+          }
+        }
+      }
+
+      if (!loaded) {
+        setError('Failed to load anime information.');
+      }
+      setLoading(false);
     })();
   }, [animeId]);
 
@@ -993,8 +1023,47 @@ const Info: React.FC = () => {
 
   // Process recommendations - must be before early returns for hook consistency
   const recommendations = useMemo(() => {
-    return animeInfo?.recommendations?.slice(0, 16) ?? [];
-  }, [animeInfo?.recommendations]);
+    const parentColor = animeInfo?.color ?? '#8b5cf6';
+    return (
+      animeInfo?.recommendations?.slice(0, 16).map((rec): Anime => ({
+        id: rec.id,
+        title: rec.title,
+        malId: rec.malId,
+        trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
+        synonyms: [],
+        isLicensed: false,
+        isAdult: false,
+        countryOfOrigin: '',
+        image: rec.image,
+        imageHash: rec.imageHash,
+        cover: rec.cover,
+        coverHash: rec.coverHash,
+        description: '',
+        status: rec.status,
+        type: rec.type,
+        releaseDate: 0,
+        totalEpisodes: rec.episodes,
+        currentEpisode: rec.episodes,
+        rating: rec.rating,
+        duration: 0,
+        genres: [],
+        studios: [],
+        studioIds: [],
+        subOrDub: 'sub',
+        season: '',
+        popularity: 0,
+        color: parentColor,
+        startDate: { year: 0, month: 0, day: 0 },
+        endDate: { year: 0, month: 0, day: 0 },
+        recommendations: [],
+        characters: [],
+        relations: [],
+        mappings: [],
+        artwork: [],
+        episodes: [],
+      }))
+    ) ?? [];
+  }, [animeInfo?.recommendations, animeInfo?.color]);
 
   // Determine if scroll buttons are needed (more than 1 row worth of items)
   const recsNeedScroll = recommendations.length > 5;
