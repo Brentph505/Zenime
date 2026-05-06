@@ -328,11 +328,19 @@ export function Player({
     return () => window.removeEventListener('message', handleMessage);
   }, [isEmbedded, episodeId]);
 
-  // When switching TO embedded mode, clear the HLS src so MediaPlayer unmounts cleanly
+  const prevIsEmbeddedRef = useRef<boolean>(isEmbedded);
+
+  // When switching TO embedded mode, clear the HLS src so MediaPlayer unmounts cleanly.
+  // When switching BACK from embedded mode, reset HLS state so the new source can reload.
   useEffect(() => {
     if (isEmbedded) {
       setSrc('');
+    } else if (prevIsEmbeddedRef.current && !isEmbedded) {
+      resetHlsRetryState();
+      setSrc('');
+      setSubtitles([]);
     }
+    prevIsEmbeddedRef.current = isEmbedded;
   }, [isEmbedded]);
 
   useEffect(() => {
@@ -340,13 +348,14 @@ export function Player({
     if (isEmbedded) return;
 
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
+    setSrc('');
     fetchAndSetAnimeSource();
     fetchAndProcessSkipTimes();
 
     return () => {
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
-  }, [episodeId, malId, updateDownloadLink, sourceType]);
+  }, [episodeId, malId, updateDownloadLink, sourceType, serverUrl, hlsDirectUrl]);
 
   useEffect(() => {
     return () => {
@@ -588,8 +597,11 @@ export function Player({
   }
 
   async function fetchAndSetAnimeSource() {
-    // If a direct M3U8 URL was provided (animekai HLS server), use it immediately.
-    if (hlsDirectUrl) {
+    // If a direct M3U8 URL was provided, use it immediately.
+    const isValidHlsDirectUrl = hlsDirectUrl &&
+      (/\.m3u8$/i.test(hlsDirectUrl) || /\/manifest\//i.test(hlsDirectUrl));
+
+    if (isValidHlsDirectUrl) {
       resetHlsRetryState();
       hlsUrlCandidatesRef.current = [hlsDirectUrl];
       setSrc({
@@ -601,6 +613,13 @@ export function Player({
         setSubtitles(externalSubtitles);
       }
       return;
+    }
+
+    if (hlsDirectUrl && !isValidHlsDirectUrl) {
+      console.warn(
+        '[Player] Ignoring invalid hlsDirectUrl and falling back to proxied fetch:',
+        hlsDirectUrl,
+      );
     }
 
     // 'direct' is a synthetic KAA server key meaning "use the default API fetch".
@@ -778,6 +797,7 @@ export function Player({
       {!isEmbedded && (
         <>
           <MediaPlayer
+            key={`player-${episodeId}-${sourceType}-${hlsDirectUrl || serverUrl}`}
             className='player'
             title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
             src={src}

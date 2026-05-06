@@ -782,10 +782,13 @@ const Watch: React.FC = () => {
           setServerUrl(selectedEntry.url);
           setHlsDirectUrl('');
         } else {
-          // M3U8 version
-          setHlsDirectUrl(selectedEntry.url);
+          // Kickassanime server URL may be a player page, not a direct m3u8 manifest.
+          // Only treat it as a direct HLS source when it looks like a real m3u8 manifest.
+          const isDirectHlsUrl = /\.m3u8$/i.test(selectedEntry.url) ||
+            /\/manifest\//i.test(selectedEntry.url);
           setEmbeddedUrl('');
           setServerUrl(selectedEntry.url);
+          setHlsDirectUrl(isDirectHlsUrl ? selectedEntry.url : '');
         }
       }
     }
