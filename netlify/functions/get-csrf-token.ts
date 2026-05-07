@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
-export default async function handler(event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) {
+export const handler = async (event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) => {
   if (event.httpMethod !== 'GET') {
     return new Response('Method Not Allowed', {
       status: 405,

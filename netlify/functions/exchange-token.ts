@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export default async function handler(event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) {
+export const handler = async (event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) => {
   if (event.httpMethod !== 'POST') {
     return new Response('Method Not Allowed', {
       status: 405,
@@ -55,5 +55,3 @@ export default async function handler(event: import('@netlify/functions').Handle
     );
   }
 };
-
-export { handler };

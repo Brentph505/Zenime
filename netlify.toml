@@ -13,5 +13,8 @@
   to = "/.netlify/functions/get-csrf-token"
   status = 200
 
+[build]
+  functions = "netlify/functions"
+
 [build.environment]
   VITE_DEPLOY_PLATFORM = "NETLIFY"
