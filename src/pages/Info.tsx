@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import {
-  FaPlay, FaSearch, FaClosedCaptioning, FaMicrophone,
+  FaPlay, FaBookOpen, FaSearch, FaClosedCaptioning, FaMicrophone,
   FaChevronLeft, FaChevronRight,
 } from 'react-icons/fa';
 import { MdViewList, MdGridOn } from 'react-icons/md';
@@ -11,8 +11,10 @@ import { BsEye } from 'react-icons/bs';
 import {
   fetchAnimeInfo,
   fetchAnimeData,
+  fetchMangaInfo,
   Episode,
   Anime,
+  Manga,
   CardItem as AnimeCardItem,
 } from '../index';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
@@ -41,6 +43,57 @@ const A = {
   border:     'var(--global-border)',
   faint:      'var(--global-div-tr)',
 };
+
+// ─── AniList format types that are definitively manga/print media ─────────────
+// These are the format strings that AniList returns for non-anime media.
+// TV, TV_SHORT, MOVIE, SPECIAL, OVA, ONA, MUSIC → ANIME
+// MANGA, ONE_SHOT, NOVEL, LIGHT_NOVEL            → MANGA
+const MANGA_FORMAT_TYPES = new Set([
+  'MANGA', 'ONE_SHOT', 'NOVEL', 'LIGHT_NOVEL',
+]);
+
+type MediaType = 'ANIME' | 'MANGA';
+type AnimeProvider = 'kickassanime' | 'animekai';
+type MangaProvider = 'mangahere' | 'mangapill';
+type Provider = AnimeProvider | MangaProvider;
+type InfoTab = 'overview' | 'characters' | 'episodes';
+
+const RANGE = 100;
+
+/**
+ * Determines the correct MediaType for a piece of content.
+ *
+ * Priority order (highest → lowest):
+ *  1. Explicit URL ?type=MANGA / ?type=ANIME param — user/router set this
+ *  2. AniList `type` field on the returned data (MANGA vs ANIME at the media level)
+ *  3. AniList `format` field if type is ambiguous (ONE_SHOT, NOVEL, etc.)
+ *
+ * We deliberately NEVER upgrade an ANIME result to MANGA based solely on
+ * missing episodes — a provider outage should not change the content type.
+ */
+function resolveMediaType(
+  queryType: string | null,
+  dataType?: string,
+  dataFormat?: string,
+): MediaType {
+  // 1. Explicit URL param wins unconditionally
+  if (queryType === 'MANGA') return 'MANGA';
+  if (queryType === 'ANIME') return 'ANIME';
+
+  // 2. AniList `type` field — this is the most reliable signal
+  //    AniList returns "ANIME" or "MANGA" at the top-level type field
+  const anilistType = dataType?.toUpperCase();
+  if (anilistType === 'MANGA') return 'MANGA';
+  if (anilistType === 'ANIME') return 'ANIME';
+
+  // 3. Fall back to format-based detection
+  const format = (dataFormat ?? dataType ?? '').toUpperCase();
+  if (MANGA_FORMAT_TYPES.has(format)) return 'MANGA';
+
+  // 4. Default to ANIME — better to show an anime page with no episodes
+  //    than to misidentify an anime as manga
+  return 'ANIME';
+}
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 
@@ -125,7 +178,7 @@ const Grid = styled.div`
   }
 `;
 
-// ─── Mobile hero overlay — poster + quick info floated over the hero ──────────
+// ─── Mobile hero overlay ──────────────────────────────────────────────────────
 
 const MobileHeader = styled.div`
   display: none;
@@ -149,9 +202,7 @@ const MobilePosterWrap = styled.div`
   position: relative;
 `;
 
-const MobilePosterImg = styled.img`
-  width: 100%; display: block;
-`;
+const MobilePosterImg = styled.img`width: 100%; display: block;`;
 
 const MobilePosterScore = styled.div`
   position: absolute; top: 0; right: 0;
@@ -160,9 +211,7 @@ const MobilePosterScore = styled.div`
   padding: 0.2rem 0.45rem; letter-spacing: 0.04em; border-bottom-left-radius: 6px;
 `;
 
-const MobileTitleBlock = styled.div`
-  flex: 1; min-width: 0; padding-bottom: 0.25rem;
-`;
+const MobileTitleBlock = styled.div`flex: 1; min-width: 0; padding-bottom: 0.25rem;`;
 
 const MobileEyebrow = styled.div`
   font-size: 0.62rem; font-weight: 700; letter-spacing: 0.16em;
@@ -180,32 +229,23 @@ const MobileRomaji = styled.p`
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 `;
 
-const MobilePillRow = styled.div`
-  display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem;
-`;
+const MobilePillRow = styled.div`display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.4rem;`;
 
 // ─── Left column ─────────────────────────────────────────────────────────────
 
 const LeftCol = styled.div`
   display: flex; flex-direction: column; gap: 0.75rem;
   animation: ${slideR} 0.5s ease both;
-
-  @media (max-width: 860px) {
-    display: none;
-  }
+  @media (max-width: 860px) { display: none; }
 `;
 
 const PosterWrap = styled.div`
   position: relative; border-radius: 8px; overflow: hidden;
   box-shadow: 0 0 0 1px #e5e7eb, 0 8px 24px rgba(0,0,0,0.12);
-  .dark-mode & {
-    box-shadow: 0 0 0 1px ${A.border}, 0 24px 48px rgba(0,0,0,0.55);
-  }
+  .dark-mode & { box-shadow: 0 0 0 1px ${A.border}, 0 24px 48px rgba(0,0,0,0.55); }
 `;
 
-const PosterImg = styled.img`
-  width: 100%; display: block;
-`;
+const PosterImg = styled.img`width: 100%; display: block;`;
 
 const ScoreBadge = styled.div`
   position: absolute; top: 0; right: 0;
@@ -214,9 +254,7 @@ const ScoreBadge = styled.div`
   padding: 0.25rem 0.5rem; letter-spacing: 0.04em; border-bottom-left-radius: 6px;
 `;
 
-const PosterActions = styled.div`
-  display: flex; flex-direction: column; gap: 0.5rem;
-`;
+const PosterActions = styled.div`display: flex; flex-direction: column; gap: 0.5rem;`;
 
 const WatchBtn = styled.button`
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;
@@ -225,6 +263,7 @@ const WatchBtn = styled.button`
   letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer;
   transition: filter 0.2s, transform 0.15s;
   &:hover { filter: brightness(1.12); transform: translateY(-1px); }
+  &:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 `;
 
 const ExtRow = styled.div`display: flex; gap: 0.5rem;`;
@@ -235,72 +274,45 @@ const ExtBtn = styled.a`
   border-radius: 6px; color: #6b7280; text-decoration: none;
   transition: border-color 0.2s, color 0.2s;
   &:hover { border-color: ${A.accent}; color: ${A.text}; }
-  .dark-mode & {
-    background: ${A.card};
-    border: 1px solid ${A.border};
-    color: ${A.muted};
-  }
+  .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; color: ${A.muted}; }
 `;
 
 const SidebarMeta = styled.div`
-  display: flex; flex-direction: column; gap: 0; width: 100%;
-  font-size: 0.78rem;
+  display: flex; flex-direction: column; gap: 0; width: 100%; font-size: 0.78rem;
 `;
 
 const SideMetaRow = styled.div`
   display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;
   padding: 0.4rem 0; border-bottom: 1px solid #e5e7eb;
   &:last-child { border-bottom: none; }
-  .dark-mode & {
-    border-bottom: 1px solid ${A.faint};
-  }
+  .dark-mode & { border-bottom: 1px solid ${A.faint}; }
 `;
 
 const SideMetaKey = styled.span`color: #6b7280; white-space: nowrap; flex-shrink: 0;
-  .dark-mode & { color: ${A.muted}; }
-`;
+  .dark-mode & { color: ${A.muted}; }`;
 const SideMetaVal = styled.span`text-align: right; color: #1f2937; word-break: break-word; font-weight: 600;
-  .dark-mode & { color: ${A.text}; }
-`;
+  .dark-mode & { color: ${A.text}; }`;
 
 // ─── Right column ─────────────────────────────────────────────────────────────
 
 const RightCol = styled.div`
   min-width: 0; display: flex; flex-direction: column; gap: 1.5rem;
   padding: 1.25rem 1.25rem 1.5rem;
-  background: #f8f9fa;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  background: #f8f9fa; border: 1px solid #e5e7eb; border-radius: 12px;
   animation: ${slideU} 0.5s ease 0.1s both;
-
-  .dark-mode & {
-    background: var(--global-div-tr);
-    border: 1px solid ${A.border};
-  }
-
+  .dark-mode & { background: var(--global-div-tr); border: 1px solid ${A.border}; }
   @media (max-width: 860px) {
-    border-radius: 0;
-    border-left: none;
-    border-right: none;
-    border-top: none;
-    padding: 0.85rem 0.75rem 1.25rem;
-    gap: 1rem;
-    margin: 0;
-    width: 100%;
-    box-sizing: border-box;
+    border-radius: 0; border-left: none; border-right: none; border-top: none;
+    padding: 0.85rem 0.75rem 1.25rem; gap: 1rem; margin: 0; width: 100%; box-sizing: border-box;
   }
   @media (max-width: 600px) { padding: 0.75rem 0.75rem 1.25rem; }
 `;
 
-const DesktopTitleBlock = styled.div`
-  @media (max-width: 860px) { display: none; }
-`;
+const DesktopTitleBlock = styled.div`@media (max-width: 860px) { display: none; }`;
 
 const MobileActionBar = styled.div`
   display: none;
-  @media (max-width: 860px) {
-    display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
-  }
+  @media (max-width: 860px) { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 `;
 
 const MobileWatchBtn = styled.button`
@@ -308,6 +320,7 @@ const MobileWatchBtn = styled.button`
   padding: 0.65rem; background: ${A.accent}; border: none; border-radius: 6px;
   color: #0a0a0c; font-size: 0.78rem; font-weight: 800;
   letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
 `;
 
 const MobileExtBtn = styled.a`
@@ -316,50 +329,31 @@ const MobileExtBtn = styled.a`
   border-radius: 6px; color: #6b7280; text-decoration: none;
   transition: border-color 0.2s, color 0.2s;
   &:hover { border-color: ${A.accent}; color: ${A.text}; }
-  .dark-mode & {
-    background: ${A.card};
-    border: 1px solid ${A.border};
-    color: ${A.muted};
-  }
+  .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; color: ${A.muted}; }
 `;
 
 const MobileMeta = styled.div`
   display: none;
   @media (max-width: 860px) {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    overflow: hidden;
-    font-size: 0.75rem;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; font-size: 0.75rem;
     background: #f8f9fa;
-    .dark-mode & {
-      background: ${A.surface};
-      border-color: ${A.border};
-    }
+    .dark-mode & { background: ${A.surface}; border-color: ${A.border}; }
   }
 `;
 
 const MobileMetaCell = styled.div`
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid #e5e7eb;
-  border-right: 1px solid #e5e7eb;
+  padding: 0.4rem 0.6rem; border-bottom: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb;
   background: #ffffff;
   &:nth-child(2n) { border-right: none; }
   &:nth-last-child(-n+2) { border-bottom: none; }
-  .dark-mode & {
-    background: ${A.card};
-    border-color: ${A.border};
-  }
+  .dark-mode & { background: ${A.card}; border-color: ${A.border}; }
 `;
 
 const MobileMetaKey = styled.div`color: #6b7280; font-size: 0.68rem; margin-bottom: 0.1rem; letter-spacing: 0.04em;
-  .dark-mode & { color: ${A.muted}; }
-`;
+  .dark-mode & { color: ${A.muted}; }`;
 const MobileMetaVal = styled.div`color: #1f2937; font-weight: 600; font-size: 0.78rem;
-  .dark-mode & { color: ${A.text}; }
-`;
+  .dark-mode & { color: ${A.text}; }`;
 
 const EyeBrow = styled.div`
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.18em;
@@ -372,8 +366,7 @@ const MainTitle = styled.h1`
   @media (max-width: 600px) { font-size: 1.45rem; }
 `;
 const RomajiSub = styled.p`font-size: 0.85rem; color: #6b7280; margin: 0 0 0.9rem; font-style: italic;
-  .dark-mode & { color: ${A.muted}; }
-`;
+  .dark-mode & { color: ${A.muted}; }`;
 
 const PillRow = styled.div`display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.5rem;`;
 
@@ -385,28 +378,19 @@ const Pill = styled.span<{ $accent?: boolean }>`
 `;
 
 const ClickablePill = styled(Pill)`
-  cursor: pointer;
-  transition: all 0.2s ease;
-  &:hover {
-    border-color: ${A.accent};
-    color: ${A.accent};
-    background: ${A.accentDim};
-  }
+  cursor: pointer; transition: all 0.2s ease;
+  &:hover { border-color: ${A.accent}; color: ${A.accent}; background: ${A.accentDim}; }
 `;
 
 const ClickableMetaVal = styled.span`
-  cursor: pointer;
-  transition: color 0.2s ease;
-  &:hover {
-    color: ${A.accent};
-  }
+  cursor: pointer; transition: color 0.2s ease;
+  &:hover { color: ${A.accent}; }
 `;
 
 // ─── Tab navigation ───────────────────────────────────────────────────────────
 
 const TabNav = styled.div`display: flex; border-bottom: 1px solid #e5e7eb;
-  .dark-mode & { border-bottom: 1px solid ${A.border}; }
-`;
+  .dark-mode & { border-bottom: 1px solid ${A.border}; }`;
 
 const Tab = styled.button<{ $active?: boolean }>`
   padding: 0.7rem 1.25rem; background: none; border: none;
@@ -417,14 +401,8 @@ const Tab = styled.button<{ $active?: boolean }>`
   letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer;
   transition: color 0.2s, border-color 0.2s;
   &:hover { color: ${A.text}; }
-  .dark-mode & {
-    color: ${({ $active }) => $active ? A.text : A.muted};
-  }
-  @media (max-width: 480px) {
-    padding: 0.6rem 0.85rem;
-    font-size: 0.75rem;
-    letter-spacing: 0.04em;
-  }
+  .dark-mode & { color: ${({ $active }) => $active ? A.text : A.muted}; }
+  @media (max-width: 480px) { padding: 0.6rem 0.85rem; font-size: 0.75rem; letter-spacing: 0.04em; }
 `;
 
 const Panel = styled.div`animation: ${fadeIn} 0.25s ease;`;
@@ -433,43 +411,30 @@ const Panel = styled.div`animation: ${fadeIn} 0.25s ease;`;
 
 const Desc = styled.p`
   font-size: 0.88rem; line-height: 1.85; color: #4b5563; margin: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 6px;
+  max-height: 260px; overflow-y: auto; padding-right: 6px;
   &::-webkit-scrollbar { width: 4px; }
   &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb { background: ${A.accent}; border-radius: 3px; }
-  scrollbar-width: thin;
-  scrollbar-color: ${A.accent} transparent;
+  scrollbar-width: thin; scrollbar-color: ${A.accent} transparent;
   .dark-mode & { color: ${A.muted}; }
   @media (max-width: 860px) { max-height: 160px; }
 `;
 
 const TrailerBox = styled.div`
-  position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;
-  border-radius: 8px;
+  position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px;
   iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
 `;
 
 // ─── Characters ───────────────────────────────────────────────────────────────
 
 const CharGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.6rem;
-  max-height: 400px;
-  overflow-y: auto;
-  padding-right: 8px;
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem;
+  max-height: 400px; overflow-y: auto; padding-right: 8px;
   &::-webkit-scrollbar { width: 5px; }
   &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: ${A.accent}; border-radius: 3px; opacity: 0.7; }
-  scrollbar-width: thin;
-  scrollbar-color: ${A.accent} transparent;
-  @media (max-width: 500px) {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
+  &::-webkit-scrollbar-thumb { background: ${A.accent}; border-radius: 3px; }
+  scrollbar-width: thin; scrollbar-color: ${A.accent} transparent;
+  @media (max-width: 500px) { display: flex; flex-direction: column; gap: 0.5rem; }
 `;
 
 const CharCard = styled.div`
@@ -477,15 +442,11 @@ const CharCard = styled.div`
   background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;
   transition: border-color 0.2s;
   &:hover { border-color: ${A.accent}; }
-  .dark-mode & {
-    background: ${A.card};
-    border: 1px solid ${A.border};
-  }
+  .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; }
 `;
 const CharImg  = styled.img`width: 44px; height: 60px; object-fit: cover; border-radius: 4px; flex-shrink: 0;`;
 const CharName = styled.span`font-size: 0.82rem; font-weight: 600; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1f2937;
-  .dark-mode & { color: ${A.text}; }
-`;
+  .dark-mode & { color: ${A.text}; }`;
 const CharRole = styled.span`font-size: 0.7rem; color: ${A.accent}; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;`;
 
 // ─── Episode Controls ─────────────────────────────────────────────────────────
@@ -493,13 +454,11 @@ const CharRole = styled.span`font-size: 0.7rem; color: ${A.accent}; font-weight:
 type EpView = 'card' | 'list' | 'number';
 
 const EpControls = styled.div`
-  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
-  margin-bottom: 0.85rem;
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.85rem;
 `;
 
 const RangePillRow = styled.div`
-  display: flex; gap: 0.35rem; flex-wrap: wrap; width: 100%;
-  margin-bottom: 0.5rem;
+  display: flex; gap: 0.35rem; flex-wrap: wrap; width: 100%; margin-bottom: 0.5rem;
 `;
 
 const RangePill = styled.button<{ $active?: boolean }>`
@@ -518,14 +477,9 @@ const RangePill = styled.button<{ $active?: boolean }>`
 
 const RangeSelect = styled.select`
   padding: 0.45rem 0.65rem; background: #ffffff; border: 1px solid #e5e7eb;
-  border-radius: 6px; color: #1f2937; font-size: 0.8rem; cursor: pointer;
-  outline: none;
+  border-radius: 6px; color: #1f2937; font-size: 0.8rem; cursor: pointer; outline: none;
   &:focus { border-color: ${A.accent}; }
-  .dark-mode & {
-    background: ${A.card};
-    border: 1px solid ${A.border};
-    color: ${A.text};
-  }
+  .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; color: ${A.text}; }
 `;
 
 const SearchBox = styled.div`
@@ -540,78 +494,41 @@ const SearchInput = styled.input`
   &::placeholder { color: #9ca3af; }
   &:focus { border-color: ${A.accent}; }
   .dark-mode & {
-    background: ${A.card};
-    border: 1px solid ${A.border};
-    color: ${A.text};
+    background: ${A.card}; border: 1px solid ${A.border}; color: ${A.text};
     &::placeholder { color: ${A.muted}; }
   }
 `;
 
-// ─── Segmented view toggle ────────────────────────────────────────────────────
-
 const SegmentedControl = styled.div`
-  display: flex;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  overflow: hidden;
-  .dark-mode & {
-    background: ${A.card};
-    border-color: ${A.border};
-  }
+  display: flex; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;
+  .dark-mode & { background: ${A.card}; border-color: ${A.border}; }
 `;
 
 const SegmentOption = styled.button<{ $active?: boolean }>`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.45rem 0.65rem;
+  display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.65rem;
   background: ${({ $active }) => $active ? A.accentDim : 'transparent'};
   color: ${({ $active }) => $active ? A.accent : '#6b7280'};
-  border: none;
-  border-right: 1px solid #e5e7eb;
-  cursor: pointer;
-  transition: all 0.15s;
-  font-size: 0.8rem;
-  
-  &:last-child {
-    border-right: none;
-  }
-  
-  &:hover {
-    color: ${A.accent};
-  }
-  
-  .dark-mode & {
-    color: ${({ $active }) => $active ? A.accent : A.muted};
-    border-right-color: ${A.border};
-  }
+  border: none; border-right: 1px solid #e5e7eb; cursor: pointer; transition: all 0.15s; font-size: 0.8rem;
+  &:last-child { border-right: none; }
+  &:hover { color: ${A.accent}; }
+  .dark-mode & { color: ${({ $active }) => $active ? A.accent : A.muted}; border-right-color: ${A.border}; }
 `;
 
-// ─── Episode scroll container ─────────────────────────────────────────────────
-
 const EpScrollArea = styled.div`
-  max-height: 480px;
-  overflow-y: auto;
-  padding-right: 4px;
+  max-height: 480px; overflow-y: auto; padding-right: 4px;
   &::-webkit-scrollbar { width: 5px; }
   &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: ${A.accent}; border-radius: 3px; opacity: 0.7; }
-  scrollbar-width: thin;
-  scrollbar-color: ${A.accent} transparent;
+  &::-webkit-scrollbar-thumb { background: ${A.accent}; border-radius: 3px; }
+  scrollbar-width: thin; scrollbar-color: ${A.accent} transparent;
   @media (max-width: 860px) { max-height: 420px; }
 `;
 
 // ─── Card view ────────────────────────────────────────────────────────────────
 
 const CardGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.65rem;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.65rem;
   @media (max-width: 900px) { grid-template-columns: repeat(2, 1fr); }
-  @media (max-width: 520px) {
-    grid-template-columns: 1fr;
-  }
+  @media (max-width: 520px) { grid-template-columns: 1fr; }
 `;
 
 const EpisodeCardItem = styled.div`
@@ -619,26 +536,19 @@ const EpisodeCardItem = styled.div`
   background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;
   cursor: pointer; transition: border-color 0.15s, background 0.15s;
   &:hover { border-color: ${A.accent}; background: ${A.accentGlow}; }
-  .dark-mode & {
-    background: ${A.card};
-    border: 1px solid ${A.border};
-  }
+  .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; }
 `;
 
 const CardThumbWrap = styled.div`
-  position: relative; flex-shrink: 0; border-radius: 4px; overflow: hidden;
-  width: 88px; height: 58px;
+  position: relative; flex-shrink: 0; border-radius: 4px; overflow: hidden; width: 88px; height: 58px;
 `;
 
-const CardThumb = styled.img`
-  width: 100%; height: 100%; object-fit: cover; display: block;
-`;
+const CardThumb = styled.img`width: 100%; height: 100%; object-fit: cover; display: block;`;
 
 const CardEpBadge = styled.span`
   position: absolute; bottom: 3px; left: 3px;
   background: rgba(0,0,0,0.75); color: #fff;
-  font-size: 0.64rem; font-weight: 700; padding: 1px 5px; border-radius: 3px;
-  letter-spacing: 0.03em;
+  font-size: 0.64rem; font-weight: 700; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.03em;
 `;
 
 const CardBody = styled.div`flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;`;
@@ -650,39 +560,23 @@ const CardTitle = styled.span`
   .dark-mode & { color: ${A.text}; }
 `;
 
-const CardMeta = styled.div`
-  display: flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; flex-wrap: wrap;
-`;
-
-const CardDate = styled.span`font-size: 0.68rem; color: #6b7280;
-  .dark-mode & { color: ${A.muted}; }
-`;
-
+const CardMeta = styled.div`display: flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; flex-wrap: wrap;`;
+const CardDate = styled.span`font-size: 0.68rem; color: #6b7280; .dark-mode & { color: ${A.muted}; }`;
 const CardIcons = styled.div`display: flex; gap: 0.25rem; align-items: center; margin-left: auto;`;
-
 const SmIcon = styled.span`color: ${A.muted}; font-size: 0.7rem; display: flex; align-items: center;`;
 
 // ─── List view ────────────────────────────────────────────────────────────────
 
 const ListGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.35rem;
-  @media (max-width: 860px) {
-    grid-template-columns: 1fr;
-  }
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem;
+  @media (max-width: 860px) { grid-template-columns: 1fr; }
 `;
 
 const ListItem = styled.div<{ $first?: boolean }>`
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.42rem 0.65rem;
+  display: flex; align-items: center; gap: 0.55rem; padding: 0.42rem 0.65rem;
   background: ${({ $first }) => $first ? A.accentDim : '#ffffff'};
   border: 1px solid ${({ $first }) => $first ? A.accent : '#e5e7eb'};
-  border-radius: 6px;
-  cursor: pointer;
-  min-width: 0;
+  border-radius: 6px; cursor: pointer; min-width: 0;
   transition: border-color 0.15s, background 0.15s;
   &:hover { border-color: ${A.accent}; background: ${A.accentGlow}; }
   .dark-mode & {
@@ -691,178 +585,84 @@ const ListItem = styled.div<{ $first?: boolean }>`
   }
 `;
 
-const ListPlayIcon = styled.span`
-  color: ${A.accent}; display: flex; align-items: center; flex-shrink: 0;
-`;
-
-const ListEpNum = styled.span`
-  font-size: 0.68rem;
-  color: ${A.accent};
-  font-weight: 700;
-  flex-shrink: 0;
-  min-width: 2.2rem;
-`;
-
+const ListPlayIcon = styled.span`color: ${A.accent}; display: flex; align-items: center; flex-shrink: 0;`;
+const ListEpNum = styled.span`font-size: 0.68rem; color: ${A.accent}; font-weight: 700; flex-shrink: 0; min-width: 2.2rem;`;
 const ListTitle = styled.span`
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #1f2937;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
+  font-size: 0.8rem; font-weight: 600; color: #1f2937;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
   .dark-mode & { color: ${A.text}; }
 `;
-
-const ListIcons = styled.div`
-  display: flex;
-  gap: 0.25rem;
-  align-items: center;
-  flex-shrink: 0;
-  padding-left: 0.25rem;
-`;
+const ListIcons = styled.div`display: flex; gap: 0.25rem; align-items: center; flex-shrink: 0; padding-left: 0.25rem;`;
 
 // ─── Number grid view ─────────────────────────────────────────────────────────
 
 const NumGrid = styled.div`
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
-  gap: 0.35rem;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 0.35rem;
 `;
 
 const NumCell = styled.div<{ $active?: boolean; $filler?: boolean; $first?: boolean }>`
   display: flex; align-items: center; justify-content: center;
   height: 44px; border-radius: 6px; cursor: pointer; font-size: 0.82rem; font-weight: 600;
   background: ${({ $active, $first, $filler }) =>
-    $first   ? A.accentDim :
-    $filler  ? 'rgba(192,132,252,0.08)' :
-    $active  ? 'rgba(192,132,252,0.12)' :
-    '#ffffff'};
+    $first  ? A.accentDim :
+    $filler ? 'rgba(192,132,252,0.08)' :
+    $active ? 'rgba(192,132,252,0.12)' : '#ffffff'};
   border: 1px solid ${({ $active, $first }) =>
     $first  ? A.accent :
-    $active ? 'rgba(192,132,252,0.4)' :
-    '#e5e7eb'};
+    $active ? 'rgba(192,132,252,0.4)' : '#e5e7eb'};
   color: ${({ $first }) => $first ? A.accent : '#1f2937'};
   transition: border-color 0.15s, background 0.15s;
   &:hover { border-color: ${A.accent}; color: ${A.accent}; }
   .dark-mode & {
     background: ${({ $active, $first, $filler }) =>
-      $first   ? A.accentDim :
-      $filler  ? 'rgba(192,132,252,0.08)' :
-      $active  ? 'rgba(192,132,252,0.12)' :
-      A.card};
+      $first  ? A.accentDim :
+      $filler ? 'rgba(192,132,252,0.08)' :
+      $active ? 'rgba(192,132,252,0.12)' : A.card};
     border: 1px solid ${({ $active, $first }) =>
       $first  ? A.accent :
-      $active ? 'rgba(192,132,252,0.4)' :
-      A.border};
+      $active ? 'rgba(192,132,252,0.4)' : A.border};
     color: ${({ $first }) => $first ? A.accent : A.text};
   }
 `;
 
-// ─── Full-width sections (Recommendations + Related) ─────────────────────────
+// ─── Full-width sections ──────────────────────────────────────────────────────
 
 const FullWidthSection = styled.div`
-  margin-top: 2.5rem;
-  padding-top: 2rem;
-  border-top: 1px solid #e5e7eb;
-  position: relative;
-  z-index: 2;
-  .dark-mode & {
-    border-top: 1px solid ${A.border};
-  }
-  @media (max-width: 860px) {
-    margin-top: 1.75rem;
-    padding-top: 1.5rem;
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-  }
+  margin-top: 2.5rem; padding-top: 2rem;
+  border-top: 1px solid #e5e7eb; position: relative; z-index: 2;
+  .dark-mode & { border-top: 1px solid ${A.border}; }
+  @media (max-width: 860px) { margin-top: 1.75rem; padding-top: 1.5rem; padding-left: 0.75rem; padding-right: 0.75rem; }
 `;
 
-const SectionHeader = styled.div`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1rem;
-`;
+const SectionHeader = styled.div`display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;`;
 
 const SectionLabel = styled.div`
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: #6b7280;
-  &::before {
-    content: '';
-    display: inline-block;
-    width: 12px;
-    height: 2px;
-    background: ${A.accent};
-    margin-right: 0.5rem;
-    vertical-align: middle;
-  }
-  .dark-mode & {
-    color: ${A.muted};
-  }
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #6b7280;
+  &::before { content: ''; display: inline-block; width: 12px; height: 2px; background: ${A.accent}; margin-right: 0.5rem; vertical-align: middle; }
+  .dark-mode & { color: ${A.muted}; }
 `;
 
 const ScrollBtnRow = styled.div`
-  display: flex;
-  gap: 0.4rem;
-  @media (max-width: 860px) {
-    display: none;
-  }
+  display: flex; gap: 0.4rem;
+  @media (max-width: 860px) { display: none; }
 `;
 
 const ScrollBtn = styled.button`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid ${A.border};
-  background: ${A.card};
-  color: ${A.text};
-  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid ${A.border}; background: ${A.card}; color: ${A.text}; cursor: pointer;
   transition: border-color 0.2s, color 0.2s;
-  &:hover {
-    border-color: ${A.accent};
-    color: ${A.accent};
-  }
+  &:hover { border-color: ${A.accent}; color: ${A.accent}; }
 `;
 
 const StyledCardGrid = styled.div`
-  display: flex;
-  gap: 0.9rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding-bottom: 0.5rem;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-
-  &::-webkit-scrollbar {
-    display: none;
-    height: 0;
-  }
-  scrollbar-width: none;
-  scrollbar-color: transparent transparent;
-
-  & > * {
-    flex: 0 0 auto;
-    width: 150px;
-    scroll-snap-align: start;
-  }
-
-  @media (max-width: 800px) {
-    gap: 0.75rem;
-    & > * { width: 130px; }
-  }
-
-  @media (max-width: 450px) {
-    gap: 0.6rem;
-    & > * { width: 115px; }
-  }
+  display: flex; gap: 0.9rem; overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 0.5rem; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+  &::-webkit-scrollbar { display: none; height: 0; }
+  scrollbar-width: none; scrollbar-color: transparent transparent;
+  & > * { flex: 0 0 auto; width: 150px; scroll-snap-align: start; }
+  @media (max-width: 800px) { gap: 0.75rem; & > * { width: 130px; } }
+  @media (max-width: 450px) { gap: 0.6rem; & > * { width: 115px; } }
 `;
 
 // ─── States ───────────────────────────────────────────────────────────────────
@@ -878,40 +678,97 @@ const PrimaryBtn = styled.button`
   font-weight: 800; font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
 `;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const ProviderSwitcher = styled.div`display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem;`;
 
-type InfoTab = 'overview' | 'characters' | 'episodes';
-
-const RANGE = 100;
+const ProviderButton = styled.button<{ $active?: boolean }>`
+  padding: 0.55rem 0.95rem; border-radius: 999px;
+  border: 1px solid ${p => p.$active ? A.accent : A.border};
+  background: ${p => p.$active ? A.accent : A.card};
+  color: ${p => p.$active ? '#0a0a0c' : A.text};
+  cursor: pointer; font-size: 0.78rem; font-weight: 700;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+  &:hover { border-color: ${A.accent}; }
+`;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const Info: React.FC = () => {
   const { animeId } = useParams<{ animeId?: string }>();
   const navigate    = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [animeInfo, setAnimeInfo] = useState<Anime | null>(null);
+  // ── Stable type resolution — derived from URL, not from provider responses ──
+  // This is the *authoritative* source of truth for media type. It is computed
+  // once per URL change and never mutated based on what a provider returns.
+  const queryType     = searchParams.get('type')?.toUpperCase() ?? null;
+  const queryProvider = searchParams.get('provider')?.toLowerCase() ?? null;
+
+  // `mediaType` is set here and only updated when the URL params change.
+  // It is deliberately NOT inside a useEffect dep that responds to fetch results.
+  const [mediaType, setMediaType] = useState<MediaType>(
+    queryType === 'MANGA' ? 'MANGA' : 'ANIME',
+  );
+
+  const [animeInfo, setAnimeInfo] = useState<Anime & Partial<Manga> | null>(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InfoTab>('overview');
-  const [provider, setProvider] = useState<'kickassanime' | 'animekai'>(() => {
-    return (localStorage.getItem('provider-preference') as 'kickassanime' | 'animekai') || 'kickassanime';
+
+  // Track which manga providers actually returned chapters (for button visibility)
+  const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
+
+  const [provider, setProvider] = useState<Provider>(() => {
+    if (queryType === 'MANGA') {
+      return (queryProvider === 'mangapill' ? 'mangapill'
+        : (localStorage.getItem('manga-provider-preference') as MangaProvider)) || 'mangahere';
+    }
+    return (localStorage.getItem('provider-preference') as AnimeProvider) || 'kickassanime';
   });
 
-  // Episode controls
-  const [epView,   setEpView]   = useState<EpView>('card');
+  // ── Sync state when URL params change ────────────────────────────────────────
+  // This is the ONLY place where mediaType is updated imperatively.
+  useEffect(() => {
+    const newType: MediaType = queryType === 'MANGA' ? 'MANGA' : 'ANIME';
+    setMediaType(newType);
+    setAvailableMangaProviders(new Set());
+    setEpRange(0);
+    setEpSearch('');
+
+    if (newType === 'MANGA') {
+      setEpView('list');
+      setProvider(
+        queryProvider === 'mangapill' ? 'mangapill'
+          : (localStorage.getItem('manga-provider-preference') as MangaProvider) || 'mangahere',
+      );
+    } else {
+      setProvider(
+        (localStorage.getItem('provider-preference') as AnimeProvider) || 'kickassanime',
+      );
+    }
+  }, [queryType, queryProvider]);
+
+  // Episode UI controls
+  const [epView,   setEpView]   = useState<EpView>(() => queryType === 'MANGA' ? 'list' : 'card');
   const [epSearch, setEpSearch] = useState('');
   const [epRange,  setEpRange]  = useState(0);
 
-  // Scroll refs for full-width sections
+  // Scroll refs for horizontal carousels
   const recsRef    = useRef<HTMLDivElement>(null);
   const relatedRef = useRef<HTMLDivElement>(null);
 
   const scrollSection = (ref: React.RefObject<HTMLDivElement>, dir: 'left' | 'right') => {
-    if (!ref.current) return;
-    ref.current.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
+    ref.current?.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
   };
 
+  // ── Primary fetch effect ──────────────────────────────────────────────────
+  // IMPORTANT: `mediaType` is intentionally NOT in the dependency array.
+  // Including it would cause a re-fetch loop:
+  //   fetch anime → data.type = 'MANGA' → setMediaType('MANGA') → re-fetch as manga
+  //
+  // The `mediaType` value used inside this effect is captured at call time from
+  // the `queryType` URL param (which IS a dependency). If the user navigates to
+  // a different page type the URL changes → `animeId` or `queryType` changes →
+  // this effect re-runs cleanly.
   useEffect(() => {
     if (!animeId) {
       setError('Anime ID not found');
@@ -919,68 +776,181 @@ const Info: React.FC = () => {
       return;
     }
 
+    // Read mediaType from the URL param directly to avoid closure issues
+    const currentMediaType: MediaType = queryType === 'MANGA' ? 'MANGA' : 'ANIME';
+
     setLoading(true);
     setError(null);
     setAnimeInfo(null);
 
-    const providerOrder = provider === 'animekai'
-      ? ['animekai', 'kickassanime'] as const
-      : ['kickassanime', 'animekai'] as const;
-
-    const hasEpisodes = (data: Anime | null) => {
-      if (!data) return false;
-      if (!Array.isArray(data.episodes)) return false;
-      return data.episodes.length > 0;
+    const hasEntries = (data: any): boolean => {
+      const episodes = data?.episodes ?? [];
+      const chapters = data?.chapters ?? [];
+      return (Array.isArray(episodes) && episodes.length > 0) ||
+             (Array.isArray(chapters) && chapters.length > 0);
     };
 
     (async () => {
-      let loaded = false;
+      if (currentMediaType === 'MANGA') {
+        // ── Probe all manga providers in parallel ────────────────────────────
+        const candidates: MangaProvider[] = provider === 'mangapill'
+          ? ['mangapill', 'mangahere']
+          : ['mangahere', 'mangapill'];
 
-      for (const provider of providerOrder) {
-        try {
-          const data = await fetchAnimeInfo(animeId, provider);
-          if (hasEpisodes(data)) {
-            setAnimeInfo(data);
-            setProvider(provider);
-            localStorage.setItem('provider-preference', provider);
-            loaded = true;
-            break;
+        const probeResults = await Promise.allSettled(
+          candidates.map(async (candidate) => {
+            const data = await fetchMangaInfo(animeId, candidate);
+            return { candidate, data, hasData: hasEntries(data) };
+          }),
+        );
+
+        const viable = new Set<MangaProvider>();
+        const dataMap: Partial<Record<MangaProvider, any>> = {};
+        let anyData: any = null;
+
+        for (const result of probeResults) {
+          if (result.status === 'fulfilled') {
+            const { candidate, data, hasData } = result.value;
+            if (hasData) {
+              viable.add(candidate);
+              dataMap[candidate] = data;
+            }
+            if (!anyData) anyData = data; // keep first result as fallback
           }
-        } catch {
-          // continue to next provider
         }
-      }
 
-      if (!loaded) {
-        for (const provider of providerOrder) {
+        setAvailableMangaProviders(viable);
+
+        // Pick the preferred provider that has chapters, else first viable one
+        const chosen = candidates.find(p => viable.has(p)) ?? null;
+
+        if (chosen && dataMap[chosen]) {
+          setAnimeInfo(dataMap[chosen]);
+          setProvider(chosen);
+          localStorage.setItem('manga-provider-preference', chosen);
+        } else if (anyData) {
+          // No provider had chapters — still show the info page
+          setAnimeInfo(anyData);
+          setProvider(candidates[0]);
+        } else {
+          setError('Failed to load manga information.');
+        }
+
+      } else {
+        // ── Anime fetch ──────────────────────────────────────────────────────
+        const candidates: AnimeProvider[] = provider === 'animekai'
+          ? ['animekai', 'kickassanime']
+          : ['kickassanime', 'animekai'];
+
+        let loaded = false;
+        let bestData: any = null; // best data found (even without episodes)
+
+        // Pass 1: look for a provider with episodes
+        for (const candidate of candidates) {
           try {
-            const data = await fetchAnimeData(animeId, provider);
-            if (hasEpisodes(data)) {
+            const data = await fetchAnimeInfo(animeId, candidate);
+            if (!bestData && data) bestData = data;
+
+            if (hasEntries(data)) {
+              // Verify this is actually anime before committing
+              // Only switch to MANGA if the data is definitively manga-type
+              // AND no explicit ANIME url param was set
+              const detectedType = resolveMediaType(queryType, data.type, data.format);
+
+              if (detectedType === 'MANGA' && queryType !== 'ANIME') {
+                // This ID is actually manga — redirect to manga fetch
+                // Update URL so the page reloads cleanly as manga
+                navigate(`/info/${animeId}?type=MANGA`, { replace: true });
+                return;
+              }
+
               setAnimeInfo(data);
-              setProvider(provider);
-              localStorage.setItem('provider-preference', provider);
+              setProvider(candidate);
+              localStorage.setItem('provider-preference', candidate);
               loaded = true;
               break;
             }
           } catch {
-            // continue to next provider
+            // continue
           }
+        }
+
+        // Pass 2: if no episodes found, try fetchAnimeData as fallback
+        if (!loaded) {
+          for (const candidate of candidates) {
+            try {
+              const data = await fetchAnimeData(animeId, candidate);
+              if (!bestData && data) bestData = data;
+
+              if (hasEntries(data)) {
+                const detectedType = resolveMediaType(queryType, data.type, data.format);
+
+                if (detectedType === 'MANGA' && queryType !== 'ANIME') {
+                  navigate(`/info/${animeId}?type=MANGA`, { replace: true });
+                  return;
+                }
+
+                setAnimeInfo(data);
+                setProvider(candidate);
+                localStorage.setItem('provider-preference', candidate);
+                loaded = true;
+                break;
+              }
+            } catch {
+              // continue
+            }
+          }
+        }
+
+        // Pass 3: no provider had episodes — show the page anyway with what we have.
+        // This handles: newly airing shows, region-locked titles, temporary outages.
+        // We do NOT error out just because episodes are unavailable.
+        if (!loaded && bestData) {
+          const detectedType = resolveMediaType(queryType, bestData.type, bestData.format);
+
+          if (detectedType === 'MANGA' && queryType !== 'ANIME') {
+            navigate(`/info/${animeId}?type=MANGA`, { replace: true });
+            return;
+          }
+
+          setAnimeInfo(bestData);
+          setProvider(candidates[0]);
+          // Keep mediaType as ANIME — no episodes ≠ wrong media type
+        } else if (!loaded) {
+          setError('Failed to load anime information.');
         }
       }
 
-      if (!loaded) {
-        setError('Failed to load anime information.');
-      }
       setLoading(false);
     })();
-  }, [animeId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animeId, queryType, queryProvider]);
+  // ↑ INTENTIONALLY excludes `mediaType` and `provider` (stateful) to prevent
+  //   re-fetch loops. URL params are the single source of truth for type.
 
-  // Reset episode controls when anime changes
+  // ── Manual manga provider switch ─────────────────────────────────────────
+  const handleMangaProviderSwitch = async (newProvider: MangaProvider) => {
+    if (!animeId || newProvider === provider) return;
+    setProvider(newProvider);
+    localStorage.setItem('manga-provider-preference', newProvider);
+
+    try {
+      const data = await fetchMangaInfo(animeId, newProvider);
+      setAnimeInfo(data);
+      setEpRange(0);
+      setEpSearch('');
+    } catch (err) {
+      console.warn(`⚠️ Provider switch to ${newProvider} failed:`, err);
+    }
+  };
+
+  // Reset episode UI when the anime changes
   useEffect(() => {
     setEpRange(0);
     setEpSearch('');
   }, [animeId]);
 
+  // Update document title
   useEffect(() => {
     if (animeInfo?.title) {
       const name = animeInfo.title.english || animeInfo.title.romaji || '';
@@ -988,18 +958,18 @@ const Info: React.FC = () => {
     }
   }, [animeInfo]);
 
+  // ── Derived data ──────────────────────────────────────────────────────────
+
   const ranges = useMemo(() => {
-    const eps = animeInfo?.episodes ?? [];
-    if (!eps.length) return [];
+    const entries = (animeInfo as Manga)?.chapters ?? animeInfo?.episodes ?? [];
+    if (!entries.length) return [];
     const chunks: Episode[][] = [];
-    for (let i = 0; i < eps.length; i += RANGE) chunks.push(eps.slice(i, i + RANGE));
+    for (let i = 0; i < entries.length; i += RANGE) chunks.push(entries.slice(i, i + RANGE));
     return chunks;
-  }, [animeInfo?.episodes]);
+  }, [animeInfo?.episodes, (animeInfo as Manga)?.chapters]);
 
   useEffect(() => {
-    if (ranges.length > 0 && epRange >= ranges.length) {
-      setEpRange(0);
-    }
+    if (ranges.length > 0 && epRange >= ranges.length) setEpRange(0);
   }, [ranges, epRange]);
 
   const currentEps = useMemo(() => {
@@ -1007,66 +977,34 @@ const Info: React.FC = () => {
     if (!epSearch.trim()) return chunk;
     const q = epSearch.toLowerCase();
     return chunk.filter(ep =>
-      String(ep.number).includes(q) ||
-      (ep.title ?? '').toLowerCase().includes(q)
+      String(ep.number).includes(q) || (ep.title ?? '').toLowerCase().includes(q),
     );
   }, [ranges, epRange, epSearch]);
 
-  // Flatten relations from AnimeDataList into a usable array for card rendering
-  // Must be defined before early returns to maintain consistent hook order
   const relatedAnime = useMemo(() => {
     if (!animeInfo?.relations?.length) return [];
     return animeInfo.relations.flatMap((rel: any) =>
-      rel.nodes ? rel.nodes : [rel]
+      rel.nodes ? rel.nodes : [rel],
     ).filter(Boolean);
   }, [animeInfo?.relations]);
 
-  // Process recommendations - must be before early returns for hook consistency
   const recommendations = useMemo<Anime[]>(() => {
     const parentColor = animeInfo?.color ?? '#8b5cf6';
-    const recs = animeInfo?.recommendations?.slice(0, 16).map((rec): Anime => ({
-      id: rec.id,
-      title: rec.title,
-      malId: rec.malId,
+    return (animeInfo?.recommendations ?? []).slice(0, 16).map((rec): Anime => ({
+      id: rec.id, title: rec.title, malId: rec.malId,
       trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
-      synonyms: [],
-      isLicensed: false,
-      isAdult: false,
-      countryOfOrigin: '',
-      image: rec.image,
-      imageHash: rec.imageHash,
-      cover: rec.cover,
-      coverHash: rec.coverHash,
-      description: '',
-      status: rec.status,
-      type: rec.type,
-      releaseDate: 0,
-      totalEpisodes: rec.episodes,
-      currentEpisode: rec.episodes,
-      rating: rec.rating,
-      duration: 0,
-      genres: [],
-      studios: [],
-      studioIds: [],
-      subOrDub: 'sub',
-      season: '',
-      popularity: 0,
-      color: parentColor,
-      startDate: { year: 0, month: 0, day: 0 },
-      endDate: { year: 0, month: 0, day: 0 },
-      recommendations: [],
-      characters: [],
-      relations: [],
-      mappings: [],
-      artwork: [],
-      episodes: [],
+      synonyms: [], isLicensed: false, isAdult: false, countryOfOrigin: '',
+      image: rec.image, imageHash: rec.imageHash, cover: rec.cover, coverHash: rec.coverHash,
+      description: '', status: rec.status, type: rec.type, releaseDate: 0,
+      totalEpisodes: rec.episodes, currentEpisode: rec.episodes, rating: rec.rating,
+      duration: 0, genres: [], studios: [], studioIds: [], subOrDub: 'sub', season: '',
+      popularity: 0, color: parentColor,
+      startDate: { year: 0, month: 0, day: 0 }, endDate: { year: 0, month: 0, day: 0 },
+      recommendations: [], characters: [], relations: [], mappings: [], artwork: [], episodes: [],
     }));
-
-    return recs ?? [];
   }, [animeInfo?.recommendations, animeInfo?.color]);
 
-  // Determine if scroll buttons are needed (more than 1 row worth of items)
-  const recsNeedScroll = recommendations.length > 5;
+  const recsNeedScroll    = recommendations.length > 5;
   const relatedNeedScroll = relatedAnime.length > 5;
 
   if (loading) return <SkeletonInfo />;
@@ -1078,25 +1016,60 @@ const Info: React.FC = () => {
     </ErrorWrap>
   );
 
-  const banner = animeInfo.cover || animeInfo.image;
-  const cover  = animeInfo.image;
-  const title  = animeInfo.title.english || animeInfo.title.romaji || '';
-  const romaji = animeInfo.title.romaji;
+  // ── Render helpers ────────────────────────────────────────────────────────
 
-  const metaItems: { key: string; val: string; onClick?: () => void }[] = [
-    animeInfo.totalEpisodes != null && { key: 'Episodes', val: String(animeInfo.totalEpisodes) },
-    animeInfo.duration        && { key: 'Duration',  val: `${animeInfo.duration} min` },
-    animeInfo.season          && { key: 'Season',    val: animeInfo.season.toUpperCase(), onClick: () => navigate(`/search?season=${animeInfo.season?.toUpperCase()}`) },
-    animeInfo.releaseDate     && { key: 'Year',      val: String(animeInfo.releaseDate), onClick: () => navigate(`/search?year=${animeInfo.releaseDate}`) },
-    animeInfo.status          && { key: 'Status',    val: animeInfo.status },
-    animeInfo.type            && { key: 'Format',    val: animeInfo.type, onClick: () => navigate(`/search?type=${encodeURIComponent(animeInfo.type!)}`) },
-    animeInfo.title.native    && { key: 'Native',    val: animeInfo.title.native },
-    animeInfo.studios?.length > 0 && { key: 'Studio', val: animeInfo.studios.join(', '), onClick: () => navigate(`/studio/${animeInfo.studioIds?.[0]}`) },
-  ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
+  const mediaInfo   = animeInfo as Anime & Partial<Manga>;
+  const banner      = mediaInfo.cover || mediaInfo.image;
+  const cover       = mediaInfo.image;
+  const title       = mediaInfo.title.english || mediaInfo.title.romaji || '';
+  const romaji      = mediaInfo.title.romaji;
 
-  const usePills = ranges.length <= 10;
+  // Determine final display type — use mediaType state (driven by URL) as
+  // the primary signal, but allow AniList `type` field to distinguish between
+  // ANIME and MANGA when the URL didn't specify.
+  const displayType = resolveMediaType(queryType, mediaInfo.type, (mediaInfo as any).format);
+
+  const isManga = displayType === 'MANGA';
+  const label   = isManga ? 'Manga' : 'Anime';
+
+  const chapterEntries = (mediaInfo as Manga)?.chapters ?? mediaInfo.episodes ?? [];
+  const firstEntry     = chapterEntries.length > 0 ? chapterEntries[0] : null;
+  const firstNumber    = firstEntry?.number ?? 1;
+  const usePills       = ranges.length <= 10;
 
   const isFirst = (idx: number) => idx === 0 && epRange === 0 && !epSearch.trim();
+
+  const navigateToEntry = (ep: Episode) => {
+    if (isManga) {
+      navigate(`/read/${animeInfo.id}?chapterId=${ep.id}&provider=${provider}`);
+    } else {
+      navigate(`/watch/${animeInfo.id}?ep=${ep.number}`);
+    }
+  };
+
+  const navigateToFirst = () => {
+    if (!firstEntry) return;
+    if (isManga) {
+      navigate(`/read/${animeInfo.id}?chapterId=${firstEntry.id}&provider=${provider}`);
+    } else {
+      navigate(`/watch/${animeInfo.id}?ep=${firstNumber}`);
+    }
+  };
+
+  const metaItems: { key: string; val: string; onClick?: () => void }[] = [
+    isManga
+      ? mediaInfo.totalChapters != null && { key: 'Chapters', val: String(mediaInfo.totalChapters) }
+      : mediaInfo.totalEpisodes != null && { key: 'Episodes', val: String(mediaInfo.totalEpisodes) },
+    isManga
+      ? mediaInfo.totalVolumes != null && { key: 'Volumes', val: String(mediaInfo.totalVolumes) }
+      : mediaInfo.duration && { key: 'Duration', val: `${mediaInfo.duration} min` },
+    mediaInfo.season   && { key: 'Season', val: mediaInfo.season.toUpperCase(), onClick: () => navigate(`/search?season=${mediaInfo.season?.toUpperCase()}`) },
+    mediaInfo.releaseDate && { key: 'Year', val: String(mediaInfo.releaseDate), onClick: () => navigate(`/search?year=${mediaInfo.releaseDate}`) },
+    mediaInfo.status   && { key: 'Status', val: mediaInfo.status },
+    mediaInfo.type     && { key: 'Format', val: mediaInfo.type, onClick: () => navigate(`/search?type=${encodeURIComponent(mediaInfo.type!)}`) },
+    mediaInfo.title.native && { key: 'Native', val: mediaInfo.title.native },
+    mediaInfo.studios?.length > 0 && { key: 'Studio', val: mediaInfo.studios.join(', '), onClick: () => navigate(`/studio/${mediaInfo.studioIds?.[0]}`) },
+  ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
 
   return (
     <PageWrapper>
@@ -1108,28 +1081,28 @@ const Info: React.FC = () => {
         <HeroAccentBar />
       </HeroWrap>
 
-      {/* ── Body ── */}
       <Shell>
-
-        {/* ── Mobile header: poster + title side-by-side ── */}
+        {/* ── Mobile header ── */}
         <MobileHeader>
           <MobilePosterWrap>
             <MobilePosterImg src={animeInfo.image} alt={title} />
             {animeInfo.rating != null && <MobilePosterScore>{animeInfo.rating}%</MobilePosterScore>}
           </MobilePosterWrap>
           <MobileTitleBlock>
-            <MobileEyebrow>{animeInfo.type || 'Anime'}{animeInfo.releaseDate ? ` · ${animeInfo.releaseDate}` : ''}</MobileEyebrow>
+            <MobileEyebrow>{animeInfo.type || label}{animeInfo.releaseDate ? ` · ${animeInfo.releaseDate}` : ''}</MobileEyebrow>
             <MobileTitle>{title}</MobileTitle>
             {romaji && romaji !== title && <MobileRomaji>{romaji}</MobileRomaji>}
             <MobilePillRow>
               {animeInfo.status && <Pill $accent>{animeInfo.status}</Pill>}
-              {animeInfo.genres?.slice(0, 3).map((g, i) => <ClickablePill key={i} onClick={() => navigate(`/search?genres=${encodeURIComponent(g)}`)}>{g}</ClickablePill>)}
+              {animeInfo.genres?.slice(0, 3).map((g, i) => (
+                <ClickablePill key={i} onClick={() => navigate(`/search?genres=${encodeURIComponent(g)}`)}>{g}</ClickablePill>
+              ))}
             </MobilePillRow>
           </MobileTitleBlock>
         </MobileHeader>
 
         <Grid>
-          {/* ── LEFT — desktop poster ── */}
+          {/* ── Left — desktop poster + sidebar ── */}
           <LeftCol>
             <PosterWrap>
               <PosterImg src={animeInfo.image} alt={title} />
@@ -1137,68 +1110,63 @@ const Info: React.FC = () => {
             </PosterWrap>
 
             <PosterActions>
-              <WatchBtn onClick={() => navigate(`/watch/${animeInfo.id}`)}>
-                <FaPlay size={11} /> Watch
+              <WatchBtn onClick={navigateToFirst} disabled={!firstEntry}>
+                {isManga ? <FaBookOpen size={11} /> : <FaPlay size={11} />}
+                {isManga ? `Read CH ${firstNumber}` : 'Watch'}
               </WatchBtn>
+
               <ExtRow>
-                <ExtBtn href={`https://anilist.co/anime/${animeInfo.id}`} target="_blank" rel="noopener noreferrer" title="AniList">
+                <ExtBtn href={`https://anilist.co/${isManga ? 'manga' : 'anime'}/${animeInfo.id}`} target="_blank" rel="noopener noreferrer" title="AniList">
                   <SiAnilist size={16} />
                 </ExtBtn>
                 {animeInfo.malId && (
-                  <ExtBtn href={`https://myanimelist.net/anime/${animeInfo.malId}`} target="_blank" rel="noopener noreferrer" title="MyAnimeList">
+                  <ExtBtn href={`https://myanimelist.net/${isManga ? 'manga' : 'anime'}/${animeInfo.malId}`} target="_blank" rel="noopener noreferrer" title="MyAnimeList">
                     <SiMyanimelist size={20} />
                   </ExtBtn>
                 )}
               </ExtRow>
 
               <SidebarMeta>
-                {animeInfo.totalEpisodes != null && (
-                  <SideMetaRow><SideMetaKey>Episodes</SideMetaKey><SideMetaVal>{animeInfo.totalEpisodes}</SideMetaVal></SideMetaRow>
+                {isManga ? (
+                  <>
+                    {mediaInfo.totalChapters != null && <SideMetaRow><SideMetaKey>Chapters</SideMetaKey><SideMetaVal>{mediaInfo.totalChapters}</SideMetaVal></SideMetaRow>}
+                    {mediaInfo.totalVolumes  != null && <SideMetaRow><SideMetaKey>Volumes</SideMetaKey><SideMetaVal>{mediaInfo.totalVolumes}</SideMetaVal></SideMetaRow>}
+                  </>
+                ) : (
+                  <>
+                    {mediaInfo.totalEpisodes != null && <SideMetaRow><SideMetaKey>Episodes</SideMetaKey><SideMetaVal>{mediaInfo.totalEpisodes}</SideMetaVal></SideMetaRow>}
+                    {mediaInfo.duration      && <SideMetaRow><SideMetaKey>Duration</SideMetaKey><SideMetaVal>{mediaInfo.duration} min</SideMetaVal></SideMetaRow>}
+                  </>
                 )}
-                {animeInfo.duration && (
-                  <SideMetaRow><SideMetaKey>Duration</SideMetaKey><SideMetaVal>{animeInfo.duration} min</SideMetaVal></SideMetaRow>
-                )}
-                 {animeInfo.season && (
-                   <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?season=${animeInfo.season?.toUpperCase()}`)}>{animeInfo.season.toUpperCase()}</ClickableMetaVal></SideMetaVal></SideMetaRow>
-                 )}
-                {animeInfo.releaseDate && (
-                  <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?year=${animeInfo.releaseDate}`)}>{animeInfo.releaseDate}</ClickableMetaVal></SideMetaVal></SideMetaRow>
-                )}
-                {animeInfo.status && (
-                  <SideMetaRow><SideMetaKey>Status</SideMetaKey><SideMetaVal>{animeInfo.status}</SideMetaVal></SideMetaRow>
-                )}
-                {animeInfo.type && (
-                  <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?type=${encodeURIComponent(animeInfo.type!)}`)}>{animeInfo.type}</ClickableMetaVal></SideMetaVal></SideMetaRow>
-                )}
-                {animeInfo.title.native && (
-                  <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{animeInfo.title.native}</SideMetaVal></SideMetaRow>
-                )}
-                {animeInfo.studios?.length > 0 && (
-                  <SideMetaRow><SideMetaKey>Studio</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/studio/${animeInfo.studioIds?.[0]}`)}>{animeInfo.studios.join(', ')}</ClickableMetaVal></SideMetaVal></SideMetaRow>
-                )}
+                {mediaInfo.season      && <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?season=${mediaInfo.season?.toUpperCase()}`)}>{mediaInfo.season.toUpperCase()}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
+                {mediaInfo.releaseDate && <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?year=${mediaInfo.releaseDate}`)}>{mediaInfo.releaseDate}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
+                {mediaInfo.status      && <SideMetaRow><SideMetaKey>Status</SideMetaKey><SideMetaVal>{mediaInfo.status}</SideMetaVal></SideMetaRow>}
+                {mediaInfo.type        && <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?type=${encodeURIComponent(mediaInfo.type!)}`)}>{mediaInfo.type}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
+                {mediaInfo.title.native && <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{mediaInfo.title.native}</SideMetaVal></SideMetaRow>}
+                {mediaInfo.studios?.length > 0 && <SideMetaRow><SideMetaKey>Studio</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/studio/${mediaInfo.studioIds?.[0]}`)}>{mediaInfo.studios.join(', ')}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
               </SidebarMeta>
             </PosterActions>
           </LeftCol>
 
-          {/* ── RIGHT ── */}
+          {/* ── Right ── */}
           <RightCol>
-
             {/* Mobile: action bar */}
             <MobileActionBar>
-              <MobileWatchBtn onClick={() => navigate(`/watch/${animeInfo.id}`)}>
-                <FaPlay size={10} /> Watch
+              <MobileWatchBtn onClick={navigateToFirst} disabled={!firstEntry}>
+                {isManga ? <FaBookOpen size={10} /> : <FaPlay size={10} />}
+                {isManga ? `Read CH ${firstNumber}` : 'Watch'}
               </MobileWatchBtn>
-              <MobileExtBtn href={`https://anilist.co/anime/${animeInfo.id}`} target="_blank" rel="noopener noreferrer" title="AniList">
+              <MobileExtBtn href={`https://anilist.co/${isManga ? 'manga' : 'anime'}/${animeInfo.id}`} target="_blank" rel="noopener noreferrer" title="AniList">
                 <SiAnilist size={15} />
               </MobileExtBtn>
               {animeInfo.malId && (
-                <MobileExtBtn href={`https://myanimelist.net/anime/${animeInfo.malId}`} target="_blank" rel="noopener noreferrer" title="MyAnimeList">
+                <MobileExtBtn href={`https://myanimelist.net/${isManga ? 'manga' : 'anime'}/${animeInfo.malId}`} target="_blank" rel="noopener noreferrer" title="MyAnimeList">
                   <SiMyanimelist size={18} />
                 </MobileExtBtn>
               )}
             </MobileActionBar>
 
-            {/* Mobile: compact meta grid */}
+            {/* Mobile: meta grid */}
             {metaItems.length > 0 && (
               <MobileMeta>
                 {metaItems.map(({ key, val, onClick }) => (
@@ -1210,26 +1178,30 @@ const Info: React.FC = () => {
               </MobileMeta>
             )}
 
-            {/* Desktop: title block */}
+            {/* Desktop: title */}
             <DesktopTitleBlock>
-              <EyeBrow>{animeInfo.type || 'Anime'}{animeInfo.releaseDate ? ` · ${animeInfo.releaseDate}` : ''}</EyeBrow>
+              <EyeBrow>{animeInfo.type || label}{animeInfo.releaseDate ? ` · ${animeInfo.releaseDate}` : ''}</EyeBrow>
               <MainTitle>{title}</MainTitle>
               {romaji && romaji !== title && <RomajiSub>{romaji}</RomajiSub>}
               <PillRow>
                 {animeInfo.status && <Pill $accent>{animeInfo.status}</Pill>}
                 {animeInfo.rating != null && <Pill>{animeInfo.rating}% Score</Pill>}
-                {animeInfo.genres?.slice(0, 5).map((g, i) => <ClickablePill key={i} onClick={() => navigate(`/search?genres=${encodeURIComponent(g)}`)}>{g}</ClickablePill>)}
+                {animeInfo.genres?.slice(0, 5).map((g, i) => (
+                  <ClickablePill key={i} onClick={() => navigate(`/search?genres=${encodeURIComponent(g)}`)}>{g}</ClickablePill>
+                ))}
               </PillRow>
             </DesktopTitleBlock>
 
             {/* Tabs */}
             <TabNav>
               {(['overview', 'characters', 'episodes'] as InfoTab[]).map(t => (
-                <Tab key={t} $active={activeTab === t} onClick={() => setActiveTab(t)}>{t}</Tab>
+                <Tab key={t} $active={activeTab === t} onClick={() => setActiveTab(t)}>
+                  {t === 'episodes' ? (isManga ? 'chapters' : 'episodes') : t}
+                </Tab>
               ))}
             </TabNav>
 
-            {/* ── Overview ── */}
+            {/* Overview */}
             {activeTab === 'overview' && (
               <Panel>
                 {animeInfo.trailer?.id && (
@@ -1237,8 +1209,7 @@ const Info: React.FC = () => {
                     <iframe
                       src={`https://www.youtube.com/embed/${animeInfo.trailer.id}`}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                      title="Trailer"
+                      allowFullScreen title="Trailer"
                     />
                   </TrailerBox>
                 )}
@@ -1247,13 +1218,11 @@ const Info: React.FC = () => {
                     {animeInfo.description.replace(/<[^>]*>/g, '')}
                   </Desc>
                 )}
-                {!animeInfo.description && !animeInfo.trailer?.id && (
-                  <Desc>No overview available.</Desc>
-                )}
+                {!animeInfo.description && !animeInfo.trailer?.id && <Desc>No overview available.</Desc>}
               </Panel>
             )}
 
-            {/* ── Characters ── */}
+            {/* Characters */}
             {activeTab === 'characters' && (
               <Panel>
                 {animeInfo.characters?.length > 0 ? (
@@ -1272,91 +1241,77 @@ const Info: React.FC = () => {
               </Panel>
             )}
 
-            {/* ── Episodes ── */}
+            {/* Episodes / Chapters */}
             {activeTab === 'episodes' && (
               <Panel>
-                {animeInfo.episodes?.length > 0 ? (
+                {chapterEntries.length > 0 ? (
                   <>
                     {/* Range selector */}
                     {ranges.length > 1 && (
                       usePills ? (
                         <RangePillRow>
                           {ranges.map((chunk, i) => (
-                            <RangePill
-                              key={i}
-                              $active={epRange === i}
-                              onClick={() => { setEpRange(i); setEpSearch(''); }}
-                            >
+                            <RangePill key={i} $active={epRange === i} onClick={() => { setEpRange(i); setEpSearch(''); }}>
                               {chunk[0].number}–{chunk[chunk.length - 1].number}
                             </RangePill>
                           ))}
                         </RangePillRow>
                       ) : (
                         <RangePillRow>
-                          <RangeSelect
-                            value={epRange}
-                            onChange={e => { setEpRange(Number(e.target.value)); setEpSearch(''); }}
-                          >
+                          <RangeSelect value={epRange} onChange={e => { setEpRange(Number(e.target.value)); setEpSearch(''); }}>
                             {ranges.map((chunk, i) => (
-                              <option key={i} value={i}>
-                                {chunk[0].number} – {chunk[chunk.length - 1].number}
-                              </option>
+                              <option key={i} value={i}>{chunk[0].number} – {chunk[chunk.length - 1].number}</option>
                             ))}
                           </RangeSelect>
                         </RangePillRow>
                       )
                     )}
 
-                    {/* Controls bar */}
                     <EpControls>
                       <SearchBox>
                         <FaSearch size={11} />
                         <SearchInput
-                          placeholder="Filter episodes..."
+                          placeholder={isManga ? 'Filter chapters...' : 'Filter episodes...'}
                           value={epSearch}
                           onChange={e => setEpSearch(e.target.value)}
                         />
                       </SearchBox>
 
-                      <SegmentedControl>
-                        <SegmentOption
-                          $active={epView === 'card'}
-                          onClick={() => setEpView('card')}
-                          title="Card view"
-                        >
-                          <BsEye size={15} />
-                        </SegmentOption>
-                        <SegmentOption
-                          $active={epView === 'list'}
-                          onClick={() => setEpView('list')}
-                          title="List view"
-                        >
-                          <MdViewList size={16} />
-                        </SegmentOption>
-                        <SegmentOption
-                          $active={epView === 'number'}
-                          onClick={() => setEpView('number')}
-                          title="Number view"
-                        >
-                          <MdGridOn size={15} />
-                        </SegmentOption>
-                      </SegmentedControl>
+                      {/* Manga provider buttons — only rendered when BOTH providers have chapters */}
+                      {isManga && availableMangaProviders.size > 1 && (
+                        <ProviderSwitcher style={{ marginTop: '0.75rem', width: '100%' }}>
+                          {(['mangahere', 'mangapill'] as MangaProvider[])
+                            .filter(p => availableMangaProviders.has(p))
+                            .map(p => (
+                              <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
+                                {p === 'mangahere' ? 'MangaHere' : 'MangaPill'}
+                              </ProviderButton>
+                            ))
+                          }
+                        </ProviderSwitcher>
+                      )}
+
+                      {/* Anime view toggle */}
+                      {!isManga && (
+                        <SegmentedControl>
+                          <SegmentOption $active={epView === 'card'} onClick={() => setEpView('card')} title="Card view"><BsEye size={15} /></SegmentOption>
+                          <SegmentOption $active={epView === 'list'} onClick={() => setEpView('list')} title="List view"><MdViewList size={16} /></SegmentOption>
+                          <SegmentOption $active={epView === 'number'} onClick={() => setEpView('number')} title="Number view"><MdGridOn size={15} /></SegmentOption>
+                        </SegmentedControl>
+                      )}
                     </EpControls>
 
-                    {/* No results state */}
                     {currentEps.length === 0 && (
-                      <Desc>No episodes match your search.</Desc>
+                      <Desc>No {isManga ? 'chapters' : 'episodes'} match your search.</Desc>
                     )}
 
-                    {/* Scrollable episode area */}
                     {currentEps.length > 0 && (
                       <EpScrollArea>
-
-                        {/* ── Card view ── */}
-                        {epView === 'card' && (
+                        {/* Card view */}
+                        {epView === 'card' && !isManga && (
                           <CardGrid>
-                            {currentEps.map((ep) => (
-                              <EpisodeCardItem key={ep.id} onClick={() => navigate(`/watch/${animeInfo.id}?ep=${ep.number}`)}>
+                            {currentEps.map(ep => (
+                              <EpisodeCardItem key={ep.id} onClick={() => navigateToEntry(ep)}>
                                 <CardThumbWrap>
                                   <CardThumb src={ep.image || cover} alt={ep.title || ''} />
                                   <CardEpBadge>EP {ep.number}</CardEpBadge>
@@ -1376,39 +1331,36 @@ const Info: React.FC = () => {
                           </CardGrid>
                         )}
 
-                        {/* ── List view ── */}
-                        {epView === 'list' && (
+                        {/* List view (default for manga) */}
+                        {(epView === 'list' || isManga) && !(epView === 'card' && !isManga) && !(epView === 'number' && !isManga) && (
                           <ListGrid>
                             {currentEps.map((ep, idx) => (
-                              <ListItem
-                                key={ep.id}
-                                $first={isFirst(idx)}
-                                onClick={() => navigate(`/watch/${animeInfo.id}?ep=${ep.number}`)}
-                              >
+                              <ListItem key={ep.id} $first={isFirst(idx)} onClick={() => navigateToEntry(ep)}>
                                 {isFirst(idx)
                                   ? <ListPlayIcon><FaPlay size={10} /></ListPlayIcon>
-                                  : <ListEpNum>EP {ep.number}</ListEpNum>
+                                  : <ListEpNum>{isManga ? 'CH' : 'EP'} {ep.number}</ListEpNum>
                                 }
-                                <ListTitle title={ep.title || `Episode ${ep.number}`}>
-                                  {ep.title || `Episode ${ep.number}`}
+                                <ListTitle title={ep.title || `${isManga ? 'Chapter' : 'Episode'} ${ep.number}`}>
+                                  {ep.title || `${isManga ? 'Chapter' : 'Episode'} ${ep.number}`}
                                 </ListTitle>
-                                <ListIcons>
-                                  <SmIcon><FaClosedCaptioning size={10} /></SmIcon>
-                                  <SmIcon><FaMicrophone size={10} /></SmIcon>
-                                </ListIcons>
+                                {!isManga && (
+                                  <ListIcons>
+                                    <SmIcon><FaClosedCaptioning size={10} /></SmIcon>
+                                    <SmIcon><FaMicrophone size={10} /></SmIcon>
+                                  </ListIcons>
+                                )}
                               </ListItem>
                             ))}
                           </ListGrid>
                         )}
 
-                        {/* ── Number grid view ── */}
-                        {epView === 'number' && (
+                        {/* Number view */}
+                        {epView === 'number' && !isManga && (
                           <NumGrid>
                             {currentEps.map((ep, idx) => (
                               <NumCell
-                                key={ep.id}
-                                $first={isFirst(idx)}
-                                onClick={() => navigate(`/watch/${animeInfo.id}?ep=${ep.number}`)}
+                                key={ep.id} $first={isFirst(idx)}
+                                onClick={() => navigateToEntry(ep)}
                                 title={ep.title || `Episode ${ep.number}`}
                               >
                                 {isFirst(idx) ? <FaPlay size={10} /> : ep.number}
@@ -1416,65 +1368,52 @@ const Info: React.FC = () => {
                             ))}
                           </NumGrid>
                         )}
-
                       </EpScrollArea>
                     )}
                   </>
-                ) : <Desc>No episodes available yet.</Desc>}
+                ) : (
+                  <Desc>No {isManga ? 'chapters' : 'episodes'} available yet.</Desc>
+                )}
               </Panel>
             )}
-
           </RightCol>
         </Grid>
 
-        {/* ── Recommendations — full width below grid ── */}
+        {/* Recommendations */}
         {recommendations.length > 0 && (
           <FullWidthSection>
             <SectionHeader>
               <SectionLabel>You might also like</SectionLabel>
               {recsNeedScroll && (
                 <ScrollBtnRow>
-                  <ScrollBtn onClick={() => scrollSection(recsRef, 'left')} aria-label="Scroll left">
-                    <FaChevronLeft size={12} />
-                  </ScrollBtn>
-                  <ScrollBtn onClick={() => scrollSection(recsRef, 'right')} aria-label="Scroll right">
-                    <FaChevronRight size={12} />
-                  </ScrollBtn>
+                  <ScrollBtn onClick={() => scrollSection(recsRef, 'left')} aria-label="Scroll left"><FaChevronLeft size={12} /></ScrollBtn>
+                  <ScrollBtn onClick={() => scrollSection(recsRef, 'right')} aria-label="Scroll right"><FaChevronRight size={12} /></ScrollBtn>
                 </ScrollBtnRow>
               )}
             </SectionHeader>
             <StyledCardGrid ref={recsRef}>
-              {recommendations.map(r => (
-                <AnimeCardItem key={r.id} anime={r as unknown as Anime} />
-              ))}
+              {recommendations.map(r => <AnimeCardItem key={r.id} anime={r as unknown as Anime} />)}
             </StyledCardGrid>
           </FullWidthSection>
         )}
 
-        {/* ── Related — full width below recommendations, using AnimeCardItem ── */}
+        {/* Related */}
         {relatedAnime.length > 0 && (
           <FullWidthSection>
             <SectionHeader>
               <SectionLabel>Related</SectionLabel>
               {relatedNeedScroll && (
                 <ScrollBtnRow>
-                  <ScrollBtn onClick={() => scrollSection(relatedRef, 'left')} aria-label="Scroll left">
-                    <FaChevronLeft size={12} />
-                  </ScrollBtn>
-                  <ScrollBtn onClick={() => scrollSection(relatedRef, 'right')} aria-label="Scroll right">
-                    <FaChevronRight size={12} />
-                  </ScrollBtn>
+                  <ScrollBtn onClick={() => scrollSection(relatedRef, 'left')} aria-label="Scroll left"><FaChevronLeft size={12} /></ScrollBtn>
+                  <ScrollBtn onClick={() => scrollSection(relatedRef, 'right')} aria-label="Scroll right"><FaChevronRight size={12} /></ScrollBtn>
                 </ScrollBtnRow>
               )}
             </SectionHeader>
             <StyledCardGrid ref={relatedRef}>
-              {relatedAnime.slice(0, 16).map((r: any) => (
-                <AnimeCardItem key={r.id} anime={r as unknown as Anime} />
-              ))}
+              {relatedAnime.slice(0, 16).map((r: any) => <AnimeCardItem key={r.id} anime={r as unknown as Anime} />)}
             </StyledCardGrid>
           </FullWidthSection>
         )}
-
       </Shell>
     </PageWrapper>
   );

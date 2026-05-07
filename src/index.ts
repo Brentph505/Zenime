@@ -68,5 +68,6 @@ export { default as About } from './pages/About';
 export { default as PolicyTerms } from './pages/PolicyTerms';
 export { default as Page404 } from './pages/404';
 export { default as Callback } from './pages/Callback';
+export { default as Read } from './pages/Read';
 export { default as Info } from './pages/Info';
 export { default as Studio } from './pages/Studio';

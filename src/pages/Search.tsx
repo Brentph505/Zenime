@@ -145,6 +145,7 @@ const Search = () => {
         format: selectedFormat.value,
         status: selectedStatus.value,
         sort: [sortParam], // Ensure this is correctly formatted
+        ...(selectedFormat.value === 'MANGA' && { type: 'MANGA' }),
       });
       setAnimeData(
         page === 1

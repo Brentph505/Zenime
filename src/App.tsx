@@ -16,6 +16,7 @@ import {
   Page404,
   About,
   PolicyTerms,
+  Read,
   ShortcutsPopup,
   ScrollToTop,
   usePreserveScrollOnReload,
@@ -64,6 +65,7 @@ function App() {
                     element={<Watch />}
                   />
                   <Route path='/info/:animeId' element={<Info />} />
+                  <Route path='/read/:animeId' element={<Read />} />
                   <Route path='/studio/:studioId' element={<Studio />} />
                   <Route path='/profile' element={<Profile />} />
                   <Route path='/profile/settings' element={<Settings />} />

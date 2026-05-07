@@ -81,6 +81,7 @@ export const formatOptions: Option[] = [
   { value: 'MOVIE', label: 'Movie' },
   { value: 'SPECIAL', label: 'Special' },
   { value: 'MUSIC', label: 'Music' },
+  { value: 'MANGA', label: 'Manga' },
 ];
 
 export const statusOptions: Option[] = [

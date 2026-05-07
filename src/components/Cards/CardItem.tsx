@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { StatusIndicator, type Anime } from '../../index';
-import { FaPlay } from 'react-icons/fa';
+import { FaPlay, FaInfoCircle } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
 
@@ -60,6 +60,18 @@ const PlayIcon = styled(FaPlay)`
   z-index: 1;
 `;
 
+const InfoIcon = styled(FaInfoCircle)`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  color: #fff;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 1;
+`;
+
 const ImageWrapper = styled.div`
   position: absolute;
   top: 0;
@@ -84,6 +96,10 @@ const ImageWrapper = styled.div`
   }
 
   &:hover ${PlayIcon} {
+    opacity: 1;
+  }
+
+  &:hover ${InfoIcon} {
     opacity: 1;
   }
 `;
@@ -212,10 +228,10 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
       onMouseLeave={handleMouseLeave}
     >
       <StyledCardItem>
-        {/* Poster → /watch/:id or /watch/:id?ep=totalEpisodes for latest tab */}
+        {/* Poster → /watch/:id for anime, /info/:id for manga */}
         <PosterLink
-          to={`/watch/${anime.id}${isLatestTab && anime.totalEpisodes ? `?ep=${anime.totalEpisodes}` : ''}`}
-          title={'Play ' + (anime.title.english || anime.title.romaji)}
+          to={anime.type === 'MANGA' ? `/info/${anime.id}?type=MANGA` : `${isLatestTab && anime.totalEpisodes ? `/watch/${anime.id}?ep=${anime.totalEpisodes}` : `/watch/${anime.id}`}`}
+          title={(anime.type === 'MANGA' ? 'Info: ' : 'Play ') + (anime.title.english || anime.title.romaji)}
         >
           <ImageDisplayWrapper>
             <AnimeImage>
@@ -227,11 +243,19 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
                     anime.title.english || anime.title.romaji + ' Cover Image'
                   }
                 />
-                <PlayIcon
-                  title={
-                    'Play ' + (anime.title.english || anime.title.romaji)
-                  }
-                />
+                {anime.type === 'MANGA' ? (
+                  <InfoIcon
+                    title={
+                      'Info: ' + (anime.title.english || anime.title.romaji)
+                    }
+                  />
+                ) : (
+                  <PlayIcon
+                    title={
+                      'Play ' + (anime.title.english || anime.title.romaji)
+                    }
+                  />
+                )}
               </ImageWrapper>
               {isHovered && displayDetail}
             </AnimeImage>
@@ -245,7 +269,7 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
           onMouseLeave={() => setIsTitleHovered(false)}
         >
           <TitleLink
-            to={`/info/${anime.id}`}
+            to={`/info/${anime.id}${anime.type === 'MANGA' ? '?type=MANGA' : ''}`}
             title={'Info: ' + (anime.title.english || anime.title.romaji)}
           >
             <StatusIndicator status={anime.status} />

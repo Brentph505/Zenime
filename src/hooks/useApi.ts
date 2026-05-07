@@ -24,6 +24,9 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
 const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
 
+// Image Proxy configuration (Cloudflare Worker)
+const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
+
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
 
@@ -94,6 +97,10 @@ function generateCacheKey(...args: string[]) {
   return args.join('-');
 }
 
+function buildQueryString(params: URLSearchParams) {
+  return params.toString().replace(/%2F/g, '/');
+}
+
 interface CacheItem {
   value: any;
   timestamp: number;
@@ -158,6 +165,15 @@ function createCache(cacheKey: string) {
   );
 }
 
+export type MangaProvider =
+  | 'mangadex'
+  | 'mangahere'
+  | 'mangakakalot'
+  | 'mangapark'
+  | 'mangapill'
+  | 'mangareader'
+  | 'mangasee123';
+
 interface FetchOptions {
   type?: string;
   season?: string;
@@ -175,6 +191,7 @@ const animeInfoCache = createCache('Info');
 const animeEpisodesCache = createCache('Episodes');
 const fetchAnimeEmbeddedEpisodesCache = createCache('Video Embedded Sources');
 const videoSourcesCache = createCache('Video Sources');
+const mangaReadCache = createCache('MangaRead');
 const genreCache = createCache('AniListGenres');
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -192,10 +209,6 @@ const isValidUrl = (url: string): boolean => {
 
 /**
  * Builds a proxied m3u8 URL with spoofed Referer/Origin headers.
- *
- * @param sourceUrl  The raw .m3u8 URL
- * @param referer    The page the stream originates from (e.g. the iframe URL)
- * @returns          Proxied URL string, or original URL if proxy is not configured
  */
 export function buildM3U8ProxyUrl(
   sourceUrl: string,
@@ -210,7 +223,6 @@ export function buildM3U8ProxyUrl(
     return sourceUrl;
   }
 
-  // Skip if already proxied by the same proxy
   if (sourceUrl.includes(selectedProxy)) {
     console.log(`ℹ️ URL already proxied by ${selectedProxy.replace(/\/$/, '')}, skipping double-wrap`);
     return sourceUrl;
@@ -239,12 +251,6 @@ export function buildM3U8ProxyUrl(
 
 /**
  * Processes a sources array and replaces raw .m3u8 URLs with proxied ones.
- * Non-m3u8 sources are returned as-is.
- * Skips URLs that are already proxied.
- *
- * @param sources   Array of source objects with a `url` field
- * @param referer   Referer to spoof (typically the player/iframe URL)
- * @returns         Sources array with proxied URLs
  */
 export function proxyM3U8Sources(
   sources: any[],
@@ -257,7 +263,6 @@ export function proxyM3U8Sources(
 
   return sources.map((source) => {
     if (source.url?.endsWith('.m3u8') && isValidUrl(source.url)) {
-      // Skip if already proxied by the same proxy
       if (source.url.includes(selectedProxy)) {
         console.log(`ℹ️ Source already proxied, skipping: ${source.url.substring(0, 80)}...`);
         return source;
@@ -272,13 +277,47 @@ export function proxyM3U8Sources(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AniList GraphQL — Genres
+// Image Proxy Utilities
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fetch all available genres from AniList GraphQL API.
- * Returns a cached array of genre strings.
+ * Builds a proxied image URL using the Cloudflare Worker.
  */
+export function buildImageProxyUrl(
+  imageUrl: string,
+  provider: string = 'mangahere',
+  referer?: string,
+): string {
+  if (!IMAGE_PROXY_URL) {
+    console.warn('⚠️ No image proxy is configured. Returning original URL.');
+    return imageUrl;
+  }
+
+  if (imageUrl.includes(IMAGE_PROXY_URL)) {
+    console.log(`ℹ️ Image URL already proxied, skipping double-wrap`);
+    return imageUrl;
+  }
+
+  if (!isValidUrl(imageUrl)) {
+    console.warn(`⚠️ Invalid image URL: ${imageUrl}. Returning as-is.`);
+    return imageUrl;
+  }
+
+  const proxyBase = IMAGE_PROXY_URL.replace(/\/$/, '');
+  let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=${encodeURIComponent(provider)}`;
+
+  if (referer) {
+    proxied += `&referer=${encodeURIComponent(referer)}`;
+  }
+
+  console.log(`🔀 Image proxied: ${imageUrl} → ${proxied}`);
+  return proxied;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AniList GraphQL — Genres
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function fetchAniListGenres(): Promise<string[]> {
   const cacheKey = 'genres';
 
@@ -324,7 +363,12 @@ export async function fetchAniListGenres(): Promise<string[]> {
   }
 }
 
-async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
+async function fetchFromProxy(
+  url: string,
+  cache: any,
+  cacheKey: string,
+  requestTimeout?: number,
+) {
   try {
     const cachedResponse = cache.get(cacheKey);
     if (cachedResponse) {
@@ -334,7 +378,11 @@ async function fetchFromProxy(url: string, cache: any, cacheKey: string) {
 
     console.log(`❌ Cache MISS for: ${cacheKey}. Making network request...`);
 
-    const requestConfig = PROXY_URL ? { params: { url } } : {};
+    const requestConfig: any = { timeout: requestTimeout };
+    if (PROXY_URL) {
+      requestConfig.params = { url };
+    }
+
     const response = await axiosInstance.get(
       PROXY_URL ? '' : url,
       requestConfig,
@@ -439,10 +487,6 @@ export interface AniListAiringItem {
   };
 }
 
-/**
- * Get the Unix timestamp boundaries (seconds) for the START and END of a local
- * calendar day offset from today.
- */
 function getLocalDayBounds(dayOffset: number): { start: number; end: number } {
   const now = new Date();
 
@@ -463,13 +507,6 @@ function getLocalDayBounds(dayOffset: number): { start: number; end: number } {
   };
 }
 
-/**
- * Fetch the airing schedule for a given day offset from today using the
- * official AniList GraphQL API.
- *
- * @param dayOffset  0 = today (local timezone), 1 = tomorrow, …, 6 = 6 days out
- * @returns          Flat array of AniListAiringItem sorted by airingAt (asc)
- */
 export async function fetchAiringSchedule(
   dayOffset: number = 0,
 ): Promise<AniListAiringItem[]> {
@@ -590,11 +627,10 @@ export async function fetchAnimeData(
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/data/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey('animeData', animeId, finalProvider);
-  
+
   try {
     const data = await fetchFromProxy(url, animeDataCache, cacheKey);
-    
-    // If data is empty and not using animekai, try animekai
+
     if ((!data || (typeof data === 'object' && Object.keys(data).length === 0)) && finalProvider !== 'animekai') {
       console.log(`⚠️ No data from ${finalProvider}, trying animekai...`);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
@@ -602,10 +638,9 @@ export async function fetchAnimeData(
       const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
       return await fetchFromProxy(fallbackUrl, animeDataCache, fallbackCacheKey);
     }
-    
+
     return data;
   } catch (error) {
-    // If error and not animekai, try fallback
     if (finalProvider !== 'animekai') {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
@@ -625,11 +660,10 @@ export async function fetchAnimeInfo(
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/info/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey('animeInfo', animeId, finalProvider);
-  
+
   try {
     const info = await fetchFromProxy(url, animeInfoCache, cacheKey);
-    
-    // If info is empty and not using animekai, try animekai
+
     if ((!info || (typeof info === 'object' && Object.keys(info).length === 0)) && finalProvider !== 'animekai') {
       console.log(`⚠️ No info from ${finalProvider}, trying animekai...`);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
@@ -637,10 +671,9 @@ export async function fetchAnimeInfo(
       const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
       return await fetchFromProxy(fallbackUrl, animeInfoCache, fallbackCacheKey);
     }
-    
+
     return info;
   } catch (error) {
-    // If error and not animekai, try fallback
     if (finalProvider !== 'animekai') {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
@@ -650,6 +683,64 @@ export async function fetchAnimeInfo(
     }
     throw error;
   }
+}
+
+/**
+ * Fetches manga info for a SPECIFIC provider without any internal fallback.
+ *
+ * This is intentionally strict — callers (e.g. Info.tsx) are responsible for
+ * probing multiple providers and deciding which to use. Silent internal
+ * fallbacks would cause the caller to believe provider A returned data when
+ * it was actually provider B, leading to wrong chapter URLs.
+ *
+ * Throws if the provider returns no data or an error, so the caller can
+ * handle it via Promise.allSettled / try-catch.
+ */
+export async function fetchMangaInfo(
+  mangaId: string,
+  provider: 'mangahere' | 'mangapill' = 'mangahere',
+): Promise<any> {
+  const finalProvider = provider || 'mangahere';
+  const params = new URLSearchParams({ provider: finalProvider });
+  const url = `${BASE_URL}meta/anilist-manga/info/${mangaId}?${params.toString()}`;
+  const cacheKey = generateCacheKey('mangaInfo', mangaId, finalProvider);
+
+  const info = await fetchFromProxy(url, animeInfoCache, cacheKey);
+
+  // Throw so the caller (Info.tsx parallel probe) can detect this provider
+  // has no data, rather than silently returning empty-or-wrong data.
+  if (!info || (typeof info === 'object' && Object.keys(info).length === 0)) {
+    throw new Error(`No manga info returned from provider: ${finalProvider}`);
+  }
+
+  return info;
+}
+
+export interface MangaReadPage {
+  page: number;
+  img: string;
+  headerForImage?: {
+    Referer: string;
+  };
+}
+
+export async function fetchMangaRead(
+  chapterId: string,
+  provider: 'mangahere' | 'mangapill' = 'mangahere',
+): Promise<MangaReadPage[]> {
+  const finalProvider = provider || 'mangahere';
+  const params = new URLSearchParams({ chapterId, provider: finalProvider });
+  const url = `${BASE_URL}meta/anilist-manga/read?${buildQueryString(params)}`;
+  const cacheKey = generateCacheKey('mangaRead', chapterId, finalProvider);
+  const requestTimeout = 25000;
+
+  const data = await fetchFromProxy(url, mangaReadCache, cacheKey, requestTimeout);
+
+  if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+    throw new Error(`No manga read pages available for provider ${finalProvider}`);
+  }
+
+  return data as MangaReadPage[];
 }
 
 async function fetchList(
@@ -757,7 +848,6 @@ export async function fetchAnimeEpisodes(
       finalProvider,
     );
 
-    // If episodes is empty and not using animekai, try animekai
     if (
       (!episodes ||
         (Array.isArray(episodes) && episodes.length === 0) ||
@@ -784,7 +874,6 @@ export async function fetchAnimeEpisodes(
 
     return episodes;
   } catch (error) {
-    // If error and not animekai, try fallback
     if (finalProvider !== 'animekai') {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({
@@ -839,16 +928,6 @@ export async function fetchAnimeStreamingLinks(
   return fetchFromProxy(url, videoSourcesCache, cacheKey);
 }
 
-/**
- * Fetches anime streaming links and automatically proxies any .m3u8 sources.
- * Use this as a drop-in replacement for fetchAnimeStreamingLinks when you need
- * proxied HLS streams.
- *
- * @param episodeId   Episode ID
- * @param provider    Provider name (default: kickassanime)
- * @param server      Optional server override
- * @param referer     Referer URL to spoof in the proxy headers (e.g. iframe URL)
- */
 export async function fetchAnimeStreamingLinksProxied(
   episodeId: string,
   provider: string = 'kickassanime',
@@ -875,11 +954,8 @@ export async function fetchAnimeStreamingLinksProxied(
 
   const ANIKAI_REFERER = 'https://anikai.to';
 
-  // Extract server URL from response to use as referer/origin.
-  // For animekai, use anikai.to as the referer to satisfy upstream validation.
   let serverUrl = finalProvider === 'animekai' ? ANIKAI_REFERER : referer;
   if (!serverUrl && data?.servers?.length > 0) {
-    // Find the matching server by name if server param was provided
     if (server) {
       const matchingServer = data.servers.find(
         (s: any) => s.name?.toLowerCase() === server.toLowerCase(),
@@ -888,7 +964,6 @@ export async function fetchAnimeStreamingLinksProxied(
         serverUrl = matchingServer.url;
       }
     }
-    // Fallback to first server if no specific server was requested
     if (!serverUrl && data.servers[0]?.url) {
       serverUrl = data.servers[0].url;
     }

@@ -79,6 +79,7 @@ export interface Episode {
   image: string;
   imageHash: string;
   airDate: string | null;
+  url?: string;
 }
 
 export interface Anime {
@@ -125,6 +126,14 @@ export interface Anime {
   artwork: Artwork[];
   episodes: Episode[];
   color: string;
+}
+
+export interface Manga extends Anime {
+  chapters?: Episode[];
+  totalChapters?: number;
+  volumes?: number;
+  totalVolumes?: number;
+  authors?: string[];
 }
 
 export interface Paging {

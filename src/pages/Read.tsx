@@ -1,0 +1,1351 @@
+﻿import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useCallback,
+} from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import styled, { css, keyframes } from 'styled-components';
+import {
+  FaChevronLeft,
+  FaChevronRight,
+  FaBars,
+  FaTimes,
+  FaExpand,
+  FaCompress,
+  FaSearch,
+  FaCheckCircle,
+  FaRedo,
+} from 'react-icons/fa';
+import {
+  fetchMangaInfo,
+  fetchMangaRead,
+  Manga,
+  MangaReadPage,
+  Episode,
+  buildImageProxyUrl,
+} from '../index';
+
+type MangaChapter = Episode & { url?: string };
+
+function getChapterShortLabel(chapter: MangaChapter) {
+  if (typeof chapter.number === 'number') return `CH ${chapter.number}`;
+  if (chapter.title?.trim()) return chapter.title.trim();
+  if (chapter.id) {
+    const parts = chapter.id.split('/');
+    return parts[parts.length - 1] || chapter.id;
+  }
+  return 'Chapter';
+}
+
+function getChapterHeading(chapter: MangaChapter) {
+  if (typeof chapter.number === 'number') return `Chapter ${chapter.number}`;
+  if (chapter.title?.trim()) return chapter.title.trim();
+  if (chapter.id) {
+    const parts = chapter.id.split('/');
+    const last = parts[parts.length - 1];
+    return last ? `Chapter ${last}` : chapter.id;
+  }
+  return 'Chapter';
+}
+
+/* ─── Animations ─────────────────────────────────────────── */
+const slideInRight = keyframes`
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+`;
+const slideOutRight = keyframes`
+  from { transform: translateX(0); }
+  to   { transform: translateX(100%); }
+`;
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to   { opacity: 1; }
+`;
+const spin = keyframes`
+  to { transform: rotate(360deg); }
+`;
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════════════════════ */
+const PageShell = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: var(--global-primary-bg);
+  color: var(--global-text);
+  overflow: hidden;
+`;
+
+/* ─── Compact single-row header ──────────────────────────── */
+const TopBar = styled.header<{ $hidden?: boolean }>`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.6rem;
+  height: 3rem;
+  background: var(--global-secondary-bg);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  transition: transform 0.28s ease, opacity 0.28s ease;
+  will-change: transform;
+  z-index: 10;
+
+  ${({ $hidden }) =>
+    $hidden &&
+    css`
+      transform: translateY(-100%);
+      opacity: 0;
+      pointer-events: none;
+      position: absolute;
+      top: 0; left: 0; right: 0;
+    `}
+`;
+
+/* ─── Buttons ─────────────────────────────────────────────── */
+const Btn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: none;
+  border-radius: var(--global-border-radius, 6px);
+  padding: 0.4rem 0.65rem;
+  background: transparent;
+  color: var(--global-text);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover { background: rgba(255,255,255,0.08); color: var(--global-text); }
+  &:disabled { opacity: 0.3; cursor: not-allowed; }
+  svg { font-size: 0.75rem; }
+
+  @media (max-width: 767px) {
+    padding: 0.38rem 0.5rem;
+    font-size: 0.78rem;
+  }
+`;
+
+const PrimaryBtn = styled(Btn)`
+  background: var(--primary-accent);
+  color: #fff;
+  &:hover:not(:disabled) { opacity: 0.85; background: var(--primary-accent); }
+`;
+
+const PurpleBtn = styled(Btn)`
+  background: rgba(109, 40, 217, 0.9);
+  color: #fff;
+  &:hover { background: rgba(109, 40, 217, 1); }
+
+  /* Hide fullscreen toggle on mobile — saves space */
+  @media (max-width: 767px) { display: none; }
+`;
+
+const Sep = styled.div`
+  width: 1px;
+  height: 1.2rem;
+  background: var(--global-border);
+  flex-shrink: 0;
+  @media (max-width: 767px) { display: none; }
+`;
+
+/* Spacer — hidden on mobile so MobileLabel fills the gap instead */
+const Grow = styled.div`
+  flex: 0 0 0;
+  min-width: 0;
+  @media (max-width: 767px) { display: none; }
+`;
+
+/* ─── Desktop center block ────────────────────────────────── */
+const TitleBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  gap: 0.12rem;
+  @media (max-width: 767px) { display: none; }
+`;
+
+const TitleMain = styled.span`
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--global-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+`;
+
+const ProgRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  max-width: 100%;
+`;
+
+const ProgTrack = styled.div<{ $pct: number }>`
+  flex: 1;
+  height: 3px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 99px;
+  overflow: hidden;
+  &::after {
+    content: '';
+    display: block;
+    height: 100%;
+    width: ${({ $pct }) => $pct}%;
+    background: var(--primary-accent);
+    transition: width 0.35s ease;
+  }
+`;
+
+const ProgLabel = styled.span`
+  font-size: 0.64rem;
+  color: var(--global-text-muted, rgba(255,255,255,0.4));
+  white-space: nowrap;
+  flex-shrink: 0;
+`;
+
+/* ─── Mobile compact label ────────────────────────────────── */
+/*
+ * flex: 1 here + Grow hidden on mobile = this element fills all
+ * remaining horizontal space → text naturally centres between
+ * the Back button on the left and the nav controls on the right.
+ */
+const MobileLabel = styled.div`
+  display: none;
+  @media (max-width: 767px) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+  }
+`;
+
+const MobileLabelMain = styled.span`
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--global-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+`;
+
+const MobileLabelSub = styled.span`
+  font-size: 0.62rem;
+  color: var(--global-text-muted, rgba(255,255,255,0.4));
+  white-space: nowrap;
+`;
+
+/* ══════════════════════════════════════════════════════════
+   READER BODY
+══════════════════════════════════════════════════════════ */
+const ReaderBody = styled.div`
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+`;
+
+/* ─── Pages column ────────────────────────────────────────── */
+const PagesColumn = styled.main<{ $blurred?: boolean }>`
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #000;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  transition: filter 0.15s ease;
+
+  /* 4px breathing room on each side of the page strip */
+  padding: 0 4px;
+
+  @media (max-width: 767px) { 
+    padding: 0 0 3rem 4px; 
+  }
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+
+  @media (max-width: 767px) {
+    &::-webkit-scrollbar { width: 4px; }
+  }
+
+  ${({ $blurred }) => $blurred && css`filter: blur(3px); pointer-events: none;`}
+`;
+
+const PageWrapper = styled.div`
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+  position: relative;
+  line-height: 0;
+  & + & { margin-top: 2px; }
+`;
+
+const MangaImg = styled.img<{ $visible?: boolean }>`
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  display: block;
+  background: #111;
+  pointer-events: none;
+  touch-action: pan-y;
+  opacity: ${({ $visible }) => ($visible ? 1 : 0)};
+  transition: opacity 0.2s ease;
+`;
+
+const PageNum = styled.div`
+  position: absolute;
+  bottom: 6px;
+  right: 8px;
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.55);
+  font-size: 0.64rem;
+  padding: 1px 6px;
+  border-radius: 99px;
+  pointer-events: none;
+  user-select: none;
+`;
+
+const LoadingCell = styled.div`
+  width: 100%;
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+`;
+
+const PlaceholderCell = styled.div`
+  width: 100%;
+  min-height: 400px;
+  background: #111;
+`;
+
+const Spinner = styled.div`
+  width: 26px;
+  height: 26px;
+  border: 2.5px solid rgba(255,255,255,0.08);
+  border-top-color: var(--primary-accent);
+  border-radius: 50%;
+  animation: ${spin} 0.75s linear infinite;
+`;
+
+const ErrorCell = styled.div`
+  width: 100%;
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  background: #0c0c0c;
+`;
+
+const ErrorMsg = styled.p`
+  margin: 0;
+  color: #f87171;
+  font-size: 0.8rem;
+`;
+
+const RetryBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid rgba(248,113,113,0.35);
+  background: transparent;
+  color: #f87171;
+  padding: 0.28rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  &:hover { background: rgba(248,113,113,0.08); }
+`;
+
+/* ─── Empty states ────────────────────────────────────────── */
+const Empty = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  color: var(--global-text-muted, rgba(255,255,255,0.35));
+  font-size: 0.9rem;
+  min-height: 60vh;
+`;
+
+/* ─── End of chapter ─────────────────────────────────────── */
+const EocCard = styled.div`
+  width: min(100%, 760px);
+  max-width: 100%;
+  box-sizing: border-box;
+  background: var(--global-secondary-bg);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding: 2.5rem 1.5rem;
+  margin: 0 auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.9rem;
+`;
+
+const EocIcon = styled.div`
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(var(--primary-accent-rgb, 138,43,226), 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-accent);
+  font-size: 1.3rem;
+`;
+
+const EocTitle = styled.h3`
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--primary-accent);
+`;
+
+const EocSub = styled.p`
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--global-text-muted, rgba(255,255,255,0.4));
+`;
+
+const EocBtnRow = styled.div`
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: nowrap;
+  justify-content: center;
+  width: 100%;
+  max-width: 640px;
+`;
+
+const EocBtn = styled.button<{ $primary?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  flex: 1 1 0;
+  min-width: 0;
+  border: 1px solid var(--global-border);
+  border-radius: var(--global-border-radius, 8px);
+  padding: 0.55rem 1.2rem;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.15s;
+  background: ${({ $primary }) => ($primary ? 'var(--primary-accent)' : 'var(--global-card-bg)')};
+  color: ${({ $primary }) => ($primary ? '#fff' : 'var(--global-text)')};
+  &:hover { opacity: 0.82; transform: translateY(-1px); }
+`;
+
+/* ══════════════════════════════════════════════════════════
+   SIDEBAR
+══════════════════════════════════════════════════════════ */
+const DesktopSidebar = styled.aside<{ $collapsed?: boolean }>`
+  width: ${({ $collapsed }) => ($collapsed ? '0' : '260px')};
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--global-secondary-bg);
+  border-left: 1px solid var(--global-border);
+  transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+  @media (max-width: 767px) { display: none; }
+`;
+
+const Overlay = styled.div<{ $visible: boolean }>`
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 298;
+  backdrop-filter: blur(2px);
+  display: ${({ $visible }) => ($visible ? 'block' : 'none')};
+  animation: ${fadeIn} 0.18s ease;
+`;
+
+const MobileDrawer = styled.aside<{ $open: boolean; $closing: boolean }>`
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: min(75vw, 300px);
+  z-index: 299;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--global-primary-bg);
+  border-left: 1px solid var(--global-border);
+  transform: translateX(100%);
+
+  ${({ $open, $closing }) =>
+    $open && !$closing &&
+    css`animation: ${slideInRight} 0.2s cubic-bezier(0.25,0.46,0.45,0.94) forwards;`}
+  ${({ $closing }) =>
+    $closing &&
+    css`animation: ${slideOutRight} 0.2s cubic-bezier(0.55,0,1,0.45) forwards;`}
+`;
+
+/* Sidebar internals */
+const SbHead = styled.div`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.85rem;
+  border-bottom: 1px solid var(--global-border);
+`;
+
+const SbMangaInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+
+  img {
+    width: 2rem;
+    height: 2.8rem;
+    object-fit: cover;
+    border-radius: 4px;
+    flex-shrink: 0;
+    background: var(--global-card-bg);
+  }
+
+  span {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--global-text);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.3;
+  }
+`;
+
+const SbSection = styled.div`
+  flex-shrink: 0;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--global-border);
+`;
+
+const SbSectionLabel = styled.p`
+  margin: 0 0 0.4rem;
+  font-size: 0.63rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--global-text-muted, rgba(255,255,255,0.35));
+`;
+
+const ProvRow = styled.div`
+  display: flex;
+  gap: 0.35rem;
+`;
+
+const ProvBtn = styled.button<{ $active?: boolean }>`
+  flex: 1;
+  border: none;
+  border-radius: 6px;
+  padding: 0.42rem 0.35rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  background: ${({ $active }) => ($active ? 'var(--primary-accent)' : 'var(--global-card-bg)')};
+  color: ${({ $active }) => ($active ? '#fff' : 'var(--global-text-muted)')};
+  &:hover { opacity: 0.85; }
+`;
+
+const SearchWrap = styled.div`
+  flex-shrink: 0;
+  position: relative;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--global-border);
+
+  svg {
+    position: absolute;
+    left: 1.25rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--global-text-muted);
+    font-size: 0.7rem;
+    pointer-events: none;
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--global-card-bg);
+  border: 1px solid var(--global-border);
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem 0.4rem 1.8rem;
+  color: var(--global-text);
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.15s;
+  &::placeholder { color: var(--global-text-muted); }
+  &:focus { border-color: var(--primary-accent); }
+`;
+
+const SbChapterHeader = styled.div`
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.85rem 0.28rem;
+`;
+
+const SbChLabel = styled.span`
+  font-size: 0.63rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--global-text-muted, rgba(255,255,255,0.35));
+`;
+
+const SbChCount = styled.span`
+  background: var(--global-card-bg);
+  color: var(--global-text-muted);
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  border-radius: 99px;
+`;
+
+const ChapterList = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  &:hover { scrollbar-color: var(--global-text-muted) transparent; }
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: transparent; border-radius: 99px; }
+  &:hover::-webkit-scrollbar-thumb { background: var(--global-border); }
+`;
+
+const ChBtn = styled.button<{ $active?: boolean }>`
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-left: 2px solid ${({ $active }) => ($active ? 'var(--primary-accent)' : 'transparent')};
+  border-radius: 5px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.13s, color 0.13s;
+  background: ${({ $active }) =>
+    $active ? 'rgba(var(--primary-accent-rgb, 138,43,226), 0.15)' : 'transparent'};
+  color: ${({ $active }) => ($active ? '#fff' : 'var(--global-text)')};
+
+  &:hover {
+    background: rgba(var(--primary-accent-rgb, 138,43,226), 0.1);
+    color: #fff;
+  }
+`;
+
+const ChMeta = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+
+  .num {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--global-text-muted);
+    flex-shrink: 0;
+  }
+  .ttl {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    color: var(--global-text);
+  }
+`;
+
+const SbEmpty = styled.div`
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--global-text-muted);
+  font-size: 0.82rem;
+`;
+
+/* ─── Mobile bottom progress ──────────────────────────────── */
+const MobileProgress = styled.div<{ $blurred?: boolean }>`
+  display: none;
+
+  @media (max-width: 767px) {
+    display: flex;
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    z-index: 50;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.42rem 0.85rem;
+    background: var(--global-secondary-bg);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid var(--global-border);
+    transition: filter 0.15s;
+    ${({ $blurred }) => $blurred && css`filter: blur(3px); pointer-events: none;`}
+  }
+`;
+
+const MbPct = styled.span`
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--primary-accent);
+  min-width: 30px;
+`;
+
+const MbPages = styled.span`
+  font-size: 0.68rem;
+  color: var(--global-text-muted);
+  min-width: 42px;
+  text-align: right;
+`;
+
+/* ══════════════════════════════════════════════════════════
+   PAGE STATE
+══════════════════════════════════════════════════════════ */
+interface PageState {
+  loaded: boolean;
+  loading: boolean;
+  error: boolean;
+  visible: boolean;
+  retryTs: number;
+}
+
+/* ══════════════════════════════════════════════════════════
+   COMPONENT
+══════════════════════════════════════════════════════════ */
+function Read() {
+  const { animeId } = useParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const [mangaInfo, setMangaInfo] = useState<Manga | null>(null);
+  const [selectedChapter, setSelectedChapter] = useState<MangaChapter | null>(null);
+  const [visibleChapter, setVisibleChapter] = useState<MangaChapter | null>(null);
+  const selectedChapterRef = useRef<MangaChapter | null>(null);
+  const providerSwitchRef = useRef(false);
+  const [readPages, setReadPages] = useState<MangaReadPage[]>([]);
+  const [provider, setProvider] = useState<'mangahere' | 'mangapill'>('mangahere');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPageLoading, setIsPageLoading] = useState(false);
+
+  useEffect(() => {
+    selectedChapterRef.current = selectedChapter;
+  }, [selectedChapter]);
+  const [error, setError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageStates, setPageStates] = useState<PageState[]>([]);
+
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarClosing, setSidebarClosing] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showHeader, setShowHeader] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+
+  const activeChapterRef = useRef<HTMLButtonElement | null>(null);
+  const pagesColRef = useRef<HTMLDivElement | null>(null);
+  const lastScrollY = useRef(0);
+  const scrollRaf = useRef<number | null>(null);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  const chapterIdParam = searchParams.get('chapterId') || '';
+  const providerParam = searchParams.get('provider');
+
+  /* ── Mobile detect ── */
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  /* ── Provider init ── */
+  useEffect(() => {
+    if (providerParam === 'mangapill' || providerParam === 'mangahere') {
+      setProvider(providerParam); return;
+    }
+    const stored = localStorage.getItem('manga-provider-preference');
+    if (stored === 'mangapill' || stored === 'mangahere') {
+      setProvider(stored as 'mangahere' | 'mangapill');
+    }
+  }, [providerParam]);
+
+  /* ── Sidebar collapse persist ── */
+  useEffect(() => {
+    const v = localStorage.getItem('manga-sidebar-collapsed');
+    if (v !== null) setSidebarCollapsed(v === 'true');
+  }, []);
+  useEffect(() => {
+    localStorage.setItem('manga-sidebar-collapsed', String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
+
+  /* ── Fetch manga info ── */
+  useEffect(() => {
+    if (!animeId) return;
+    setIsLoading(true);
+    setError(null);
+    fetchMangaInfo(animeId, provider)
+      .then((data: Manga) => {
+        setMangaInfo(data);
+        const chs = (data?.chapters ?? []) as MangaChapter[];
+        if (!chs.length) { setSelectedChapter(null); return; }
+
+        const previousChapter = selectedChapterRef.current;
+        const chapterSlug = chapterIdParam.split('/').filter(Boolean).pop() || '';
+
+        const findBySlug = (chapter: MangaChapter) =>
+          chapter.id === chapterIdParam ||
+          chapter.url === chapterIdParam ||
+          (chapterSlug && (chapter.id.endsWith(chapterSlug) || chapter.url?.endsWith(chapterSlug)));
+
+        const findByPrevious = (chapter: MangaChapter) =>
+          previousChapter && (
+            chapter.id === previousChapter.id ||
+            chapter.url === previousChapter.url ||
+            (typeof previousChapter.number === 'number' && chapter.number === previousChapter.number) ||
+            (previousChapter.title?.trim() && chapter.title?.trim() === previousChapter.title.trim()) ||
+            // When switching providers, try to match by chapter number if available
+            (previousChapter.number && chapter.number === previousChapter.number)
+          );
+
+        const shouldResetSelection = providerSwitchRef.current;
+        const matchedChapter = !shouldResetSelection
+          ? (chs.find((c) => chapterIdParam && findBySlug(c))
+            || (previousChapter ? chs.find(findByPrevious) : null)
+            || chs[0])
+          : null;
+
+        setSelectedChapter(matchedChapter);
+        if (matchedChapter) setVisibleChapter(matchedChapter);
+      })
+      .catch((err: unknown) => {
+        setError(
+          typeof err === 'object' && err !== null && 'message' in err
+            ? (err as { message: string }).message : 'Unable to load manga data'
+        );
+      })
+      .finally(() => setIsLoading(false));
+  }, [animeId, provider, chapterIdParam]);
+
+  /* ── Persist provider ── */
+  useEffect(() => {
+    localStorage.setItem('manga-provider-preference', provider);
+  }, [provider]);
+
+  /* ── Fetch pages ── */
+  useEffect(() => {
+    if (!selectedChapter) {
+      if (providerSwitchRef.current) return;
+      setReadPages([]);
+      setPageError(null);
+      return;
+    }
+    setIsPageLoading(true);
+    setPageError(null);
+    setCurrentPage(0);
+    if (pagesColRef.current) pagesColRef.current.scrollTop = 0;
+
+    const chapterFetchId = provider === 'mangapill'
+      ? (selectedChapter.url || selectedChapter.id)
+      : selectedChapter.id;
+
+    fetchMangaRead(chapterFetchId, provider)
+      .then((pages: MangaReadPage[]) => {
+        const arr = Array.isArray(pages) ? pages : [];
+        setReadPages(arr);
+        setPageStates(arr.map((_, i) => ({
+          loaded: false, loading: i < 3, error: false, visible: i < 3, retryTs: 0,
+        })));
+      })
+      .catch((err: unknown) => {
+        setPageError(
+          typeof err === 'object' && err !== null && 'message' in err
+            ? (err as { message: string }).message : 'Unable to load chapter pages'
+        );
+        setReadPages([]);
+        setPageStates([]);
+      })
+      .finally(() => setIsPageLoading(false));
+  }, [selectedChapter, provider]);
+
+  /* ── IntersectionObserver ── */
+  useEffect(() => {
+    observerRef.current?.disconnect();
+    if (!readPages.length || !pagesColRef.current) return;
+
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        const vis = entries
+          .filter((e) => e.isIntersecting)
+          .map((e) => {
+            const idx = Number((e.target as HTMLElement).dataset.idx);
+            const rect = e.boundingClientRect;
+            const dist = Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2);
+            return { idx, dist, ratio: e.intersectionRatio };
+          })
+          .filter((e) => Number.isFinite(e.idx))
+          .sort((a, b) => b.ratio - a.ratio || a.dist - b.dist);
+
+        if (vis.length) {
+          const np = vis[0].idx;
+          setCurrentPage(np);
+          setPageStates((prev) => {
+            const next = [...prev];
+            [np - 1, np, np + 1, np + 2].forEach((i) => {
+              if (i >= 0 && i < next.length && !next[i].visible) {
+                next[i] = { ...next[i], visible: true, loading: !next[i].loaded };
+              }
+            });
+            return next;
+          });
+        }
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -25% 0px' }
+    );
+
+    readPages.forEach((_, i) => {
+      const el = pagesColRef.current!.querySelector(`[data-idx="${i}"]`);
+      if (el) observerRef.current!.observe(el);
+    });
+
+    return () => observerRef.current?.disconnect();
+  }, [readPages]);
+
+  /* ── Mobile scroll → hide header ── */
+  useEffect(() => {
+    if (!isMobile) { setShowHeader(true); return; }
+    const col = pagesColRef.current;
+    if (!col) return;
+    const onScroll = () => {
+      if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current);
+      scrollRaf.current = requestAnimationFrame(() => {
+        const y = col.scrollTop;
+        if (y < 80) { setShowHeader(true); lastScrollY.current = y; return; }
+        if (Math.abs(y - lastScrollY.current) < 8) return;
+        setShowHeader(y < lastScrollY.current);
+        lastScrollY.current = y;
+      });
+    };
+    col.addEventListener('scroll', onScroll, { passive: true });
+    return () => col.removeEventListener('scroll', onScroll);
+  }, [isMobile, readPages]);
+
+  /* ── Fullscreen events ── */
+  useEffect(() => {
+    const fn = () =>
+      setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
+    document.addEventListener('fullscreenchange', fn);
+    document.addEventListener('webkitfullscreenchange', fn);
+    return () => {
+      document.removeEventListener('fullscreenchange', fn);
+      document.removeEventListener('webkitfullscreenchange', fn);
+    };
+  }, []);
+
+  /* ── Scroll active chapter into view ── */
+  useEffect(() => {
+    if (sidebarOpen && activeChapterRef.current) {
+      setTimeout(() => activeChapterRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' }), 60);
+    }
+  }, [sidebarOpen]);
+
+  /* ── Body scroll lock ── */
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevBodyOverscroll = document.body.style.overscrollBehavior;
+    const prevHtmlOverscroll = document.documentElement.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    document.documentElement.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.body.style.overscrollBehavior = prevBodyOverscroll;
+      document.documentElement.style.overscrollBehavior = prevHtmlOverscroll;
+    };
+  }, []);
+
+  /* ── Derived ── */
+  const chapters = useMemo(
+    () => ((mangaInfo?.chapters ?? []) as MangaChapter[]).slice(0, 250),
+    [mangaInfo]
+  );
+
+  const filteredChapters = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return chapters;
+    return chapters.filter((c) =>
+      getChapterHeading(c).toLowerCase().includes(q) ||
+      getChapterShortLabel(c).toLowerCase().includes(q)
+    );
+  }, [chapters, searchTerm]);
+
+  const currentChapter = visibleChapter;
+  const pageCount = readPages.length;
+  const progressPct = pageCount > 0 ? Math.round(((currentPage + 1) / pageCount) * 100) : 0;
+
+  const prevChapter = useMemo(() => {
+    if (!currentChapter) return null;
+    const idx = chapters.findIndex((c) => c.id === currentChapter.id);
+    return idx > 0 ? chapters[idx - 1] : null;
+  }, [chapters, currentChapter]);
+
+  const nextChapter = useMemo(() => {
+    if (!currentChapter) return null;
+    const idx = chapters.findIndex((c) => c.id === currentChapter.id);
+    return idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+  }, [chapters, currentChapter]);
+
+  /* ── Actions ── */
+  const closeSidebar = useCallback(() => {
+    setSidebarClosing(true);
+    setTimeout(() => { setSidebarOpen(false); setSidebarClosing(false); }, 220);
+  }, []);
+
+  const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill') => {
+    if (nextProvider === provider) return;
+    providerSwitchRef.current = true;
+    setProvider(nextProvider);
+    setSelectedChapter(null);
+    setVisibleChapter(null);
+    setReadPages([]);
+    setPageStates([]);
+    setPageError(null);
+    setIsPageLoading(false);
+    setCurrentPage(0);
+    if (pagesColRef.current) pagesColRef.current.scrollTop = 0;
+  }, [provider]);
+
+  const toggleFullscreen = useCallback(() => {
+    if (isFullscreen) {
+      (document.exitFullscreen || (document as any).webkitExitFullscreen).call(document);
+    } else {
+      const el = document.documentElement;
+      (el.requestFullscreen || (el as any).webkitRequestFullscreen).call(el);
+    }
+  }, [isFullscreen]);
+
+  const updatePage = (idx: number, patch: Partial<PageState>) =>
+    setPageStates((prev) => {
+      const next = [...prev];
+      if (next[idx]) next[idx] = { ...next[idx], ...patch };
+      return next;
+    });
+
+  /* ── Sidebar content (shared) ── */
+  const SidebarContent = () => (
+    <>
+      {isMobile && (
+        <SbHead>
+          <Btn onClick={closeSidebar} style={{ padding: '0.3rem' }}>
+            <FaTimes />
+          </Btn>
+        </SbHead>
+      )}
+
+      <SbSection>
+        <SbSectionLabel>Provider</SbSectionLabel>
+        <ProvRow>
+          <ProvBtn $active={provider === 'mangahere'} onClick={() => handleProviderChange('mangahere')}>
+            Mangahere
+          </ProvBtn>
+          <ProvBtn $active={provider === 'mangapill'} onClick={() => handleProviderChange('mangapill')}>
+            Mangapill
+          </ProvBtn>
+        </ProvRow>
+      </SbSection>
+
+      <SearchWrap>
+        <FaSearch />
+        <SearchInput
+          type='text'
+          placeholder='Search chapters…'
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+        />
+      </SearchWrap>
+
+      <SbChapterHeader>
+        <SbChLabel>Chapters</SbChLabel>
+        <SbChCount>{chapters.length}</SbChCount>
+      </SbChapterHeader>
+
+      <ChapterList>
+        {isLoading && <SbEmpty>Loading…</SbEmpty>}
+        {error && <SbEmpty>{error}</SbEmpty>}
+        {!isLoading && !error && filteredChapters.length === 0 && (
+          <SbEmpty>{searchTerm ? `No results for "${searchTerm}"` : 'No chapters available.'}</SbEmpty>
+        )}
+        {!isLoading && !error && filteredChapters.map((ch) => {
+          const isActive = currentChapter?.id === ch.id;
+          return (
+            <ChBtn
+              key={ch.id}
+              $active={isActive}
+              ref={isActive ? activeChapterRef : null}
+              onClick={() => {
+                providerSwitchRef.current = false;
+                setSelectedChapter(ch);
+                setVisibleChapter(ch);
+                if (isMobile) closeSidebar();
+              }}
+            >
+              <ChMeta>
+                <span className='num'>{getChapterShortLabel(ch)}</span>
+                <span className='ttl'>{ch.title || getChapterHeading(ch)}</span>
+              </ChMeta>
+            </ChBtn>
+          );
+        })}
+      </ChapterList>
+    </>
+  );
+
+  /* ── Render ── */
+  return (
+    <PageShell>
+
+      {/* ── HEADER ── */}
+      <TopBar $hidden={isMobile && !showHeader}>
+
+        {/* Back */}
+        <Btn onClick={() => navigate(`/info/${animeId}`)} title='Go back'>
+          <FaChevronLeft />
+          {!isMobile && 'Back'}
+        </Btn>
+
+        <Sep />
+
+        {/* Desktop spacer — centers the title block */}
+        <Grow />
+
+        {/* Desktop: centred title + progress bar */}
+        <TitleBlock>
+          <TitleMain title={mangaInfo?.title?.userPreferred || ''}>
+            {currentChapter ? getChapterHeading(currentChapter) : '—'}
+          </TitleMain>
+          {pageCount > 0 && (
+            <ProgRow>
+              <ProgLabel>{currentPage + 1} / {pageCount}</ProgLabel>
+              <ProgTrack $pct={progressPct} />
+              <ProgLabel style={{ color: 'var(--primary-accent)', fontWeight: 700 }}>
+                {progressPct}%
+              </ProgLabel>
+            </ProgRow>
+          )}
+        </TitleBlock>
+
+        {/*
+          Mobile: chapter label — flex:1 fills all space between Back and the
+          right-side controls because <Grow> is hidden on mobile.
+        */}
+        <MobileLabel>
+          <MobileLabelMain>{currentChapter ? getChapterShortLabel(currentChapter) : '—'}</MobileLabelMain>
+          <MobileLabelSub>{mangaInfo?.title?.userPreferred || 'Read Manga'}</MobileLabelSub>
+        </MobileLabel>
+
+        {/* Desktop spacer — hidden on mobile */}
+        <Grow />
+
+        {/* Prev / Next */}
+        <Btn
+          onClick={() => {
+            if (!prevChapter) return;
+            providerSwitchRef.current = false;
+            setSelectedChapter(prevChapter);
+            setVisibleChapter(prevChapter);
+          }}
+          disabled={!prevChapter}
+          title='Previous chapter'
+        >
+          <FaChevronLeft />
+          {!isMobile && 'Prev'}
+        </Btn>
+
+        <PrimaryBtn
+          onClick={() => {
+            if (!nextChapter) return;
+            providerSwitchRef.current = false;
+            setSelectedChapter(nextChapter);
+            setVisibleChapter(nextChapter);
+          }}
+          disabled={!nextChapter}
+          title='Next chapter'
+        >
+          {!isMobile && 'Next'}
+          <FaChevronRight />
+        </PrimaryBtn>
+
+        <Sep />
+
+        {/* Fullscreen — desktop only (hidden on mobile via PurpleBtn CSS) */}
+        <PurpleBtn onClick={toggleFullscreen} title='Toggle fullscreen'>
+          {isFullscreen ? <FaCompress /> : <FaExpand />}
+        </PurpleBtn>
+
+        <Sep />
+
+        {/* Chapters toggle */}
+        <Btn
+          onClick={isMobile ? () => setSidebarOpen(true) : () => setSidebarCollapsed((v) => !v)}
+          title='Chapters'
+        >
+          <FaBars />
+          {!isMobile && ' Chapters'}
+        </Btn>
+
+      </TopBar>
+
+      {/* ── READER BODY ── */}
+      <ReaderBody>
+
+        {/* Pages — 2px padding on each side creates a subtle gutter */}
+        <PagesColumn ref={pagesColRef} $blurred={sidebarOpen && isMobile}>
+
+          {isLoading && <Empty>Loading manga reader…</Empty>}
+          {!isLoading && error && <Empty>{error}</Empty>}
+          {!isLoading && !error && !currentChapter && <Empty>No chapters available.</Empty>}
+          {!isLoading && !error && currentChapter && isPageLoading && <Empty>Loading chapter…</Empty>}
+          {!isLoading && !error && currentChapter && pageError && <Empty>{pageError}</Empty>}
+          {!isLoading && !error && currentChapter && !isPageLoading && !pageError && pageCount === 0 && (
+            <Empty>No pages available for this chapter.</Empty>
+          )}
+
+          {!isLoading && !error && pageCount > 0 && (
+            <>
+              {readPages.map((page, idx) => {
+                const ps = pageStates[idx];
+                return (
+                  <PageWrapper key={page.page} data-idx={idx}>
+                    {ps?.loading && !ps?.loaded && <LoadingCell><Spinner /></LoadingCell>}
+                    {ps?.error ? (
+                      <ErrorCell>
+                        <ErrorMsg>Page {idx + 1} failed to load</ErrorMsg>
+                        <RetryBtn
+                          onClick={() => updatePage(idx, { error: false, loading: true, visible: true, retryTs: Date.now() })}
+                        >
+                          <FaRedo style={{ fontSize: '0.65rem' }} /> Retry
+                        </RetryBtn>
+                      </ErrorCell>
+                    ) : (ps?.visible || ps?.loaded) ? (
+                      <MangaImg
+                        src={
+                          buildImageProxyUrl(page.img, provider, page.headerForImage?.Referer) +
+                          (ps?.retryTs ? `&_t=${ps.retryTs}` : '')
+                        }
+                        alt={`Page ${idx + 1}`}
+                        $visible={ps?.loaded}
+                        onLoad={() => updatePage(idx, { loaded: true, loading: false, error: false })}
+                        onError={() => updatePage(idx, { loaded: false, loading: false, error: true })}
+                        loading='lazy'
+                      />
+                    ) : (
+                      <PlaceholderCell />
+                    )}
+                    {ps?.loaded && <PageNum>{idx + 1} / {pageCount}</PageNum>}
+                  </PageWrapper>
+                );
+              })}
+
+              <EocCard>
+                <EocIcon><FaCheckCircle /></EocIcon>
+                <EocTitle>Chapter Complete!</EocTitle>
+                <EocSub>Ready for the next chapter?</EocSub>
+                <EocBtnRow>
+                  {prevChapter && (
+                    <EocBtn
+                      onClick={() => {
+                        providerSwitchRef.current = false;
+                        setSelectedChapter(prevChapter);
+                        setVisibleChapter(prevChapter);
+                      }}
+                    >
+                      <FaChevronLeft /> Previous Chapter
+                    </EocBtn>
+                  )}
+                  {nextChapter && (
+                    <EocBtn
+                      $primary
+                      onClick={() => {
+                        providerSwitchRef.current = false;
+                        setSelectedChapter(nextChapter);
+                        setVisibleChapter(nextChapter);
+                      }}
+                    >
+                      Next Chapter <FaChevronRight />
+                    </EocBtn>
+                  )}
+                </EocBtnRow>
+              </EocCard>
+            </>
+          )}
+        </PagesColumn>
+
+        {/* Desktop sidebar */}
+        <DesktopSidebar $collapsed={sidebarCollapsed}>
+          <SidebarContent />
+        </DesktopSidebar>
+
+        {/* Mobile drawer */}
+        <Overlay $visible={sidebarOpen} onClick={closeSidebar} />
+        {(sidebarOpen || sidebarClosing) && isMobile && (
+          <MobileDrawer $open={sidebarOpen} $closing={sidebarClosing}>
+            <SidebarContent />
+          </MobileDrawer>
+        )}
+
+      </ReaderBody>
+
+      {/* Mobile bottom progress bar */}
+      <MobileProgress $blurred={sidebarOpen}>
+        <MbPct>{progressPct}%</MbPct>
+        <ProgTrack $pct={progressPct} style={{ flex: 1 }} />
+        <MbPages>{currentPage + 1} / {pageCount || '—'}</MbPages>
+      </MobileProgress>
+
+    </PageShell>
+  );
+}
+
+export default Read;
