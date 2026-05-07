@@ -4,11 +4,14 @@ type UserStatisticsSort =
   | 'COUNT_DESC'
   | 'SCORE_ASC'
   | 'SCORE_DESC';
+
 export interface UserData {
   name: string;
   avatar: {
     large: string;
   };
+  // AniList banner image (null when user hasn't set one)
+  bannerImage: string | null;
   statistics: UserStatistics;
 }
 
