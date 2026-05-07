@@ -2,17 +2,19 @@ import axios from 'axios';
 
 export const handler = async (event: import('@netlify/functions').HandlerEvent) => {
   if (event.httpMethod !== 'POST') {
-    return new Response('Method Not Allowed', {
-      status: 405,
-    });
+    return {
+      statusCode: 405,
+      body: 'Method Not Allowed',
+    };
   }
 
   const body = event.body ?? '{}';
   const { code } = JSON.parse(body) as { code?: string };
   if (!code) {
-    return new Response('Authorization code is required', {
-      status: 400,
-    });
+    return {
+      statusCode: 400,
+      body: 'Authorization code is required',
+    };
   }
 
   const payload = {
@@ -34,25 +36,24 @@ export const handler = async (event: import('@netlify/functions').HandlerEvent) 
     });
 
     if (response.data.access_token) {
-      return new Response(JSON.stringify({ accessToken: response.data.access_token }), {
-        status: 200,
+      return {
+        statusCode: 200,
         headers: { 'Content-Type': 'application/json' },
-      });
+        body: JSON.stringify({ accessToken: response.data.access_token }),
+      };
     } else {
       throw new Error('Access token not found in the response');
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     const details = axios.isAxiosError(error) && error.response ? error.response.data : message;
-    return new Response(
-      JSON.stringify({
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         error: 'Failed to exchange token',
         details,
       }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    };
   }
 };
