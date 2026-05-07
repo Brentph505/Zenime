@@ -1,13 +1,14 @@
 import axios from 'axios';
 
-export const handler = async (event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) => {
+export const handler = async (event: import('@netlify/functions').HandlerEvent) => {
   if (event.httpMethod !== 'POST') {
     return new Response('Method Not Allowed', {
       status: 405,
     });
   }
 
-  const { code } = JSON.parse(event.body);
+  const body = event.body ?? '{}';
+  const { code } = JSON.parse(body) as { code?: string };
   if (!code) {
     return new Response('Authorization code is required', {
       status: 400,
@@ -40,8 +41,8 @@ export const handler = async (event: import('@netlify/functions').HandlerEvent, 
     } else {
       throw new Error('Access token not found in the response');
     }
-  } catch (error) {
-    const message = error.message;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
     const details = axios.isAxiosError(error) && error.response ? error.response.data : message;
     return new Response(
       JSON.stringify({

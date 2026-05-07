@@ -14,7 +14,7 @@
   status = 200
 
 [build]
-  functions = "netlify/functions"
+  functions = "functions"
 
 [build.environment]
   VITE_DEPLOY_PLATFORM = "NETLIFY"

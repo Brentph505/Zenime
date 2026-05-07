@@ -3,6 +3,8 @@
   "compilerOptions": {
     "composite": true,
     "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "rootDir": "./netlify/functions",
     "outDir": "./functions",
     "module": "ESNext",
     "target": "ES2020",

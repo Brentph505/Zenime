@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "vite build",
+    "build:functions": "tsc -p tsconfig.functions.json",
+    "build": "npm run build:functions && vite build",
     "preview": "vite preview",
     "start": "vite build && bun run ./server/server.ts",
     "lint": "eslint . --ext js,jsx,ts,tsx --report-unused-disable-directives --max-warnings 0",
