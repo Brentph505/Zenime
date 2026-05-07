@@ -25,6 +25,7 @@ const popIn = keyframes`
 /* ── Page ── */
 const Page = styled.div`
   width: 100%;
+  overflow-x: hidden;
   padding-bottom: 2.5rem;
   animation: ${fadeUp} 0.35s ease both;
 `;
@@ -97,16 +98,18 @@ const AccentLine = styled.div`
 /* ── Profile bar (sits below cover) ── */
 const ProfileBar = styled.div`
   background: var(--global-div-tr);
-  padding: 0 1rem 1rem;
+  padding: 0 0.5rem 1rem;
   overflow: visible;
 
-  @media (min-width: 600px) { padding: 0 1.5rem 1.25rem; }
-  @media (min-width: 900px) { padding: 0 2.5rem 1.25rem; }
+  @media (min-width: 600px) { padding: 0 0.75rem 1.25rem; }
+  @media (min-width: 900px) { padding: 0 1rem 1.25rem; }
 `;
 
 const BarInner = styled.div`
-  max-width: 80rem;
+  width: 100%;
+  max-width: 110rem;
   margin: 0 auto;
+  box-sizing: border-box;
 `;
 
 /* avatar row overlapping the cover */
@@ -426,12 +429,14 @@ const LoginBtn = styled.button`
 
 /* ── Content padding wrapper (for EpisodeCard / WatchingAnilist) ── */
 const ContentWrap = styled.div`
-  padding: 0 1rem;
-  max-width: 80rem;
+  width: 100%;
+  max-width: 110rem;
   margin: 0 auto;
+  padding: 0 0.25rem;
+  box-sizing: border-box;
 
-  @media (min-width: 600px) { padding: 0 1.5rem; }
-  @media (min-width: 900px) { padding: 0 2.5rem; }
+  @media (min-width: 600px) { padding: 0 0.5rem; }
+  @media (min-width: 900px) { padding: 0 0.75rem; }
 `;
 
 /* ─────────── Component ─────────── */
