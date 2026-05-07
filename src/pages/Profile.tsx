@@ -98,6 +98,7 @@ const AccentLine = styled.div`
 const ProfileBar = styled.div`
   background: var(--global-div-tr);
   padding: 0 1rem 1rem;
+  overflow: visible;
 
   @media (min-width: 600px) { padding: 0 1.5rem 1.25rem; }
   @media (min-width: 900px) { padding: 0 2.5rem 1.25rem; }
@@ -110,6 +111,8 @@ const BarInner = styled.div`
 
 /* avatar row overlapping the cover */
 const AvatarRow = styled.div`
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: flex-end;
   gap: 0.75rem;
@@ -130,6 +133,8 @@ const AvatarRing = styled.div`
   padding: 2.5px;
   background: linear-gradient(135deg, #7c3aed, #db2777, #0891b2);
   box-shadow: 0 0 0 3px var(--global-div-tr), 0 4px 16px rgba(0,0,0,0.4);
+  overflow: hidden;
+  box-sizing: border-box;
 
   @media (min-width: 600px) {
     width: 80px;
@@ -144,6 +149,7 @@ const AvatarImg = styled.img`
   object-fit: cover;
   display: block;
   border: 2.5px solid var(--global-div-tr);
+  box-sizing: border-box;
 `;
 
 const AvatarPlaceholder = styled.div`
