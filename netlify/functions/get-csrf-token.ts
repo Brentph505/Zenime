@@ -2,16 +2,15 @@ import { v4 as uuidv4 } from 'uuid';
 
 export default async function handler(event: import('@netlify/functions').HandlerEvent, context: import('@netlify/functions').HandlerContext) {
   if (event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      body: 'Method Not Allowed',
-    };
+    return new Response('Method Not Allowed', {
+      status: 405,
+    });
   }
 
   const csrfToken = uuidv4();
 
-  return {
-    statusCode: 200,
-    body: JSON.stringify({ csrfToken }),
-  };
+  return new Response(JSON.stringify({ csrfToken }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
 };
