@@ -264,7 +264,7 @@ const WatchBtn = styled.button`
   &:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 `;
 
-const ExtRow = styled.div`display: flex; gap: 0.5rem;`;
+const ExtRow = styled.div`display: flex; gap: 0.25rem;`;
 
 const ExtBtn = styled.a`
   flex: 1; display: flex; align-items: center; justify-content: center;
@@ -310,7 +310,7 @@ const DesktopTitleBlock = styled.div`@media (max-width: 860px) { display: none; 
 
 const MobileActionBar = styled.div`
   display: none;
-  @media (max-width: 860px) { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  @media (max-width: 860px) { display: flex; gap: 0.25rem; flex-wrap: wrap; align-items: center; }
 `;
 
 const MobileWatchBtn = styled.button`
@@ -454,15 +454,15 @@ const CharRole = styled.span`font-size: 0.7rem; color: ${A.accent}; font-weight:
 type EpView = 'card' | 'list' | 'number';
 
 const EpControls = styled.div`
-  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.5rem;
+  display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 0.35rem;
 `;
 
 const RangePillRow = styled.div`
-  display: flex; gap: 0.3rem; flex-wrap: wrap; flex: 0 0 auto; min-width: 0; margin-bottom: 0.35rem;
+  display: flex; gap: 0.22rem; flex-wrap: wrap; flex: 0 0 auto; min-width: 0; margin-bottom: 0.28rem;
   @media (max-width: 860px) {
     order: 2;
     width: 100%;
-    margin-bottom: 0.2rem;
+    margin-bottom: 0.15rem;
   }
 `;
 
@@ -470,22 +470,22 @@ const RangeRow = styled.div`
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.35rem;
+  gap: 0.22rem;
   flex-wrap: wrap;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.28rem;
 
   @media (max-width: 860px) {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.18rem;
-    margin-bottom: 0.2rem;
+    gap: 0.14rem;
+    margin-bottom: 0.15rem;
   }
 `;
 
 const RangeAction = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.22rem;
   flex: 1 1 0;
   min-width: 0;
   flex-wrap: wrap;
@@ -494,14 +494,14 @@ const RangeAction = styled.div`
     flex-wrap: wrap;
     align-items: stretch;
     order: 1;
-    gap: 0.2rem;
+    gap: 0.16rem;
   }
 `;
 
 const AnimeRangeAction = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.22rem;
   flex: 1 1 0;
   min-width: 0;
   flex-wrap: wrap;
@@ -510,12 +510,12 @@ const AnimeRangeAction = styled.div`
     flex-wrap: wrap;
     align-items: center;
     order: 1;
-    gap: 0.2rem;
+    gap: 0.16rem;
   }
 `;
 
 const RangePill = styled.button<{ $active?: boolean }>`
-  padding: 0.3rem 0.7rem; border-radius: 99px; font-size: 0.72rem; font-weight: 600;
+  padding: 0.26rem 0.6rem; border-radius: 99px; font-size: 0.72rem; font-weight: 600;
   cursor: pointer; transition: all 0.15s;
   border: 1px solid ${({ $active }) => $active ? A.accent : '#e5e7eb'};
   background: ${({ $active }) => $active ? A.accentDim : '#ffffff'};
@@ -530,7 +530,7 @@ const RangePill = styled.button<{ $active?: boolean }>`
 
 const RangeSelect = styled.select`
   width: auto;
-  padding: 0.45rem 0.65rem;
+  padding: 0.4rem 0.6rem;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
@@ -557,15 +557,18 @@ const RangeSelectWrapper = styled.div`
   position: relative;
   display: flex;
   align-items: center;
-  
+  width: 100%;
+  min-width: 0;
+
   svg {
     position: absolute;
     left: 0.5rem;
     color: ${A.muted};
     pointer-events: none;
   }
-  
+
   select {
+    width: 100%;
     padding-left: 2rem;
   }
 `;
@@ -600,15 +603,15 @@ const SegmentedControl = styled.div`
 `;
 
 const SegmentOption = styled.button<{ $active?: boolean }>`
-  display: flex; align-items: center; justify-content: center; padding: 0.45rem 0.65rem;
+  display: flex; align-items: center; justify-content: center; padding: 0.4rem 0.55rem;
   background: ${({ $active }) => $active ? A.accentDim : 'transparent'};
   color: ${({ $active }) => $active ? A.accent : '#6b7280'};
-  border: none; border-right: 1px solid #e5e7eb; cursor: pointer; transition: all 0.15s; font-size: 0.8rem;
+  border: none; border-right: 1px solid #e5e7eb; cursor: pointer; transition: all 0.15s; font-size: 0.78rem;
   &:last-child { border-right: none; }
   &:hover { color: ${A.accent}; }
   .dark-mode & { color: ${({ $active }) => $active ? A.accent : A.muted}; border-right-color: ${A.border}; }
   @media (max-width: 860px) {
-    padding: 0.35rem 0.5rem;
+    padding: 0.32rem 0.45rem;
     font-size: 0.7rem;
   }
 `;
@@ -625,21 +628,38 @@ const EpScrollArea = styled.div`
 // ─── Card view ────────────────────────────────────────────────────────────────
 
 const CardGrid = styled.div`
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.65rem;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.45rem;
   @media (max-width: 900px) { grid-template-columns: repeat(2, 1fr); }
-  @media (max-width: 520px) { grid-template-columns: 1fr; }
+  @media (max-width: 520px) { grid-template-columns: 1fr; gap: 0.3rem; }
 `;
 
 const EpisodeCardItem = styled.div`
-  display: flex; gap: 0.65rem; padding: 0.6rem;
+  display: flex; gap: 0.45rem; padding: 0.45rem;
   background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px;
-  cursor: pointer; transition: border-color 0.15s, background 0.15s;
-  &:hover { border-color: ${A.accent}; background: ${A.accentGlow}; }
+  cursor: pointer; transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
   .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; }
+
+  @media (hover: hover) {
+    &:hover {
+      border-color: ${A.accent};
+      background: ${A.accentGlow};
+      transform: translateY(-1px);
+      box-shadow: 0 10px 20px rgba(55, 65, 81, 0.08);
+    }
+  }
+
+  @media (max-width: 520px) {
+    gap: 0.3rem;
+    padding: 0.35rem;
+  }
 `;
 
 const CardThumbWrap = styled.div`
   position: relative; flex-shrink: 0; border-radius: 4px; overflow: hidden; width: 88px; height: 58px;
+  @media (max-width: 520px) {
+    width: 72px;
+    height: 48px;
+  }
 `;
 
 const CardThumb = styled.img`width: 100%; height: 100%; object-fit: cover; display: block;`;
@@ -667,20 +687,28 @@ const SmIcon = styled.span`color: ${A.muted}; font-size: 0.7rem; display: flex; 
 // ─── List view ────────────────────────────────────────────────────────────────
 
 const ListGrid = styled.div`
-  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.22rem;
   @media (max-width: 860px) { grid-template-columns: 1fr; }
 `;
 
 const ListItem = styled.div<{ $first?: boolean }>`
-  display: flex; align-items: center; gap: 0.55rem; padding: 0.42rem 0.65rem;
+  display: flex; align-items: center; gap: 0.4rem; padding: 0.34rem 0.55rem;
   background: ${({ $first }) => $first ? A.accentDim : '#ffffff'};
   border: 1px solid ${({ $first }) => $first ? A.accent : '#e5e7eb'};
   border-radius: 6px; cursor: pointer; min-width: 0;
-  transition: border-color 0.15s, background 0.15s;
-  &:hover { border-color: ${A.accent}; background: ${A.accentGlow}; }
+  transition: border-color 0.15s, background 0.15s, transform 0.15s, box-shadow 0.15s;
   .dark-mode & {
     background: ${({ $first }) => $first ? A.accentDim : A.card};
     border: 1px solid ${({ $first }) => $first ? A.accent : A.border};
+  }
+
+  @media (hover: hover) {
+    &:hover {
+      border-color: ${A.accent};
+      background: ${A.accentGlow};
+      transform: translateY(-1px);
+      box-shadow: 0 6px 14px rgba(55, 65, 81, 0.08);
+    }
   }
 `;
 
@@ -696,7 +724,7 @@ const ListIcons = styled.div`display: flex; gap: 0.25rem; align-items: center; f
 // ─── Number grid view ─────────────────────────────────────────────────────────
 
 const NumGrid = styled.div`
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 0.35rem;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 0.22rem;
 `;
 
 const NumCell = styled.div<{ $active?: boolean; $filler?: boolean; $first?: boolean }>`
@@ -784,13 +812,13 @@ const PrimaryBtn = styled.button`
 `;
 
 const ProviderSwitcher = styled.div`
-  display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center;
+  display: flex; gap: 0.25rem; flex-wrap: wrap; align-items: center;
   flex: 0 0 auto; min-width: auto;
   @media (max-width: 860px) {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 0.25rem;
-    margin-top: 0.2rem;
+    gap: 0.18rem;
+    margin-top: 0.15rem;
     flex: 1 1 100%;
     width: 100%;
     min-width: 0;
@@ -798,7 +826,7 @@ const ProviderSwitcher = styled.div`
 `;
 
 const ProviderButton = styled.button<{ $active?: boolean }>`
-  padding: 0.45rem 0.75rem; border-radius: 6px;
+  padding: 0.4rem 0.65rem; border-radius: 6px;
   border: 1px solid ${p => p.$active ? A.accent : A.border};
   background: ${p => p.$active ? A.accent : A.card};
   color: ${p => p.$active ? '#0a0a0c' : A.text};
@@ -808,7 +836,7 @@ const ProviderButton = styled.button<{ $active?: boolean }>`
 
   @media (max-width: 860px) {
     width: 100%;
-    padding: 0.75rem 0.85rem;
+    padding: 0.65rem 0.75rem;
     justify-content: center;
   }
 `;
@@ -830,7 +858,7 @@ const Info: React.FC = () => {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InfoTab>('overview');
-  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
+  const [selectedEpisodeId] = useState<string | null>(null);
 
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
@@ -1190,7 +1218,7 @@ const Info: React.FC = () => {
     mediaInfo.season   && { key: 'Season', val: mediaInfo.season.toUpperCase(), onClick: () => navigate(`/search?season=${mediaInfo.season?.toUpperCase()}`) },
     mediaInfo.releaseDate && { key: 'Year', val: String(mediaInfo.releaseDate), onClick: () => navigate(`/search?year=${mediaInfo.releaseDate}`) },
     mediaInfo.status   && { key: 'Status', val: mediaInfo.status },
-    mediaInfo.type     && { key: 'Format', val: mediaInfo.type, onClick: () => navigate(`/search?type=${encodeURIComponent(mediaInfo.type!)}`) },
+    mediaInfo.type     && { key: 'Format', val: mediaInfo.type, onClick: () => navigate(`/search?format=${encodeURIComponent(mediaInfo.type!)}`) },
     mediaInfo.title.native && { key: 'Native', val: mediaInfo.title.native },
     mediaInfo.studios?.length > 0 && { key: 'Studio', val: mediaInfo.studios.join(', '), onClick: () => navigate(`/studio/${mediaInfo.studioIds?.[0]}`) },
   ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
@@ -1265,7 +1293,7 @@ const Info: React.FC = () => {
                 {mediaInfo.season      && <SideMetaRow><SideMetaKey>Season</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?season=${mediaInfo.season?.toUpperCase()}`)}>{mediaInfo.season.toUpperCase()}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
                 {mediaInfo.releaseDate && <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?year=${mediaInfo.releaseDate}`)}>{mediaInfo.releaseDate}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
                 {mediaInfo.status      && <SideMetaRow><SideMetaKey>Status</SideMetaKey><SideMetaVal>{mediaInfo.status}</SideMetaVal></SideMetaRow>}
-                {mediaInfo.type        && <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?type=${encodeURIComponent(mediaInfo.type!)}`)}>{mediaInfo.type}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
+                {mediaInfo.type        && <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?format=${encodeURIComponent(mediaInfo.type!)}`)}>{mediaInfo.type}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
                 {mediaInfo.title.native && <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{mediaInfo.title.native}</SideMetaVal></SideMetaRow>}
                 {mediaInfo.studios?.length > 0 && <SideMetaRow><SideMetaKey>Studio</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/studio/${mediaInfo.studioIds?.[0]}`)}>{mediaInfo.studios.join(', ')}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
               </SidebarMeta>
@@ -1504,8 +1532,8 @@ const Info: React.FC = () => {
                         {(epView === 'list' || isManga) && !(epView === 'card' && !isManga) && !(epView === 'number' && !isManga) && (
                           <ListGrid>
                             {currentEps.map((ep, idx) => (
-                              <ListItem key={ep.id} $first={isFirst(idx)} onClick={() => navigateToEntry(ep)}>
-                                {isFirst(idx)
+                              <ListItem key={ep.id} $first={isFirst(ep)} onClick={() => navigateToEntry(ep)}>
+                                {isFirst(ep)
                                   ? <ListPlayIcon><FaPlay size={10} /></ListPlayIcon>
                                   : <ListEpNum>{isManga ? 'CH' : 'EP'} {ep.number ?? idx + 1}</ListEpNum>
                                 }
@@ -1526,13 +1554,13 @@ const Info: React.FC = () => {
                         {/* Number view */}
                         {epView === 'number' && !isManga && (
                           <NumGrid>
-                            {currentEps.map((ep, idx) => (
+                            {currentEps.map(ep => (
                               <NumCell
-                                key={ep.id} $first={isFirst(idx)}
+                                key={ep.id} $first={isFirst(ep)}
                                 onClick={() => navigateToEntry(ep)}
                                 title={ep.title || `Episode ${ep.number}`}
                               >
-                                {isFirst(idx) ? <FaPlay size={10} /> : ep.number}
+                                {isFirst(ep) ? <FaPlay size={10} /> : ep.number}
                               </NumCell>
                             ))}
                           </NumGrid>

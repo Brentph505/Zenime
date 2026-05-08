@@ -137,6 +137,7 @@ const Btn = styled.button`
 const PrimaryBtn = styled(Btn)`
   background: var(--primary-accent);
   color: #fff;
+  box-shadow: 0 0 8px rgba(138, 43, 226, 0.4);
   &:hover:not(:disabled) { opacity: 0.85; background: var(--primary-accent); }
 `;
 
@@ -144,9 +145,6 @@ const PurpleBtn = styled(Btn)`
   background: rgba(109, 40, 217, 0.9);
   color: #fff;
   &:hover { background: rgba(109, 40, 217, 1); }
-
-  /* Hide fullscreen toggle on mobile — saves space */
-  @media (max-width: 767px) { display: none; }
 `;
 
 const Sep = styled.div`
@@ -396,13 +394,12 @@ const Empty = styled.div`
 
 /* ─── End of chapter ─────────────────────────────────────── */
 const EocCard = styled.div`
-  width: min(100%, 760px);
+  width: 100%;
   max-width: 100%;
   box-sizing: border-box;
   background: var(--global-secondary-bg);
   border-top: 1px solid rgba(255,255,255,0.06);
   padding: 2.5rem 1.5rem;
-  margin: 0 auto;
   text-align: center;
   display: flex;
   flex-direction: column;
@@ -519,33 +516,6 @@ const SbHead = styled.div`
   border-bottom: 1px solid var(--global-border);
 `;
 
-const SbMangaInfo = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
-
-  img {
-    width: 2rem;
-    height: 2.8rem;
-    object-fit: cover;
-    border-radius: 4px;
-    flex-shrink: 0;
-    background: var(--global-card-bg);
-  }
-
-  span {
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: var(--global-text);
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    line-height: 1.3;
-  }
-`;
-
 const SbSection = styled.div`
   flex-shrink: 0;
   padding: 0.6rem 0.75rem;
@@ -637,6 +607,7 @@ const SbChCount = styled.span`
 const ChapterList = styled.div`
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.3rem;
   display: flex;
   flex-direction: column;
@@ -751,7 +722,7 @@ interface PageState {
 function Read() {
   const { animeId } = useParams();
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
 
   const [mangaInfo, setMangaInfo] = useState<Manga | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<MangaChapter | null>(null);
@@ -787,6 +758,37 @@ function Read() {
 
   const chapterIdParam = searchParams.get('chapterId') || '';
   const providerParam = searchParams.get('provider');
+
+  /* ── Derived ── */
+  const chapters = useMemo(
+    () => ((mangaInfo?.chapters ?? []) as MangaChapter[]).slice(0, 250),
+    [mangaInfo]
+  );
+
+  const filteredChapters = useMemo(() => {
+    const q = searchTerm.toLowerCase();
+    if (!q) return chapters;
+    return chapters.filter((c) =>
+      getChapterHeading(c).toLowerCase().includes(q) ||
+      getChapterShortLabel(c).toLowerCase().includes(q)
+    );
+  }, [chapters, searchTerm]);
+
+  const currentChapter = visibleChapter;
+  const pageCount = readPages.length;
+  const progressPct = pageCount > 0 ? Math.round(((currentPage + 1) / pageCount) * 100) : 0;
+
+  const prevChapter = useMemo(() => {
+    if (!currentChapter) return null;
+    const idx = chapters.findIndex((c) => c.id === currentChapter.id);
+    return idx > 0 ? chapters[idx - 1] : null;
+  }, [chapters, currentChapter]);
+
+  const nextChapter = useMemo(() => {
+    if (!currentChapter) return null;
+    const idx = chapters.findIndex((c) => c.id === currentChapter.id);
+    return idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
+  }, [chapters, currentChapter]);
 
   /* ── Mobile detect ── */
   useEffect(() => {
@@ -981,10 +983,10 @@ function Read() {
 
   /* ── Scroll active chapter into view ── */
   useEffect(() => {
-    if (sidebarOpen && activeChapterRef.current) {
+    if ((sidebarOpen || (!isMobile && !sidebarCollapsed)) && activeChapterRef.current) {
       setTimeout(() => activeChapterRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' }), 60);
     }
-  }, [sidebarOpen]);
+  }, [sidebarOpen, sidebarCollapsed, isMobile, currentChapter]);
 
   /* ── Body scroll lock ── */
   useEffect(() => {
@@ -1005,37 +1007,6 @@ function Read() {
       document.documentElement.style.overscrollBehavior = prevHtmlOverscroll;
     };
   }, []);
-
-  /* ── Derived ── */
-  const chapters = useMemo(
-    () => ((mangaInfo?.chapters ?? []) as MangaChapter[]).slice(0, 250),
-    [mangaInfo]
-  );
-
-  const filteredChapters = useMemo(() => {
-    const q = searchTerm.toLowerCase();
-    if (!q) return chapters;
-    return chapters.filter((c) =>
-      getChapterHeading(c).toLowerCase().includes(q) ||
-      getChapterShortLabel(c).toLowerCase().includes(q)
-    );
-  }, [chapters, searchTerm]);
-
-  const currentChapter = visibleChapter;
-  const pageCount = readPages.length;
-  const progressPct = pageCount > 0 ? Math.round(((currentPage + 1) / pageCount) * 100) : 0;
-
-  const prevChapter = useMemo(() => {
-    if (!currentChapter) return null;
-    const idx = chapters.findIndex((c) => c.id === currentChapter.id);
-    return idx > 0 ? chapters[idx - 1] : null;
-  }, [chapters, currentChapter]);
-
-  const nextChapter = useMemo(() => {
-    if (!currentChapter) return null;
-    const idx = chapters.findIndex((c) => c.id === currentChapter.id);
-    return idx >= 0 && idx < chapters.length - 1 ? chapters[idx + 1] : null;
-  }, [chapters, currentChapter]);
 
   /* ── Actions ── */
   const closeSidebar = useCallback(() => {

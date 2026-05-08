@@ -5,6 +5,12 @@ import { TbCards } from 'react-icons/tb';
 import { FaStar } from 'react-icons/fa';
 import { Anime, StatusIndicator } from '../../index';
 
+const isNonWatchableType = (type?: string) =>
+  type === 'MANGA' ||
+  type === 'NOVEL' ||
+  type === 'ONE_SHOT' ||
+  type === 'LIGHT_NOVEL';
+
 const Sidebar = styled.div`
   display: flex;
   flex-direction: column;
@@ -61,7 +67,6 @@ const Card = styled.div<{ $backgroundImage: string }>`
     box-shadow 0.2s ease-in-out,
     transform 0.2s ease-in-out;
 
-  /* Light mode default */
   background: linear-gradient(
       90deg,
       rgba(235, 237, 240, 0.96) 0%,
@@ -71,7 +76,6 @@ const Card = styled.div<{ $backgroundImage: string }>`
     url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 
-  /* Dark mode */
   .dark-mode & {
     background: linear-gradient(
         90deg,
@@ -170,18 +174,16 @@ const Details = styled.p`
   }
 `;
 
-export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
-  animeData,
-}) => {
+export const AnimeDataList: React.FC<{ animeData: Anime }> = ({ animeData }) => {
   const filteredRecommendations = animeData.recommendations.filter((rec) =>
     ['OVA', 'SPECIAL', 'TV', 'MOVIE', 'ONA', 'NOVEL'].includes(rec.type || ''),
   );
 
   const filteredRelations = animeData.relations.filter((rel) =>
-    ['OVA', 'SPECIAL', 'TV', 'MOVIE', 'ONA', 'NOVEL', 'MANGA'].includes(
-      rel.type || '',
-    ),
+    ['OVA', 'SPECIAL', 'TV', 'MOVIE', 'ONA', 'NOVEL', 'MANGA'].includes(rel.type || ''),
   );
+
+  const limit = window.innerWidth > 500 ? 5 : 3;
 
   return (
     <Sidebar>
@@ -189,15 +191,19 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
         <>
           <SectionTitle>RELATED</SectionTitle>
           <SidebarContainer>
-            {filteredRelations
-              .slice(0, window.innerWidth > 500 ? 5 : 3)
-              .map((relation, index) => (
+            {filteredRelations.slice(0, limit).map((relation, index) => {
+              const target = isNonWatchableType(relation.type)
+                ? `/info/${relation.id}`
+                : `/watch/${relation.id}`;
+              const action = isNonWatchableType(relation.type) ? 'Info' : 'Watch';
+
+              return (
                 <Link
-                  to={`/watch/${relation.id}`}
                   key={relation.id}
+                  to={target}
                   style={{ textDecoration: 'none', color: 'inherit' }}
-                  title={`${relation.title.userPreferred}`}
-                  aria-label={`Watch ${relation.title.userPreferred}`}
+                  title={relation.title.userPreferred}
+                  aria-label={`${action} ${relation.title.userPreferred}`}
                 >
                   <Card
                     $backgroundImage={relation.image}
@@ -206,7 +212,7 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                     <AnimeImage
                       src={relation.image}
                       alt={relation.title.userPreferred}
-                      loading='lazy'
+                      loading="lazy"
                     />
                     <Info>
                       <TitleWithDot>
@@ -217,42 +223,45 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                             relation.title.userPreferred}
                         </Title>
                       </TitleWithDot>
-                      <Details
-                        aria-label={`Details about ${relation.title.userPreferred}`}
-                      >
+                      <Details aria-label={`Details about ${relation.title.userPreferred}`}>
                         {relation.type && `${relation.type} `}
                         {relation.episodes && (
                           <>
-                            <TbCards aria-hidden='true' />{' '}
-                            {`${relation.episodes} `}
+                            <TbCards aria-hidden="true" /> {`${relation.episodes} `}
                           </>
                         )}
                         {relation.rating && (
                           <>
-                            <FaStar aria-hidden='true' />{' '}
-                            {`${relation.rating} `}
+                            <FaStar aria-hidden="true" /> {`${relation.rating} `}
                           </>
                         )}
                       </Details>
                     </Info>
                   </Card>
                 </Link>
-              ))}
+              );
+            })}
           </SidebarContainer>
         </>
       )}
+
       {filteredRecommendations.length > 0 && (
         <>
           <SectionTitle>RECOMMENDED</SectionTitle>
           <SidebarContainer>
-            {filteredRecommendations
-              .slice(0, window.innerWidth > 500 ? 5 : 3)
-              .map((recommendation, index) => (
+            {filteredRecommendations.slice(0, limit).map((recommendation, index) => {
+              const target = isNonWatchableType(recommendation.type)
+                ? `/info/${recommendation.id}`
+                : `/watch/${recommendation.id}`;
+              const action = isNonWatchableType(recommendation.type) ? 'Info' : 'Watch';
+
+              return (
                 <Link
-                  to={`/watch/${recommendation.id}`}
                   key={recommendation.id}
+                  to={target}
                   style={{ textDecoration: 'none', color: 'inherit' }}
-                  title={`Watch ${recommendation.title.userPreferred}`}
+                  title={`${action} ${recommendation.title.userPreferred}`}
+                  aria-label={`${action} ${recommendation.title.userPreferred}`}
                 >
                   <Card
                     $backgroundImage={recommendation.image}
@@ -261,7 +270,7 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                     <AnimeImage
                       src={recommendation.image}
                       alt={recommendation.title.userPreferred}
-                      loading='lazy'
+                      loading="lazy"
                     />
                     <Info>
                       <TitleWithDot>
@@ -272,27 +281,24 @@ export const AnimeDataList: React.FC<{ animeData: Anime }> = ({
                             recommendation.title.userPreferred}
                         </Title>
                       </TitleWithDot>
-                      <Details
-                        aria-label={`Details about ${recommendation.title.userPreferred}`}
-                      >
+                      <Details aria-label={`Details about ${recommendation.title.userPreferred}`}>
                         {recommendation.type && `${recommendation.type} `}
                         {recommendation.episodes && (
                           <>
-                            <TbCards aria-hidden='true' />{' '}
-                            {`${recommendation.episodes} `}
+                            <TbCards aria-hidden="true" /> {`${recommendation.episodes} `}
                           </>
                         )}
                         {recommendation.rating && (
                           <>
-                            <FaStar aria-hidden='true' />{' '}
-                            {`${recommendation.rating} `}
+                            <FaStar aria-hidden="true" /> {`${recommendation.rating} `}
                           </>
                         )}
                       </Details>
                     </Info>
                   </Card>
                 </Link>
-              ))}
+              );
+            })}
           </SidebarContainer>
         </>
       )}
