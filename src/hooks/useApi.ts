@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { year, getCurrentSeason, getNextSeason } from '../index';
+import { cacheManager } from '../lib/caching';
 
 // Utility function to ensure URL ends with a slash
 function ensureUrlEndsWithSlash(url: string): string {
@@ -89,7 +90,7 @@ function handleError(error: any, context: string) {
     errorMessage += `: ${error.message}`;
   }
 
-  console.error(`${errorMessage}`, error);
+  console.error(`${errorMessage}`);
   throw new Error(errorMessage);
 }
 
@@ -99,70 +100,6 @@ function generateCacheKey(...args: string[]) {
 
 function buildQueryString(params: URLSearchParams) {
   return params.toString().replace(/%2F/g, '/');
-}
-
-interface CacheItem {
-  value: any;
-  timestamp: number;
-}
-
-function createOptimizedSessionStorageCache(
-  maxSize: number,
-  maxAge: number,
-  cacheKey: string,
-) {
-  const cache = new Map<string, CacheItem>(
-    JSON.parse(sessionStorage.getItem(cacheKey) || '[]'),
-  );
-  const keys = new Set<string>(cache.keys());
-
-  function isItemExpired(item: CacheItem) {
-    return Date.now() - item.timestamp > maxAge;
-  }
-
-  function updateSessionStorage() {
-    sessionStorage.setItem(
-      cacheKey,
-      JSON.stringify(Array.from(cache.entries())),
-    );
-  }
-
-  return {
-    get(key: string) {
-      if (cache.has(key)) {
-        const item = cache.get(key);
-        if (!isItemExpired(item!)) {
-          keys.delete(key);
-          keys.add(key);
-          return item!.value;
-        }
-        cache.delete(key);
-        keys.delete(key);
-      }
-      return undefined;
-    },
-    set(key: string, value: any) {
-      if (cache.size >= maxSize) {
-        const oldestKey = keys.values().next().value as string;
-        cache.delete(oldestKey);
-        keys.delete(oldestKey);
-      }
-      keys.add(key);
-      cache.set(key, { value, timestamp: Date.now() });
-      updateSessionStorage();
-    },
-  };
-}
-
-const CACHE_SIZE = 20;
-const CACHE_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
-
-function createCache(cacheKey: string) {
-  return createOptimizedSessionStorageCache(
-    CACHE_SIZE,
-    CACHE_MAX_AGE,
-    cacheKey,
-  );
 }
 
 export type MangaProvider =
@@ -184,15 +121,6 @@ interface FetchOptions {
   year?: string;
   status?: string;
 }
-
-const advancedSearchCache = createCache('Advanced Search');
-const animeDataCache = createCache('Data');
-const animeInfoCache = createCache('Info');
-const animeEpisodesCache = createCache('Episodes');
-const fetchAnimeEmbeddedEpisodesCache = createCache('Video Embedded Sources');
-const videoSourcesCache = createCache('Video Sources');
-const mangaReadCache = createCache('MangaRead');
-const genreCache = createCache('AniListGenres');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // M3U8 Proxy Utilities
@@ -224,12 +152,11 @@ export function buildM3U8ProxyUrl(
   }
 
   if (sourceUrl.includes(selectedProxy)) {
-    console.log(`ℹ️ URL already proxied by ${selectedProxy.replace(/\/$/, '')}, skipping double-wrap`);
     return sourceUrl;
   }
 
   if (!isValidUrl(sourceUrl)) {
-    console.warn(`⚠️ Invalid source URL: ${sourceUrl}. Returning as-is.`);
+    console.warn(`⚠️ Invalid source URL. Returning as-is.`);
     return sourceUrl;
   }
 
@@ -245,7 +172,6 @@ export function buildM3U8ProxyUrl(
     proxied += `&headers=${encodeURIComponent(proxyHeaders)}`;
   }
 
-  console.log(`🔀 M3U8 proxied: ${sourceUrl} → ${proxied}`);
   return proxied;
 }
 
@@ -264,7 +190,6 @@ export function proxyM3U8Sources(
   return sources.map((source) => {
     if (source.url?.endsWith('.m3u8') && isValidUrl(source.url)) {
       if (source.url.includes(selectedProxy)) {
-        console.log(`ℹ️ Source already proxied, skipping: ${source.url.substring(0, 80)}...`);
         return source;
       }
       return {
@@ -294,12 +219,11 @@ export function buildImageProxyUrl(
   }
 
   if (imageUrl.includes(IMAGE_PROXY_URL)) {
-    console.log(`ℹ️ Image URL already proxied, skipping double-wrap`);
     return imageUrl;
   }
 
   if (!isValidUrl(imageUrl)) {
-    console.warn(`⚠️ Invalid image URL: ${imageUrl}. Returning as-is.`);
+    console.warn(`⚠️ Invalid image URL. Returning as-is.`);
     return imageUrl;
   }
 
@@ -310,7 +234,6 @@ export function buildImageProxyUrl(
     proxied += `&referer=${encodeURIComponent(referer)}`;
   }
 
-  console.log(`🔀 Image proxied: ${imageUrl} → ${proxied}`);
   return proxied;
 }
 
@@ -321,10 +244,10 @@ export function buildImageProxyUrl(
 export async function fetchAniListGenres(): Promise<string[]> {
   const cacheKey = 'genres';
 
-  const cached = genreCache.get(cacheKey);
+  const cached = await cacheManager.get<string[]>('AniListGenres', cacheKey);
   if (cached) {
     console.log('✅ AniList genres cache HIT');
-    return cached as string[];
+    return cached;
   }
 
   console.log('🌐 Fetching genres from AniList...');
@@ -348,14 +271,20 @@ export async function fetchAniListGenres(): Promise<string[]> {
     const json = await response.json();
 
     if (json.errors) {
-      console.error('AniList GraphQL errors:', json.errors);
+      console.error('AniList GraphQL error');
       throw new Error(json.errors[0]?.message ?? 'AniList GraphQL error');
     }
 
     const genres = json?.data?.genres ?? [];
     console.log(`✅ AniList genres: ${genres.length} genres fetched`);
 
-    genreCache.set(cacheKey, genres);
+    // Only cache if we have valid genres
+    if (genres.length > 0) {
+      await cacheManager.set('AniListGenres', cacheKey, genres);
+    } else {
+      console.log(`⚠️ Skipping cache for AniListGenres ${cacheKey} - no valid genres`);
+    }
+
     return genres;
   } catch (error) {
     console.error('❌ Failed to fetch AniList genres:', error);
@@ -365,12 +294,12 @@ export async function fetchAniListGenres(): Promise<string[]> {
 
 async function fetchFromProxy(
   url: string,
-  cache: any,
+  cacheKeyName: string,
   cacheKey: string,
   requestTimeout?: number,
 ) {
   try {
-    const cachedResponse = cache.get(cacheKey);
+    const cachedResponse = await cacheManager.get(cacheKeyName, cacheKey);
     if (cachedResponse) {
       console.log(`✅ Cache HIT for: ${cacheKey}`);
       return cachedResponse;
@@ -398,7 +327,13 @@ async function fetchFromProxy(
       );
     }
 
-    cache.set(cacheKey, response.data);
+    // Only cache valid, non-empty responses
+    if (response.data && Object.keys(response.data).length > 0) {
+      await cacheManager.set(cacheKeyName, cacheKey, response.data);
+    } else {
+      console.log(`⚠️ Skipping cache for ${cacheKey} - empty or invalid response data`);
+    }
+
     return response.data;
   } catch (error) {
     handleError(error, 'data');
@@ -514,12 +449,14 @@ export async function fetchAiringSchedule(
 
   const localDateLabel = new Date(start * 1000).toLocaleDateString('en-CA');
   const cacheKey = generateCacheKey('anilistAiring', localDateLabel);
-  const airingCache = createCache('AniListAiringSchedule');
 
-  const cached = airingCache.get(cacheKey);
+  const cached = await cacheManager.get<AniListAiringItem[]>(
+    'Airing Schedule',
+    cacheKey,
+  );
   if (cached) {
     console.log(`✅ AniList airing cache HIT: ${cacheKey}`);
-    return cached as AniListAiringItem[];
+    return cached;
   }
 
   console.log(
@@ -561,7 +498,7 @@ export async function fetchAiringSchedule(
       const json = await response.json();
 
       if (json.errors) {
-        console.error('AniList GraphQL errors:', json.errors);
+        console.error('AniList GraphQL error');
         throw new Error(json.errors[0]?.message ?? 'AniList GraphQL error');
       }
 
@@ -584,7 +521,18 @@ export async function fetchAiringSchedule(
   allItems.sort((a, b) => a.airingAt - b.airingAt);
 
   console.log(`✅ AniList airing: ${allItems.length} items for offset ${dayOffset}`);
-  airingCache.set(cacheKey, allItems);
+
+  // Only cache if we have valid items
+  if (allItems.length > 0) {
+    await cacheManager.set('Airing Schedule', cacheKey, allItems);
+
+    // Set up auto-refresh for airing schedule
+    const refreshFn = () => fetchAiringSchedule(dayOffset);
+    cacheManager.setupAutoRefresh('Airing Schedule', cacheKey, refreshFn);
+  } else {
+    console.log(`⚠️ Skipping cache for Airing Schedule ${cacheKey} - no valid items`);
+  }
+
   return allItems;
 }
 
@@ -616,7 +564,7 @@ export async function fetchAdvancedSearch(
   }
   const url = `${BASE_URL}meta/anilist/advanced-search?${queryParams.toString()}`;
   const cacheKey = generateCacheKey('advancedSearch', queryParams.toString());
-  return fetchFromProxy(url, advancedSearchCache, cacheKey);
+  return fetchFromProxy(url, 'Advanced Search', cacheKey);
 }
 
 export async function fetchAnimeData(
@@ -629,14 +577,14 @@ export async function fetchAnimeData(
   const cacheKey = generateCacheKey('animeData', animeId, finalProvider);
 
   try {
-    const data = await fetchFromProxy(url, animeDataCache, cacheKey);
+    const data = await fetchFromProxy(url, 'Data', cacheKey);
 
     if ((!data || (typeof data === 'object' && Object.keys(data).length === 0)) && finalProvider !== 'animekai') {
       console.log(`⚠️ No data from ${finalProvider}, trying animekai...`);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
-      return await fetchFromProxy(fallbackUrl, animeDataCache, fallbackCacheKey);
+      return await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
     }
 
     return data;
@@ -646,7 +594,7 @@ export async function fetchAnimeData(
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
-      return await fetchFromProxy(fallbackUrl, animeDataCache, fallbackCacheKey);
+      return await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
     }
     throw error;
   }
@@ -662,14 +610,14 @@ export async function fetchAnimeInfo(
   const cacheKey = generateCacheKey('animeInfo', animeId, finalProvider);
 
   try {
-    const info = await fetchFromProxy(url, animeInfoCache, cacheKey);
+    const info = await fetchFromProxy(url, 'Info', cacheKey);
 
     if ((!info || (typeof info === 'object' && Object.keys(info).length === 0)) && finalProvider !== 'animekai') {
       console.log(`⚠️ No info from ${finalProvider}, trying animekai...`);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
-      return await fetchFromProxy(fallbackUrl, animeInfoCache, fallbackCacheKey);
+      return await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
     }
 
     return info;
@@ -679,7 +627,7 @@ export async function fetchAnimeInfo(
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
-      return await fetchFromProxy(fallbackUrl, animeInfoCache, fallbackCacheKey);
+      return await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
     }
     throw error;
   }
@@ -705,7 +653,7 @@ export async function fetchMangaInfo(
   const url = `${BASE_URL}meta/anilist-manga/info/${mangaId}?${params.toString()}`;
   const cacheKey = generateCacheKey('mangaInfo', mangaId, finalProvider);
 
-  const info = await fetchFromProxy(url, animeInfoCache, cacheKey);
+  const info = await fetchFromProxy(url, 'Info', cacheKey);
 
   // Throw so the caller (Info.tsx parallel probe) can detect this provider
   // has no data, rather than silently returning empty-or-wrong data.
@@ -734,7 +682,7 @@ export async function fetchMangaRead(
   const cacheKey = generateCacheKey('mangaRead', chapterId, finalProvider);
   const requestTimeout = 25000;
 
-  const data = await fetchFromProxy(url, mangaReadCache, cacheKey, requestTimeout);
+  const data = await fetchFromProxy(url, 'MangaRead', cacheKey, requestTimeout);
 
   if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
     throw new Error(`No manga read pages available for provider ${finalProvider}`);
@@ -802,7 +750,7 @@ async function fetchList(
     url = `${BASE_URL}meta/anilist/${type.toLowerCase()}`;
   }
 
-  const specificCache = createCache(`${type}`);
+  const specificCache = type;
   return fetchFromProxy(`${url}?${params.toString()}`, specificCache, cacheKey);
 }
 
@@ -844,7 +792,7 @@ export async function fetchAnimeEpisodes(
 
   try {
     const episodes = attachProvider(
-      await fetchFromProxy(url, animeEpisodesCache, cacheKey),
+      await fetchFromProxy(url, 'Episodes', cacheKey),
       finalProvider,
     );
 
@@ -867,7 +815,7 @@ export async function fetchAnimeEpisodes(
         dub ? 'dub' : 'sub',
       );
       return attachProvider(
-        await fetchFromProxy(fallbackUrl, animeEpisodesCache, fallbackCacheKey),
+        await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
         'animekai',
       );
     }
@@ -888,7 +836,7 @@ export async function fetchAnimeEpisodes(
         dub ? 'dub' : 'sub',
       );
       return attachProvider(
-        await fetchFromProxy(fallbackUrl, animeEpisodesCache, fallbackCacheKey),
+        await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
         'animekai',
       );
     }
@@ -908,7 +856,7 @@ export async function fetchAnimeEmbeddedEpisodes(
     episodeId,
     finalProvider,
   );
-  return fetchFromProxy(url, fetchAnimeEmbeddedEpisodesCache, cacheKey);
+  return fetchFromProxy(url, 'Video Embedded Sources', cacheKey);
 }
 
 export async function fetchAnimeStreamingLinks(
@@ -925,7 +873,7 @@ export async function fetchAnimeStreamingLinks(
     finalProvider,
     server || '',
   );
-  return fetchFromProxy(url, videoSourcesCache, cacheKey);
+  return fetchFromProxy(url, 'Video Sources', cacheKey);
 }
 
 export async function fetchAnimeStreamingLinksProxied(
@@ -1011,7 +959,7 @@ export async function fetchSkipTimes({
     episodeNumber,
     episodeLength || '',
   );
-  return fetchFromProxy(url.toString(), createCache('SkipTimes'), cacheKey);
+  return fetchFromProxy(url.toString(), 'SkipTimes', cacheKey);
 }
 
 export async function fetchRecentEpisodes(
@@ -1031,7 +979,19 @@ export async function fetchRecentEpisodes(
     perPage.toString(),
     provider,
   );
-  return fetchFromProxy(url, createCache('RecentEpisodes'), cacheKey);
+  return fetchFromProxy(url, 'Recent Episodes', cacheKey);
+}
+
+export async function fetchRecentEpisodesWithFallback(
+  page: number = 1,
+  perPage: number = 24,
+) {
+  try {
+    return await fetchRecentEpisodes(page, perPage, 'kickassanime');
+  } catch (error) {
+    console.warn('kickassanime failed for recent episodes, trying animekai');
+    return await fetchRecentEpisodes(page, perPage, 'animekai');
+  }
 }
 
 export async function fetchStudio(
@@ -1054,7 +1014,7 @@ export async function fetchStudio(
     perPage.toString(),
     finalProvider,
   );
-  return fetchFromProxy(url, createCache('Studio'), cacheKey);
+  return fetchFromProxy(url, 'Studio', cacheKey);
 }
 
 export interface JikanProducer {
@@ -1077,12 +1037,11 @@ export interface JikanProducer {
 
 export async function fetchStudioJikan(studioId: string): Promise<JikanProducer | null> {
   const cacheKey = generateCacheKey('studioJikan', studioId);
-  const jikanCache = createCache('StudioJikan');
 
-  const cached = jikanCache.get(cacheKey);
+  const cached = await cacheManager.get<JikanProducer>('Studio', cacheKey);
   if (cached) {
     console.log(`✅ Jikan studio cache HIT: ${cacheKey}`);
-    return cached as JikanProducer;
+    return cached;
   }
 
   console.log(`🌐 Jikan studio fetch for ID: ${studioId}`);
@@ -1095,12 +1054,18 @@ export async function fetchStudioJikan(studioId: string): Promise<JikanProducer 
 
     if (response.status === 200 && response.data?.data) {
       const producerData = response.data.data as JikanProducer;
-      jikanCache.set(cacheKey, producerData);
+
+      // Only cache if we have valid producer data
+      if (producerData && Object.keys(producerData).length > 0) {
+        await cacheManager.set('Studio', cacheKey, producerData);
+      } else {
+        console.log(`⚠️ Skipping cache for Studio ${cacheKey} - invalid producer data`);
+      }
       return producerData;
     }
     return null;
   } catch (error) {
-    console.error(`❌ Jikan studio fetch failed for ID ${studioId}:`, error);
+    console.error(`❌ Jikan studio fetch failed`);
     return null;
   }
 }

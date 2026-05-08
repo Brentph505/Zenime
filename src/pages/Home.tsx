@@ -11,7 +11,7 @@ import {
   fetchTopAnime,
   fetchTopAiringAnime,
   fetchUpcomingSeasons,
-  fetchRecentEpisodes,
+  fetchRecentEpisodesWithFallback,
   HomeSideBar,
   EpisodeCard,
   getNextSeason,
@@ -191,6 +191,9 @@ const ErrorMessage = styled.div`
   }
 `;
 
+// ── Narrowed tab key type ──────────────────────────────────────────────────────
+type TabKey = 'trending' | 'popular' | 'topRated' | 'latest';
+
 interface TabPaging {
   page: number;
   hasNext: boolean;
@@ -227,6 +230,14 @@ const normalizeEpisodeToAnime = (ep: any): Anime => ({
   color: ep.color ?? '#999999',
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getSafeResults = (result: any) => {
+  if (!result) return [];
+  if (Array.isArray(result)) return result;
+  if (Array.isArray(result.results)) return result.results;
+  return [];
+};
+
 const loadingKeyMap: Record<string, 'trending' | 'popular' | 'topRated' | 'topAiring' | 'Upcoming' | 'latest'> = {
   trending: 'trending',
   popular: 'popular',
@@ -250,12 +261,13 @@ const Home = () => {
     window.innerWidth > 500 ? 24 : 15,
   );
 
-  const [activeTab, setActiveTab] = useState(() => {
+  // ── activeTab is now narrowed to TabKey ──────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
     const now = Date.now();
     const savedData = localStorage.getItem('home tab');
     if (savedData) {
       const { tab, timestamp } = JSON.parse(savedData);
-      if (now - timestamp < 300000) return tab;
+      if (now - timestamp < 300000) return tab as TabKey;
       localStorage.removeItem('home tab');
     }
     return 'trending';
@@ -269,7 +281,12 @@ const Home = () => {
     topAiring: [] as Anime[],
     Upcoming: [] as Anime[],
     latestAnime: [] as Anime[],
-    error: null as string | null,
+    tabErrors: {
+      trending: null as string | null,
+      popular: null as string | null,
+      topRated: null as string | null,
+      latest: null as string | null,
+    },
     loading: buildInitialLoading(
       (() => {
         const now = Date.now();
@@ -283,7 +300,7 @@ const Home = () => {
     ),
   }));
 
-  const [paging, setPaging] = useState<Record<string, TabPaging>>({
+  const [paging, setPaging] = useState<Record<TabKey, TabPaging>>({
     trending: defaultPaging,
     popular: defaultPaging,
     topRated: defaultPaging,
@@ -326,22 +343,22 @@ const Home = () => {
   useEffect(() => {
     const fetchCount = Math.ceil(itemsCount * 1.4);
 
-    const tabFetchers: Record<string, (p: number, c: number) => Promise<Paging>> = {
+    const tabFetchers: Record<TabKey, (p: number, c: number) => Promise<Paging>> = {
       trending: fetchTrendingAnime,
       popular:  fetchPopularAnime,
       topRated: fetchTopAnime,
-      latest:   fetchRecentEpisodes,
+      latest:   fetchRecentEpisodesWithFallback,
     };
 
-    const dataKeys: Record<string, keyof typeof state> = {
+    const dataKeys: Record<TabKey, keyof typeof state> = {
       trending: 'trendingAnime',
       popular:  'popularAnime',
       topRated: 'topAnime',
       latest:   'latestAnime',
     };
 
-    const fetcher  = tabFetchers[activeTab];
-    const dataKey  = dataKeys[activeTab];
+    const fetcher   = tabFetchers[activeTab];
+    const dataKey   = dataKeys[activeTab];
     const loadingKey = loadingKeyMap[activeTab];
 
     if (!fetcher || !dataKey) return;
@@ -356,23 +373,32 @@ const Home = () => {
       }));
 
       try {
-        // For the latest tab, request exactly itemsCount — no over-fetch needed
         const perPage = activeTab === 'latest' ? itemsCount : fetchCount;
         const result = await fetcher(1, perPage);
-        const raw = result.results.slice(0, itemsCount);
+        const raw = getSafeResults(result).slice(0, itemsCount);
         const trimmed = activeTab === 'latest' ? raw.map(normalizeEpisodeToAnime) : raw;
 
-        setState((prev) => ({ ...prev, [dataKey]: trimmed }));
+        setState((prev) => ({
+          ...prev,
+          [dataKey]: trimmed,
+          tabErrors: { ...prev.tabErrors, [activeTab]: null },
+        }));
         setPaging((prev) => ({
           ...prev,
           [activeTab]: {
             page: 1,
-            hasNext: result.hasNextPage ?? false,
+            hasNext: (result?.hasNextPage as boolean) ?? false,
             hasPrev: false,
           },
         }));
       } catch {
-        setState((prev) => ({ ...prev, error: 'An unexpected error occurred' }));
+        setState((prev) => ({
+          ...prev,
+          tabErrors: {
+            ...prev.tabErrors,
+            [activeTab]: 'An unexpected error occurred',
+          },
+        }));
       } finally {
         setState((prev) => ({
           ...prev,
@@ -394,13 +420,13 @@ const Home = () => {
     localStorage.setItem('home tab', tabData);
   }, [activeTab]);
 
-  const fetchTabPage = async (tab: string, page: number, count: number) => {
+  const fetchTabPage = async (tab: TabKey, page: number, count: number) => {
     const fetchCount = Math.ceil(count * 1.4);
-    const fetchers: Record<string, (p: number, c: number) => Promise<Paging>> = {
+    const fetchers: Record<TabKey, (p: number, c: number) => Promise<Paging>> = {
       trending: fetchTrendingAnime,
       popular:  fetchPopularAnime,
       topRated: fetchTopAnime,
-      latest:   fetchRecentEpisodes,
+      latest:   fetchRecentEpisodesWithFallback,
     };
 
     const fetcher = fetchers[tab];
@@ -414,30 +440,39 @@ const Home = () => {
     }));
 
     try {
-      // For the latest tab, request exactly count — no over-fetch needed
       const perPage = tab === 'latest' ? count : fetchCount;
       const result = await fetcher(page, perPage);
-      const raw = result.results.slice(0, count);
+      const raw = getSafeResults(result).slice(0, count);
       const trimmed = tab === 'latest' ? raw.map(normalizeEpisodeToAnime) : raw;
 
-      const dataKey: Record<string, string> = {
+      const dataKey: Record<TabKey, keyof typeof state> = {
         trending: 'trendingAnime',
         popular:  'popularAnime',
         topRated: 'topAnime',
         latest:   'latestAnime',
       };
 
-      setState((prev) => ({ ...prev, [dataKey[tab]]: trimmed }));
+      setState((prev) => ({
+        ...prev,
+        [dataKey[tab]]: trimmed,
+        tabErrors: { ...prev.tabErrors, [tab]: null },
+      }));
       setPaging((prev) => ({
         ...prev,
         [tab]: {
           page,
-          hasNext: result.hasNextPage ?? false,
+          hasNext: (result?.hasNextPage as boolean) ?? false,
           hasPrev: page > 1,
         },
       }));
     } catch {
-      setState((prev) => ({ ...prev, error: 'An unexpected error occurred' }));
+      setState((prev) => ({
+        ...prev,
+        tabErrors: {
+          ...prev.tabErrors,
+          [tab]: 'An unexpected error occurred',
+        },
+      }));
     } finally {
       setState((prev) => ({
         ...prev,
@@ -446,7 +481,7 @@ const Home = () => {
     }
   };
 
-  const handlePageChange = (tab: string, direction: 'prev' | 'next') => {
+  const handlePageChange = (tab: TabKey, direction: 'prev' | 'next') => {
     const current = paging[tab];
     if (!current) return;
     const newPage = direction === 'next' ? current.page + 1 : current.page - 1;
@@ -476,7 +511,7 @@ const Home = () => {
     );
   };
 
-  const tabDataMap: Record<string, Anime[]> = {
+  const tabDataMap: Record<TabKey, Anime[]> = {
     trending: state.trendingAnime,
     popular:  state.popularAnime,
     topRated: state.topAnime,
@@ -487,7 +522,7 @@ const Home = () => {
   const activePaging  = paging[activeTab] ?? defaultPaging;
   const activeLoading = state.loading[loadingKeyMap[activeTab]];
 
-  const TABS = [
+  const TABS: { key: TabKey; label: string }[] = [
     { key: 'trending', label: 'TRENDING'  },
     { key: 'popular',  label: 'POPULAR'   },
     { key: 'topRated', label: 'TOP RATED' },
@@ -496,18 +531,18 @@ const Home = () => {
 
   return (
     <SimpleLayout>
-      {state.error && (
+      {state.tabErrors.trending && (
         <ErrorMessage title='Error Message'>
-          <p>ERROR: {state.error}</p>
+          <p>ERROR: {state.tabErrors.trending}</p>
         </ErrorMessage>
       )}
-      {state.loading.trending || state.error ? (
+      {state.loading.trending || state.tabErrors.trending ? (
         <SkeletonSlide />
       ) : (
         <HomeCarousel
           data={state.trendingAnime}
           loading={state.loading.trending}
-          error={state.error}
+          error={state.tabErrors.trending}
         />
       )}
       <EpisodeCard />
@@ -554,7 +589,7 @@ const Home = () => {
           {renderCardGrid(
             tabDataMap[activeTab] ?? [],
             activeLoading,
-            !!state.error,
+            !!state.tabErrors[activeTab],
             activeTab === 'latest',
           )}
         </div>

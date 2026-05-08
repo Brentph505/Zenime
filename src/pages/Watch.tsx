@@ -815,7 +815,6 @@ const Watch: React.FC = () => {
       try {
         const episodeProvider = currentEpisode.provider || 'kickassanime';
         const response = await fetchAnimeStreamingLinks(currentEpisode.id, episodeProvider);
-        console.log('Streaming links response:', response);
 
         const isAnimekai = episodeProvider === 'animekai';
         const isKickassanime = episodeProvider === 'kickassanime';
