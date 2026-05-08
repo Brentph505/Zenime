@@ -6,6 +6,11 @@ import { FaPlay, FaInfoCircle } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
 
+// Types that are non-anime formats (manga, light novels, one-shots, etc.)
+const MANGA_FORMAT_TYPES = new Set([
+  'MANGA', 'ONE_SHOT', 'NOVEL', 'LIGHT_NOVEL',
+]);
+
 const StyledCardWrapper = styled.div`
   color: var(--global-text);
   animation: slideUp 0.4s ease;
@@ -228,10 +233,10 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
       onMouseLeave={handleMouseLeave}
     >
       <StyledCardItem>
-        {/* Poster → /watch/:id for anime, /info/:id for manga */}
+        {/* Poster → /watch/:id for anime, /info/:id for manga/non-anime formats */}
         <PosterLink
-          to={anime.type === 'MANGA' ? `/info/${anime.id}?type=MANGA` : `${isLatestTab && anime.totalEpisodes ? `/watch/${anime.id}?ep=${anime.totalEpisodes}` : `/watch/${anime.id}`}`}
-          title={(anime.type === 'MANGA' ? 'Info: ' : 'Play ') + (anime.title.english || anime.title.romaji)}
+          to={MANGA_FORMAT_TYPES.has(anime.type) ? `/info/${anime.id}?type=${anime.type}` : `${isLatestTab && anime.totalEpisodes ? `/watch/${anime.id}?ep=${anime.totalEpisodes}` : `/watch/${anime.id}`}`}
+          title={(MANGA_FORMAT_TYPES.has(anime.type) ? 'Info: ' : 'Play ') + (anime.title.english || anime.title.romaji)}
         >
           <ImageDisplayWrapper>
             <AnimeImage>
@@ -243,7 +248,7 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
                     anime.title.english || anime.title.romaji + ' Cover Image'
                   }
                 />
-                {anime.type === 'MANGA' ? (
+                {MANGA_FORMAT_TYPES.has(anime.type) ? (
                   <InfoIcon
                     title={
                       'Info: ' + (anime.title.english || anime.title.romaji)
@@ -269,7 +274,7 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
           onMouseLeave={() => setIsTitleHovered(false)}
         >
           <TitleLink
-            to={`/info/${anime.id}${anime.type === 'MANGA' ? '?type=MANGA' : ''}`}
+            to={`/info/${anime.id}${MANGA_FORMAT_TYPES.has(anime.type) ? `?type=${anime.type}` : ''}`}
             title={'Info: ' + (anime.title.english || anime.title.romaji)}
           >
             <StatusIndicator status={anime.status} />

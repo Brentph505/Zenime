@@ -110,14 +110,11 @@ const PageWrapper = styled.div`
 
 const HeroWrap = styled.div`
   position: relative;
-  width: 100vw;
-  left: 50%;
-  right: 50%;
-  margin-left: -50vw;
-  margin-right: -50vw;
+  width: calc(100vw + 2rem);
+  margin: 0 -1rem;
   height: 360px;
   overflow: hidden;
-  @media (max-width: 768px) { height: 180px; }
+  @media (max-width: 768px) { width: calc(100vw + 1rem); margin: 0 -0.5rem; height: 180px; }
 `;
 
 const HeroImg = styled.img`
@@ -156,7 +153,7 @@ const Shell = styled.div`
   width: 100%;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 0 1.5rem 5rem;
+  padding: 0 1rem 5rem;
   position: relative;
   box-sizing: border-box;
   @media (max-width: 860px) {
@@ -168,7 +165,7 @@ const Shell = styled.div`
 const Grid = styled.div`
   display: grid;
   grid-template-columns: 230px 1fr;
-  gap: 1.5rem;
+  gap: 1rem;
   margin-top: -110px;
   position: relative; z-index: 2;
   @media (max-width: 860px) {
@@ -221,7 +218,8 @@ const MobileEyebrow = styled.div`
 const MobileTitle = styled.h1`
   font-size: 1.15rem; font-weight: 800; line-height: 1.15;
   margin: 0 0 0.2rem; color: ${A.text};
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word;
 `;
 
 const MobileRomaji = styled.p`
@@ -361,7 +359,9 @@ const EyeBrow = styled.div`
 `;
 
 const MainTitle = styled.h1`
-  font-size: 2rem; font-weight: 800; line-height: 1.1; margin: 0 0 0.3rem; color: #1f2937;
+  font-size: 1.75rem; font-weight: 800; line-height: 1.1; margin: 0 0 0.3rem; color: #1f2937;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; word-break: break-word;
   .dark-mode & { color: ${A.text}; }
   @media (max-width: 600px) { font-size: 1.45rem; }
 `;
@@ -454,11 +454,66 @@ const CharRole = styled.span`font-size: 0.7rem; color: ${A.accent}; font-weight:
 type EpView = 'card' | 'list' | 'number';
 
 const EpControls = styled.div`
-  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.85rem;
+  display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.5rem;
 `;
 
 const RangePillRow = styled.div`
-  display: flex; gap: 0.35rem; flex-wrap: wrap; width: 100%; margin-bottom: 0.5rem;
+  display: flex; gap: 0.3rem; flex-wrap: wrap; flex: 0 0 auto; min-width: 0; margin-bottom: 0.35rem;
+  @media (max-width: 860px) {
+    order: 1;
+    width: 100%;
+    margin-bottom: 0.2rem;
+  }
+`;
+
+const RangeRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.35rem;
+
+  @media (max-width: 860px) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.18rem;
+    margin-bottom: 0.2rem;
+  }
+`;
+
+const RangeAction = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.3rem;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: wrap;
+
+  @media (max-width: 860px) {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    align-items: stretch;
+    order: 2;
+    gap: 0.2rem;
+  }
+`;
+
+const AnimeRangeAction = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: wrap;
+
+  @media (max-width: 860px) {
+    flex-wrap: wrap;
+    align-items: center;
+    order: 1;
+    gap: 0.2rem;
+  }
 `;
 
 const RangePill = styled.button<{ $active?: boolean }>`
@@ -476,15 +531,40 @@ const RangePill = styled.button<{ $active?: boolean }>`
 `;
 
 const RangeSelect = styled.select`
-  padding: 0.45rem 0.65rem; background: #ffffff; border: 1px solid #e5e7eb;
-  border-radius: 6px; color: #1f2937; font-size: 0.8rem; cursor: pointer; outline: none;
+  width: auto;
+  padding: 0.45rem 0.65rem;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #1f2937;
+  font-size: 0.8rem;
+  cursor: pointer;
+  outline: none;
+
   &:focus { border-color: ${A.accent}; }
-  .dark-mode & { background: ${A.card}; border: 1px solid ${A.border}; color: ${A.text}; }
+
+  .dark-mode & {
+    background: ${A.card};
+    border: 1px solid ${A.border};
+    color: ${A.text};
+  }
+
+  @media (max-width: 860px) {
+    width: 100%;
+    min-width: 0;
+  }
 `;
 
 const SearchBox = styled.div`
-  flex: 1; min-width: 140px; position: relative;
+  flex: 1 1 320px;
+  min-width: 260px;
+  position: relative;
   svg { position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: ${A.muted}; pointer-events: none; }
+
+  @media (max-width: 860px) {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
 `;
 
 const SearchInput = styled.input`
@@ -497,11 +577,18 @@ const SearchInput = styled.input`
     background: ${A.card}; border: 1px solid ${A.border}; color: ${A.text};
     &::placeholder { color: ${A.muted}; }
   }
+  @media (max-width: 860px) {
+    padding: 0.35rem 0.6rem 0.35rem 1.8rem;
+    font-size: 0.75rem;
+  }
 `;
 
 const SegmentedControl = styled.div`
   display: flex; background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;
   .dark-mode & { background: ${A.card}; border-color: ${A.border}; }
+  @media (max-width: 860px) {
+    flex-shrink: 0;
+  }
 `;
 
 const SegmentOption = styled.button<{ $active?: boolean }>`
@@ -512,6 +599,10 @@ const SegmentOption = styled.button<{ $active?: boolean }>`
   &:last-child { border-right: none; }
   &:hover { color: ${A.accent}; }
   .dark-mode & { color: ${({ $active }) => $active ? A.accent : A.muted}; border-right-color: ${A.border}; }
+  @media (max-width: 860px) {
+    padding: 0.35rem 0.5rem;
+    font-size: 0.7rem;
+  }
 `;
 
 const EpScrollArea = styled.div`
@@ -628,13 +719,19 @@ const NumCell = styled.div<{ $active?: boolean; $filler?: boolean; $first?: bool
 // ─── Full-width sections ──────────────────────────────────────────────────────
 
 const FullWidthSection = styled.div`
-  margin-top: 2.5rem; padding-top: 2rem;
+  margin-top: 2.5rem; padding: 2rem 0;
   border-top: 1px solid #e5e7eb; position: relative; z-index: 2;
   .dark-mode & { border-top: 1px solid ${A.border}; }
-  @media (max-width: 860px) { margin-top: 1.75rem; padding-top: 1.5rem; padding-left: 0.75rem; padding-right: 0.75rem; }
+  @media (max-width: 860px) {
+    margin-top: 1.75rem;
+    padding: 1.5rem 0.75rem 0;
+    width: calc(100% + 1rem);
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+  }
 `;
 
-const SectionHeader = styled.div`display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;`;
+const SectionHeader = styled.div`display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem;`;
 
 const SectionLabel = styled.div`
   font-size: 0.68rem; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: #6b7280;
@@ -656,13 +753,13 @@ const ScrollBtn = styled.button`
 `;
 
 const StyledCardGrid = styled.div`
-  display: flex; gap: 0.9rem; overflow-x: auto; overflow-y: hidden;
-  padding-bottom: 0.5rem; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+  display: flex; gap: 0.75rem; overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 0.4rem; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
   &::-webkit-scrollbar { display: none; height: 0; }
   scrollbar-width: none; scrollbar-color: transparent transparent;
   & > * { flex: 0 0 auto; width: 150px; scroll-snap-align: start; }
-  @media (max-width: 800px) { gap: 0.75rem; & > * { width: 130px; } }
-  @media (max-width: 450px) { gap: 0.6rem; & > * { width: 115px; } }
+  @media (max-width: 800px) { gap: 0.6rem; & > * { width: 140px; } }
+  @media (max-width: 450px) { gap: 0.5rem; & > * { width: 120px; } }
 `;
 
 // ─── States ───────────────────────────────────────────────────────────────────
@@ -678,16 +775,34 @@ const PrimaryBtn = styled.button`
   font-weight: 800; font-size: 0.82rem; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
 `;
 
-const ProviderSwitcher = styled.div`display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem;`;
+const ProviderSwitcher = styled.div`
+  display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center;
+  flex: 0 0 auto; min-width: 0; margin-left: auto;
+  @media (max-width: 860px) {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.25rem;
+    margin-top: 0.2rem;
+    flex: 1 1 100%;
+    width: 100%;
+    margin-left: 0;
+  }
+`;
 
 const ProviderButton = styled.button<{ $active?: boolean }>`
-  padding: 0.55rem 0.95rem; border-radius: 999px;
+  padding: 0.45rem 0.75rem; border-radius: 6px;
   border: 1px solid ${p => p.$active ? A.accent : A.border};
   background: ${p => p.$active ? A.accent : A.card};
   color: ${p => p.$active ? '#0a0a0c' : A.text};
   cursor: pointer; font-size: 0.78rem; font-weight: 700;
   transition: background 0.2s, border-color 0.2s, color 0.2s;
   &:hover { border-color: ${A.accent}; }
+
+  @media (max-width: 860px) {
+    width: 100%;
+    padding: 0.75rem 0.85rem;
+    justify-content: center;
+  }
 `;
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -702,12 +817,6 @@ const Info: React.FC = () => {
   // once per URL change and never mutated based on what a provider returns.
   const queryType     = searchParams.get('type')?.toUpperCase() ?? null;
   const queryProvider = searchParams.get('provider')?.toLowerCase() ?? null;
-
-  // `mediaType` is set here and only updated when the URL params change.
-  // It is deliberately NOT inside a useEffect dep that responds to fetch results.
-  const [mediaType, setMediaType] = useState<MediaType>(
-    queryType === 'MANGA' ? 'MANGA' : 'ANIME',
-  );
 
   const [animeInfo, setAnimeInfo] = useState<Anime & Partial<Manga> | null>(null);
   const [loading,   setLoading]   = useState(true);
@@ -726,10 +835,8 @@ const Info: React.FC = () => {
   });
 
   // ── Sync state when URL params change ────────────────────────────────────────
-  // This is the ONLY place where mediaType is updated imperatively.
   useEffect(() => {
     const newType: MediaType = queryType === 'MANGA' ? 'MANGA' : 'ANIME';
-    setMediaType(newType);
     setAvailableMangaProviders(new Set());
     setEpRange(0);
     setEpSearch('');
@@ -761,14 +868,9 @@ const Info: React.FC = () => {
   };
 
   // ── Primary fetch effect ──────────────────────────────────────────────────
-  // IMPORTANT: `mediaType` is intentionally NOT in the dependency array.
-  // Including it would cause a re-fetch loop:
-  //   fetch anime → data.type = 'MANGA' → setMediaType('MANGA') → re-fetch as manga
-  //
-  // The `mediaType` value used inside this effect is captured at call time from
-  // the `queryType` URL param (which IS a dependency). If the user navigates to
-  // a different page type the URL changes → `animeId` or `queryType` changes →
-  // this effect re-runs cleanly.
+  // IMPORTANT: `currentMediaType` is intentionally derived inside the effect
+  // from the `queryType` URL param and not kept in separate state.
+  // This avoids a fetch loop while still responding correctly to URL changes.
   useEffect(() => {
     if (!animeId) {
       setError('Anime ID not found');
@@ -1035,7 +1137,20 @@ const Info: React.FC = () => {
   const chapterEntries = (mediaInfo as Manga)?.chapters ?? mediaInfo.episodes ?? [];
   const firstEntry     = chapterEntries.length > 0 ? chapterEntries[0] : null;
   const firstNumber    = firstEntry?.number ?? 1;
-  const usePills       = ranges.length <= 10;
+  const usePills       = !isManga && ranges.length <= 10;
+
+  const formatRangeLabel = (chunk: Episode[]) => {
+    const startNumber = chunk[0]?.number;
+    const endNumber = chunk[chunk.length - 1]?.number;
+
+    if (startNumber != null && endNumber != null) {
+      return startNumber === endNumber ? `${startNumber}` : `${startNumber}-${endNumber}`;
+    }
+
+    const startLabel = chunk[0]?.title?.slice(0, 12) || '…';
+    const endLabel = chunk[chunk.length - 1]?.title?.slice(0, 12) || '…';
+    return startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`;
+  };
 
   const isFirst = (idx: number) => idx === 0 && epRange === 0 && !epSearch.trim();
 
@@ -1247,59 +1362,101 @@ const Info: React.FC = () => {
                 {chapterEntries.length > 0 ? (
                   <>
                     {/* Range selector */}
-                    {ranges.length > 1 && (
-                      usePills ? (
-                        <RangePillRow>
-                          {ranges.map((chunk, i) => (
-                            <RangePill key={i} $active={epRange === i} onClick={() => { setEpRange(i); setEpSearch(''); }}>
-                              {chunk[0].number}–{chunk[chunk.length - 1].number}
-                            </RangePill>
-                          ))}
-                        </RangePillRow>
-                      ) : (
-                        <RangePillRow>
-                          <RangeSelect value={epRange} onChange={e => { setEpRange(Number(e.target.value)); setEpSearch(''); }}>
+                    {ranges.length > 1 ? (
+                      <RangeRow>
+                        {usePills ? (
+                          <RangePillRow>
                             {ranges.map((chunk, i) => (
-                              <option key={i} value={i}>{chunk[0].number} – {chunk[chunk.length - 1].number}</option>
+                              <RangePill key={i} $active={epRange === i} onClick={() => { setEpRange(i); setEpSearch(''); }}>
+                                {formatRangeLabel(chunk)}
+                              </RangePill>
                             ))}
-                          </RangeSelect>
-                        </RangePillRow>
-                      )
+                          </RangePillRow>
+                        ) : (
+                          <RangePillRow>
+                            <RangeSelect value={epRange} onChange={e => { setEpRange(Number(e.target.value)); setEpSearch(''); }}>
+                              {ranges.map((chunk, i) => (
+                                <option key={i} value={i}>{formatRangeLabel(chunk)}</option>
+                              ))}
+                            </RangeSelect>
+                          </RangePillRow>
+                        )}
+
+                        {!isManga ? (
+                          <AnimeRangeAction>
+                            <SearchBox>
+                              <FaSearch size={11} />
+                              <SearchInput
+                                placeholder='Filter episodes...'
+                                value={epSearch}
+                                onChange={e => setEpSearch(e.target.value)}
+                              />
+                            </SearchBox>
+
+                            <SegmentedControl>
+                              <SegmentOption $active={epView === 'card'} onClick={() => setEpView('card')} title="Card view"><BsEye size={15} /></SegmentOption>
+                              <SegmentOption $active={epView === 'list'} onClick={() => setEpView('list')} title="List view"><MdViewList size={16} /></SegmentOption>
+                              <SegmentOption $active={epView === 'number'} onClick={() => setEpView('number')} title="Number view"><MdGridOn size={15} /></SegmentOption>
+                            </SegmentedControl>
+                          </AnimeRangeAction>
+                        ) : (
+                          <RangeAction>
+                            <SearchBox>
+                              <FaSearch size={11} />
+                              <SearchInput
+                                placeholder='Filter chapters...'
+                                value={epSearch}
+                                onChange={e => setEpSearch(e.target.value)}
+                              />
+                            </SearchBox>
+
+                            {availableMangaProviders.size > 1 && (
+                              <ProviderSwitcher>
+                                {(['mangahere', 'mangapill'] as MangaProvider[])
+                                  .filter(p => availableMangaProviders.has(p))
+                                  .map(p => (
+                                    <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
+                                      {p === 'mangahere' ? 'MangaHere' : 'MangaPill'}
+                                    </ProviderButton>
+                                  ))}
+                              </ProviderSwitcher>
+                            )}
+                          </RangeAction>
+                        )}
+                      </RangeRow>
+                    ) : (
+                      <EpControls>
+                        <SearchBox>
+                          <FaSearch size={11} />
+                          <SearchInput
+                            placeholder={isManga ? 'Filter chapters...' : 'Filter episodes...'}
+                            value={epSearch}
+                            onChange={e => setEpSearch(e.target.value)}
+                          />
+                        </SearchBox>
+
+                        {/* Anime view toggle */}
+                        {!isManga && (
+                          <SegmentedControl>
+                            <SegmentOption $active={epView === 'card'} onClick={() => setEpView('card')} title="Card view"><BsEye size={15} /></SegmentOption>
+                            <SegmentOption $active={epView === 'list'} onClick={() => setEpView('list')} title="List view"><MdViewList size={16} /></SegmentOption>
+                            <SegmentOption $active={epView === 'number'} onClick={() => setEpView('number')} title="Number view"><MdGridOn size={15} /></SegmentOption>
+                          </SegmentedControl>
+                        )}
+
+                        {isManga && availableMangaProviders.size > 1 && (
+                          <ProviderSwitcher>
+                            {(['mangahere', 'mangapill'] as MangaProvider[])
+                              .filter(p => availableMangaProviders.has(p))
+                              .map(p => (
+                                <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
+                                  {p === 'mangahere' ? 'MangaHere' : 'MangaPill'}
+                                </ProviderButton>
+                              ))}
+                          </ProviderSwitcher>
+                        )}
+                      </EpControls>
                     )}
-
-                    <EpControls>
-                      <SearchBox>
-                        <FaSearch size={11} />
-                        <SearchInput
-                          placeholder={isManga ? 'Filter chapters...' : 'Filter episodes...'}
-                          value={epSearch}
-                          onChange={e => setEpSearch(e.target.value)}
-                        />
-                      </SearchBox>
-
-                      {/* Manga provider buttons — only rendered when BOTH providers have chapters */}
-                      {isManga && availableMangaProviders.size > 1 && (
-                        <ProviderSwitcher style={{ marginTop: '0.75rem', width: '100%' }}>
-                          {(['mangahere', 'mangapill'] as MangaProvider[])
-                            .filter(p => availableMangaProviders.has(p))
-                            .map(p => (
-                              <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
-                                {p === 'mangahere' ? 'MangaHere' : 'MangaPill'}
-                              </ProviderButton>
-                            ))
-                          }
-                        </ProviderSwitcher>
-                      )}
-
-                      {/* Anime view toggle */}
-                      {!isManga && (
-                        <SegmentedControl>
-                          <SegmentOption $active={epView === 'card'} onClick={() => setEpView('card')} title="Card view"><BsEye size={15} /></SegmentOption>
-                          <SegmentOption $active={epView === 'list'} onClick={() => setEpView('list')} title="List view"><MdViewList size={16} /></SegmentOption>
-                          <SegmentOption $active={epView === 'number'} onClick={() => setEpView('number')} title="Number view"><MdGridOn size={15} /></SegmentOption>
-                        </SegmentedControl>
-                      )}
-                    </EpControls>
 
                     {currentEps.length === 0 && (
                       <Desc>No {isManga ? 'chapters' : 'episodes'} match your search.</Desc>
@@ -1338,10 +1495,10 @@ const Info: React.FC = () => {
                               <ListItem key={ep.id} $first={isFirst(idx)} onClick={() => navigateToEntry(ep)}>
                                 {isFirst(idx)
                                   ? <ListPlayIcon><FaPlay size={10} /></ListPlayIcon>
-                                  : <ListEpNum>{isManga ? 'CH' : 'EP'} {ep.number}</ListEpNum>
+                                  : <ListEpNum>{isManga ? 'CH' : 'EP'} {ep.number ?? idx + 1}</ListEpNum>
                                 }
-                                <ListTitle title={ep.title || `${isManga ? 'Chapter' : 'Episode'} ${ep.number}`}>
-                                  {ep.title || `${isManga ? 'Chapter' : 'Episode'} ${ep.number}`}
+                                <ListTitle title={ep.title || `${isManga ? 'Chapter' : 'Episode'} ${ep.number ?? idx + 1}`}>
+                                  {ep.title || `${isManga ? 'Chapter' : 'Episode'} ${ep.number ?? idx + 1}`}
                                 </ListTitle>
                                 {!isManga && (
                                   <ListIcons>
