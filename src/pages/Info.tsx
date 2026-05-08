@@ -460,7 +460,7 @@ const EpControls = styled.div`
 const RangePillRow = styled.div`
   display: flex; gap: 0.3rem; flex-wrap: wrap; flex: 0 0 auto; min-width: 0; margin-bottom: 0.35rem;
   @media (max-width: 860px) {
-    order: 1;
+    order: 2;
     width: 100%;
     margin-bottom: 0.2rem;
   }
@@ -485,17 +485,15 @@ const RangeRow = styled.div`
 const RangeAction = styled.div`
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 0.3rem;
   flex: 1 1 0;
   min-width: 0;
   flex-wrap: wrap;
 
   @media (max-width: 860px) {
-    justify-content: flex-start;
     flex-wrap: wrap;
     align-items: stretch;
-    order: 2;
+    order: 1;
     gap: 0.2rem;
   }
 `;
@@ -555,16 +553,26 @@ const RangeSelect = styled.select`
   }
 `;
 
-const SearchBox = styled.div`
-  flex: 1 1 320px;
-  min-width: 260px;
+const RangeSelectWrapper = styled.div`
   position: relative;
-  svg { position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: ${A.muted}; pointer-events: none; }
-
-  @media (max-width: 860px) {
-    flex: 1 1 100%;
-    min-width: 0;
+  display: flex;
+  align-items: center;
+  
+  svg {
+    position: absolute;
+    left: 0.5rem;
+    color: ${A.muted};
+    pointer-events: none;
   }
+  
+  select {
+    padding-left: 2rem;
+  }
+`;
+
+const SearchBox = styled.div`
+  flex: 1 1 auto; min-width: 150px; position: relative;
+  svg { position: absolute; left: 0.65rem; top: 50%; transform: translateY(-50%); color: ${A.muted}; pointer-events: none; }
 `;
 
 const SearchInput = styled.input`
@@ -777,7 +785,7 @@ const PrimaryBtn = styled.button`
 
 const ProviderSwitcher = styled.div`
   display: flex; gap: 0.35rem; flex-wrap: wrap; align-items: center;
-  flex: 0 0 auto; min-width: 0; margin-left: auto;
+  flex: 0 0 auto; min-width: auto;
   @media (max-width: 860px) {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -785,7 +793,7 @@ const ProviderSwitcher = styled.div`
     margin-top: 0.2rem;
     flex: 1 1 100%;
     width: 100%;
-    margin-left: 0;
+    min-width: 0;
   }
 `;
 
@@ -822,6 +830,7 @@ const Info: React.FC = () => {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<InfoTab>('overview');
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
 
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
@@ -1152,7 +1161,7 @@ const Info: React.FC = () => {
     return startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`;
   };
 
-  const isFirst = (idx: number) => idx === 0 && epRange === 0 && !epSearch.trim();
+  const isFirst = (ep: Episode) => ep.id === selectedEpisodeId;
 
   const navigateToEntry = (ep: Episode) => {
     if (isManga) {
@@ -1374,11 +1383,14 @@ const Info: React.FC = () => {
                           </RangePillRow>
                         ) : (
                           <RangePillRow>
-                            <RangeSelect value={epRange} onChange={e => { setEpRange(Number(e.target.value)); setEpSearch(''); }}>
-                              {ranges.map((chunk, i) => (
-                                <option key={i} value={i}>{formatRangeLabel(chunk)}</option>
-                              ))}
-                            </RangeSelect>
+                            <RangeSelectWrapper>
+                              {isManga ? <FaBookOpen size={13} /> : <FaPlay size={13} />}
+                              <RangeSelect value={epRange} onChange={e => { setEpRange(Number(e.target.value)); setEpSearch(''); }}>
+                                {ranges.map((chunk, i) => (
+                                  <option key={i} value={i}>{formatRangeLabel(chunk)}</option>
+                                ))}
+                              </RangeSelect>
+                            </RangeSelectWrapper>
                           </RangePillRow>
                         )}
 
