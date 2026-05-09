@@ -299,42 +299,41 @@ async function fetchFromProxy(
   requestTimeout?: number,
 ) {
   try {
-    const cachedResponse = await cacheManager.get(cacheKeyName, cacheKey);
-    if (cachedResponse) {
-      console.log(`✅ Cache HIT for: ${cacheKey}`);
-      return cachedResponse;
-    }
+    // Use fetchWithCache for automatic deduplication of concurrent requests
+    const { data } = await cacheManager.fetchWithCache(
+      cacheKeyName,
+      cacheKey,
+      async () => {
+        const requestConfig: any = { timeout: requestTimeout };
+        if (PROXY_URL) {
+          requestConfig.params = { url };
+        }
 
-    console.log(`❌ Cache MISS for: ${cacheKey}. Making network request...`);
+        const response = await axiosInstance.get(
+          PROXY_URL ? '' : url,
+          requestConfig,
+        );
 
-    const requestConfig: any = { timeout: requestTimeout };
-    if (PROXY_URL) {
-      requestConfig.params = { url };
-    }
+        if (
+          response.status !== 200 ||
+          (response.data.statusCode && response.data.statusCode >= 400)
+        ) {
+          const errorMessage = response.data.message || 'Unknown server error';
+          throw new Error(
+            `Server error: ${response.data.statusCode || response.status} ${errorMessage}`,
+          );
+        }
 
-    const response = await axiosInstance.get(
-      PROXY_URL ? '' : url,
-      requestConfig,
+        // Only cache valid, non-empty responses
+        if (!response.data || Object.keys(response.data).length === 0) {
+          throw new Error('Empty or invalid response data');
+        }
+
+        return response.data;
+      },
     );
 
-    if (
-      response.status !== 200 ||
-      (response.data.statusCode && response.data.statusCode >= 400)
-    ) {
-      const errorMessage = response.data.message || 'Unknown server error';
-      throw new Error(
-        `Server error: ${response.data.statusCode || response.status} ${errorMessage}`,
-      );
-    }
-
-    // Only cache valid, non-empty responses
-    if (response.data && Object.keys(response.data).length > 0) {
-      await cacheManager.set(cacheKeyName, cacheKey, response.data);
-    } else {
-      console.log(`⚠️ Skipping cache for ${cacheKey} - empty or invalid response data`);
-    }
-
-    return response.data;
+    return data;
   } catch (error) {
     handleError(error, 'data');
     throw error;

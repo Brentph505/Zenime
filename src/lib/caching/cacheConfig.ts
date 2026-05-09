@@ -1,191 +1,330 @@
 /**
- * Cache Configuration
- * Defines cache strategies for different data types with TTL, storage backend, and update policies
+ * Smart Cache Configuration
+ * Status-aware strategies: completed anime cached forever,
+ * airing anime episodes refresh on a schedule, info always permanent.
  */
 
-export type CacheStrategy = 'permanent' | 'ttl' | 'short' | 'realtime' | 'auto-refresh';
-export type StorageBackend = 'memory' | 'redis' | 'hybrid' | 'local';
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+export type AnimeStatus =
+  | 'COMPLETED'
+  | 'ONGOING'
+  | 'NOT_YET_RELEASED'
+  | 'CANCELLED'
+  | 'HIATUS'
+  | 'UNKNOWN';
+
+/**
+ * permanent  – Never expires, write-once. For completed anime, genre lists, etc.
+ * swr        – Stale-While-Revalidate: return cached instantly, refresh in bg
+ * ttl        – Block until fresh if expired (for volatile data like video links)
+ * volatile   – Memory-only short TTL (video sources, etc.)
+ * never      – Don't cache this
+ */
+export type CacheStrategy = 'permanent' | 'swr' | 'ttl' | 'volatile' | 'never';
+export type StorageBackend = 'memory' | 'redis' | 'local' | 'hybrid';
+export type UpdatePolicy = 'immutable' | 'background-refresh' | 'on-demand' | 'swr';
 
 export interface CacheConfig {
   strategy: CacheStrategy;
-  ttl?: number; // Time to live in seconds
+  /** Seconds until data is considered stale (triggers bg refresh in SWR mode) */
+  ttl?: number;
+  /** Seconds until data is absolutely refused — must re-fetch (SWR outer window) */
+  hardTtl?: number;
   backend: StorageBackend;
-  maxSize?: number; // For memory-based caches
-  updatePolicy?: 'on-demand' | 'periodic' | 'event-based';
-  refreshInterval?: number; // For periodic updates in milliseconds
+  maxEntries?: number;
+  updatePolicy: UpdatePolicy;
+  /** Milliseconds between automatic background refreshes */
+  refreshInterval?: number;
+  priority: 'critical' | 'high' | 'medium' | 'low';
 }
 
+// ── Time constants (in seconds) ───────────────────────────────────────────────
+
+const M = 60;          // 1 minute
+const H = 60 * M;      // 1 hour
+const D = 24 * H;      // 1 day
+const W = 7 * D;       // 1 week
+
+// ── Cache schema version — bump to bust all stored entries ────────────────────
+export const CACHE_VERSION = 2;
+
+// ── Per-status episode strategies ─────────────────────────────────────────────
 /**
- * Default cache configurations for different data types
+ * This is the core intelligence of the caching system.
+ *
+ * Completed anime: episodes are immutable → cache forever, never refresh.
+ * Ongoing anime:   new episodes drop weekly → SWR with 2h TTL, refresh every 2h.
+ * Hiatus:          may resume → SWR with 1-day TTL.
+ * Not yet released: no episodes yet → short memory-only TTL.
+ * Cancelled:       like completed, never changes → permanent.
  */
-export const CACHE_CONFIGS: Record<string, CacheConfig> = {
-  // Info pages (permanent, never expire, use local storage for persistence)
-  'Info': {
+export const EPISODE_CACHE_BY_STATUS: Record<AnimeStatus, CacheConfig> = {
+  COMPLETED: {
     strategy: 'permanent',
     backend: 'hybrid',
+    updatePolicy: 'immutable',
+    priority: 'critical',
+  },
+  ONGOING: {
+    strategy: 'swr',
+    ttl: 2 * H,
+    hardTtl: 12 * H,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 2 * 60 * 60 * 1000, // 2 hours in ms
+    priority: 'high',
+  },
+  HIATUS: {
+    strategy: 'swr',
+    ttl: D,
+    hardTtl: 3 * D,
+    backend: 'hybrid',
     updatePolicy: 'on-demand',
+    priority: 'medium',
   },
-
-  // Episode data (persistent with periodic refresh)
-  'Episodes': {
+  NOT_YET_RELEASED: {
     strategy: 'ttl',
-    ttl: 7 * 24 * 60 * 60, // 7 days
-    backend: 'hybrid',
-    updatePolicy: 'event-based',
-  },
-
-  // Recent episodes (auto-refresh, updates frequently)
-  'Recent Episodes': {
-    strategy: 'auto-refresh',
-    ttl: 6 * 60 * 60, // 6 hours
-    backend: 'hybrid',
-    updatePolicy: 'periodic',
-    refreshInterval: 2 * 60 * 60 * 1000, // Refresh every 2 hours
-  },
-
-  // Airing schedule (auto-refresh, updates regularly)
-  'Airing Schedule': {
-    strategy: 'auto-refresh',
-    ttl: 12 * 60 * 60, // 12 hours
-    backend: 'hybrid',
-    updatePolicy: 'event-based',
-    refreshInterval: 60 * 60 * 1000, // Refresh every hour
-  },
-
-  // Search results (moderate TTL)
-  'Advanced Search': {
-    strategy: 'ttl',
-    ttl: 24 * 60 * 60, // 24 hours
-    backend: 'hybrid',
-    maxSize: 50,
-    updatePolicy: 'on-demand',
-  },
-
-  // Anime data (persistent with occasional updates)
-  'Data': {
-    strategy: 'ttl',
-    ttl: 30 * 24 * 60 * 60, // 30 days
-    backend: 'hybrid',
-    updatePolicy: 'event-based',
-  },
-
-  // Video sources (short TTL, changes frequently)
-  'Video Embedded Sources': {
-    strategy: 'ttl',
-    ttl: 8 * 60 * 60, // 8 hours
+    ttl: H,
     backend: 'memory',
     updatePolicy: 'on-demand',
+    priority: 'low',
   },
-
-  // Video sources (short TTL)
-  'Video Sources': {
-    strategy: 'ttl',
-    ttl: 4 * 60 * 60, // 4 hours
-    backend: 'memory',
-    updatePolicy: 'on-demand',
-  },
-
-  // Manga data (permanent, rarely changes)
-  'MangaRead': {
+  CANCELLED: {
     strategy: 'permanent',
     backend: 'hybrid',
-    updatePolicy: 'on-demand',
+    updatePolicy: 'immutable',
+    priority: 'low',
   },
-
-  // AniList genres (permanent, updated once)
-  'AniListGenres': {
-    strategy: 'permanent',
+  UNKNOWN: {
+    strategy: 'swr',
+    ttl: 4 * H,
+    hardTtl: 12 * H,
     backend: 'hybrid',
-    updatePolicy: 'on-demand',
-  },
-
-  // Studio data (persistent)
-  'Studio': {
-    strategy: 'ttl',
-    ttl: 30 * 24 * 60 * 60, // 30 days
-    backend: 'hybrid',
-    updatePolicy: 'on-demand',
-  },
-
-  // Trending/Popular anime (auto-refresh)
-  'TopRated': {
-    strategy: 'auto-refresh',
-    ttl: 24 * 60 * 60, // 24 hours
-    backend: 'hybrid',
-    updatePolicy: 'periodic',
-    refreshInterval: 12 * 60 * 60 * 1000,
-  },
-
-  'Trending': {
-    strategy: 'auto-refresh',
-    ttl: 12 * 60 * 60, // 12 hours
-    backend: 'hybrid',
-    updatePolicy: 'periodic',
-    refreshInterval: 6 * 60 * 60 * 1000,
-  },
-
-  'Popular': {
-    strategy: 'auto-refresh',
-    ttl: 24 * 60 * 60, // 24 hours
-    backend: 'hybrid',
-    updatePolicy: 'periodic',
-    refreshInterval: 12 * 60 * 60 * 1000,
-  },
-
-  'TopAiring': {
-    strategy: 'auto-refresh',
-    ttl: 12 * 60 * 60, // 12 hours
-    backend: 'hybrid',
-    updatePolicy: 'periodic',
-    refreshInterval: 6 * 60 * 60 * 1000,
-  },
-
-  'Upcoming': {
-    strategy: 'auto-refresh',
-    ttl: 24 * 60 * 60, // 24 hours
-    backend: 'hybrid',
-    updatePolicy: 'periodic',
-    refreshInterval: 12 * 60 * 60 * 1000,
-  },
-
-  // Skip times (short TTL, doesn't change often)
-  'SkipTimes': {
-    strategy: 'ttl',
-    ttl: 7 * 24 * 60 * 60, // 7 days
-    backend: 'memory',
-    updatePolicy: 'on-demand',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 4 * 60 * 60 * 1000,
+    priority: 'medium',
   },
 };
 
-/**
- * Get cache config for a given cache key
- */
-export function getCacheConfig(cacheKey: string): CacheConfig {
-  return CACHE_CONFIGS[cacheKey] || {
-    strategy: 'ttl',
-    ttl: 24 * 60 * 60,
+// ── Named cache configs ────────────────────────────────────────────────────────
+
+export const CACHE_CONFIGS: Record<string, CacheConfig> = {
+
+  // ── Anime info: always permanent ───────────────────────────────────────────
+  // Title, description, genres, cover — structural data that almost never changes.
+  // Permanent cache = instant loads, zero server pressure.
+  Info: {
+    strategy: 'permanent',
+    backend: 'hybrid',
+    updatePolicy: 'immutable',
+    priority: 'critical',
+  },
+
+  // ── Episodes: default — overridden at runtime by anime status ──────────────
+  Episodes: {
+    strategy: 'swr',
+    ttl: 2 * H,
+    hardTtl: 12 * H,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 2 * 60 * 60 * 1000,
+    priority: 'high',
+  },
+
+  // ── Live / schedule data ───────────────────────────────────────────────────
+  'Recent Episodes': {
+    strategy: 'swr',
+    ttl: H,
+    hardTtl: 4 * H,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 60 * 60 * 1000,
+    priority: 'high',
+  },
+  'Airing Schedule': {
+    strategy: 'swr',
+    ttl: H,
+    hardTtl: 4 * H,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 60 * 60 * 1000,
+    priority: 'high',
+  },
+
+  // ── Trending/ranked lists ──────────────────────────────────────────────────
+  Trending: {
+    strategy: 'swr',
+    ttl: 6 * H,
+    hardTtl: 12 * H,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 6 * 60 * 60 * 1000,
+    priority: 'high',
+  },
+  Popular: {
+    strategy: 'swr',
+    ttl: 12 * H,
+    hardTtl: D,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 12 * 60 * 60 * 1000,
+    priority: 'high',
+  },
+  TopRated: {
+    strategy: 'swr',
+    ttl: 12 * H,
+    hardTtl: D,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 12 * 60 * 60 * 1000,
+    priority: 'high',
+  },
+  TopAiring: {
+    strategy: 'swr',
+    ttl: 6 * H,
+    hardTtl: 12 * H,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 6 * 60 * 60 * 1000,
+    priority: 'high',
+  },
+  Upcoming: {
+    strategy: 'swr',
+    ttl: 12 * H,
+    hardTtl: D,
+    backend: 'hybrid',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 12 * 60 * 60 * 1000,
+    priority: 'medium',
+  },
+
+  // ── Search ─────────────────────────────────────────────────────────────────
+  'Advanced Search': {
+    strategy: 'swr',
+    ttl: 6 * H,
+    hardTtl: D,
+    backend: 'hybrid',
+    maxEntries: 100,
+    updatePolicy: 'on-demand',
+    priority: 'medium',
+  },
+
+  // ── Permanent metadata ─────────────────────────────────────────────────────
+  Data: {
+    strategy: 'permanent',
+    backend: 'hybrid',
+    updatePolicy: 'immutable',
+    priority: 'critical',
+  },
+  AniListGenres: {
+    strategy: 'permanent',
+    backend: 'hybrid',
+    updatePolicy: 'immutable',
+    priority: 'low',
+  },
+  MangaRead: {
+    strategy: 'permanent',
+    backend: 'hybrid',
+    updatePolicy: 'immutable',
+    priority: 'medium',
+  },
+  SkipTimes: {
+    strategy: 'permanent',
+    backend: 'hybrid',
+    updatePolicy: 'immutable',
+    priority: 'medium',
+  },
+
+  // ── Studio ─────────────────────────────────────────────────────────────────
+  Studio: {
+    strategy: 'swr',
+    ttl: W,
+    hardTtl: 30 * D,
     backend: 'hybrid',
     updatePolicy: 'on-demand',
-  };
+    priority: 'medium',
+  },
+
+  // ── Video sources: memory-only, short TTL (CDN links expire) ──────────────
+  'Video Sources': {
+    strategy: 'volatile',
+    ttl: 2 * H,
+    backend: 'memory',
+    updatePolicy: 'on-demand',
+    priority: 'high',
+  },
+  'Video Embedded Sources': {
+    strategy: 'volatile',
+    ttl: 4 * H,
+    backend: 'memory',
+    updatePolicy: 'on-demand',
+    priority: 'high',
+  },
+};
+
+// ── Utility functions ─────────────────────────────────────────────────────────
+
+export function getCacheConfig(cacheKey: string): CacheConfig {
+  return (
+    CACHE_CONFIGS[cacheKey] ?? {
+      strategy: 'swr',
+      ttl: 6 * H,
+      hardTtl: D,
+      backend: 'hybrid',
+      updatePolicy: 'on-demand',
+      priority: 'medium',
+    }
+  );
 }
 
-/**
- * Check if a cache config uses Redis
- */
-export function usesRedis(config: CacheConfig): boolean {
-  return config.backend === 'redis' || config.backend === 'hybrid';
+export function getEpisodeCacheConfig(status: AnimeStatus): CacheConfig {
+  return EPISODE_CACHE_BY_STATUS[status];
 }
 
-/**
- * Check if a cache config uses memory
- */
-export function usesMemory(config: CacheConfig): boolean {
-  return config.backend === 'memory' || config.backend === 'hybrid' || config.backend === 'local';
-}
+export const usesRedis = (c: CacheConfig): boolean =>
+  c.backend === 'redis' || c.backend === 'hybrid';
+
+export const usesMemory = (c: CacheConfig): boolean =>
+  c.backend === 'memory' || c.backend === 'hybrid' || c.backend === 'local';
+
+export const usesLocalStorage = (c: CacheConfig): boolean =>
+  c.backend === 'local' || c.backend === 'hybrid';
+
+export const isPermanent = (c: CacheConfig): boolean =>
+  c.strategy === 'permanent';
+
+export const isSWRStrategy = (c: CacheConfig): boolean =>
+  c.strategy === 'swr';
 
 /**
- * Check if a cache config uses local storage
+ * Normalize any status string from the API into our internal AnimeStatus type.
+ * Handles AniList, Consumet, Jikan, and other common status values.
  */
-export function usesLocalStorage(config: CacheConfig): boolean {
-  return config.backend === 'local' || config.backend === 'hybrid';
+export function normalizeAnimeStatus(raw?: string | null): AnimeStatus {
+  if (!raw) return 'UNKNOWN';
+  switch (raw.toUpperCase().trim()) {
+    case 'COMPLETED':
+    case 'FINISHED':
+    case 'FINISHED_AIRING':
+    case 'COMPLETE':
+      return 'COMPLETED';
+    case 'ONGOING':
+    case 'RELEASING':
+    case 'CURRENTLY_AIRING':
+    case 'AIRING':
+      return 'ONGOING';
+    case 'NOT_YET_RELEASED':
+    case 'NOT_YET_AIRED':
+    case 'UPCOMING':
+      return 'NOT_YET_RELEASED';
+    case 'CANCELLED':
+    case 'CANCELED':
+      return 'CANCELLED';
+    case 'HIATUS':
+    case 'ON_HIATUS':
+      return 'HIATUS';
+    default:
+      return 'UNKNOWN';
+  }
 }

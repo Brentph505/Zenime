@@ -1,254 +1,218 @@
 /**
  * Redis Client Wrapper
- * Handles connections to Upstash Redis or other Redis providers
- * Gracefully falls back to memory cache if Redis is unavailable
+ * Connects to Upstash Redis REST API with automatic fallback to memory cache.
+ * Supports pipeline batching and exponential-backoff retries.
  */
 
-interface RedisClientConfig {
+export interface RedisClientConfig {
   url?: string;
   token?: string;
-  retryAttempts?: number;
-  retryDelay?: number;
+  maxRetries?: number;
+  retryDelayMs?: number;
+  timeoutMs?: number;
+}
+
+interface UpstashResponse<T> {
+  result: T;
+  error?: string;
 }
 
 class RedisClientWrapper {
-  private baseUrl: string | null = null;
-  private token: string | null = null;
-  private isAvailable: boolean = false;
+  private readonly baseUrl: string | null;
+  private readonly token: string | null;
+  private readonly maxRetries: number;
+  private readonly retryDelayMs: number;
+  private readonly timeoutMs: number;
+  private _available: boolean = false;
 
   constructor(config?: RedisClientConfig) {
-    this.baseUrl = config?.url || import.meta.env.VITE_REDIS_URL;
-    this.token = config?.token || import.meta.env.VITE_REDIS_TOKEN;
+    this.baseUrl = config?.url ?? (typeof import.meta !== 'undefined' ? import.meta.env?.VITE_REDIS_URL : null) ?? null;
+    this.token  = config?.token ?? (typeof import.meta !== 'undefined' ? import.meta.env?.VITE_REDIS_TOKEN : null) ?? null;
+    this.maxRetries   = config?.maxRetries   ?? 2;
+    this.retryDelayMs = config?.retryDelayMs ?? 300;
+    this.timeoutMs    = config?.timeoutMs    ?? 5_000;
 
-    // Validate configuration
     if (this.baseUrl && this.token) {
-      this.isAvailable = true;
-      console.log('✅ Redis cache initialized');
+      this._available = true;
+      console.log('✅ [Redis] Client ready');
     } else {
-      console.warn(
-        '⚠️  Redis cache not configured. Falling back to memory cache.',
-      );
+      console.warn('⚠️  [Redis] Not configured — running in memory-only mode');
     }
   }
 
-  /**
-   * Check if Redis is available
-   */
   isRedisAvailable(): boolean {
-    return this.isAvailable;
+    return this._available;
   }
 
-  /**
-   * Make a Redis REST API call using Upstash format
-   */
-  private async makeRequest<T>(
-    command: string,
-    args: string[],
+  // ── Core request ──────────────────────────────────────────────────────────
+
+  private async request<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: string,
+    attempt = 0,
   ): Promise<T | null> {
-    if (!this.isAvailable || !this.baseUrl || !this.token) {
-      return null;
-    }
+    if (!this._available || !this.baseUrl || !this.token) return null;
+
+    const url = `${this.baseUrl}${path}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      let fullUrl: string;
-      let method: string;
-      let body: string | undefined;
-
-      if (command === 'GET') {
-        // GET /get/key
-        fullUrl = `${this.baseUrl}/get/${encodeURIComponent(args[0])}`;
-        method = 'GET';
-      } else if (command === 'SET') {
-        // POST /set/key with value in body
-        fullUrl = `${this.baseUrl}/set/${encodeURIComponent(args[0])}`;
-        method = 'POST';
-        body = args[1]; // value
-      } else if (command === 'SETEX') {
-        // POST /setex/key/ttl with value in body
-        fullUrl = `${this.baseUrl}/setex/${encodeURIComponent(args[0])}/${args[1]}`;
-        method = 'POST';
-        body = args[2]; // value
-      } else if (command === 'DEL') {
-        // POST /del/key
-        fullUrl = `${this.baseUrl}/del/${encodeURIComponent(args[0])}`;
-        method = 'POST';
-      } else {
-        throw new Error(`Unsupported command: ${command}`);
-      }
-
       const headers: Record<string, string> = {
         Authorization: `Bearer ${this.token}`,
       };
+      if (body !== undefined) headers['Content-Type'] = 'text/plain';
 
-      if (body !== undefined) {
-        headers['Content-Type'] = 'text/plain';
-      }
-
-      const response = await fetch(fullUrl, {
+      const res = await fetch(url, {
         method,
         headers,
         body,
+        signal: controller.signal,
       });
 
-      if (!response.ok) {
-        throw new Error(`Redis API error: ${response.status} ${response.statusText}`);
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`);
       }
 
-      const data = await response.json();
-      return data as T;
-    } catch (error) {
-      console.error(`❌ [Redis] ${command} failed`);
+      const json = (await res.json()) as UpstashResponse<T>;
+      if (json.error) throw new Error(json.error);
+      return json.result ?? null;
+    } catch (err: any) {
+      clearTimeout(timeout);
+      const isRetryable = err?.name !== 'AbortError' && attempt < this.maxRetries;
+      if (isRetryable) {
+        await this.sleep(this.retryDelayMs * 2 ** attempt);
+        return this.request<T>(method, path, body, attempt + 1);
+      }
+      // Mark Redis as unavailable on repeated failures so we stop hammering it
+      if (attempt >= this.maxRetries) {
+        console.error(`❌ [Redis] Disabling after ${attempt + 1} failed attempts`);
+        this._available = false;
+      }
       return null;
     }
   }
 
-  /**
-   * Get a value from Redis
-   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  // ── Commands ──────────────────────────────────────────────────────────────
+
   async get(key: string): Promise<string | null> {
-    const result = await this.makeRequest<{ result: string }>('GET', [key]);
-    return result?.result ?? null;
+    const res = await this.request<string>('GET', `/get/${enc(key)}`);
+    return res ?? null;
   }
 
-  /**
-   * Set a value in Redis with optional expiration
-   */
-  async set(
-    key: string,
-    value: string,
-    exSeconds?: number,
-  ): Promise<boolean> {
-    try {
-      let result;
-      if (exSeconds) {
-        // Use SETEX for expiration
-        result = await this.makeRequest<{ result: string }>('SETEX', [key, exSeconds.toString(), value]);
-      } else {
-        // Use SET without expiration
-        result = await this.makeRequest<{ result: string }>('SET', [key, value]);
-      }
-
-      return result?.result === 'OK';
-    } catch (error) {
-      console.error(`❌ [Redis] SET failed`);
-      return false;
+  async set(key: string, value: string, exSeconds?: number): Promise<boolean> {
+    let res: string | null;
+    if (exSeconds && exSeconds > 0) {
+      // SETEX key seconds value
+      res = await this.request<string>(
+        'POST',
+        `/setex/${enc(key)}/${exSeconds}`,
+        value,
+      );
+    } else {
+      res = await this.request<string>('POST', `/set/${enc(key)}`, value);
     }
+    return res === 'OK';
   }
 
-  /**
-   * Delete a key from Redis
-   */
   async del(key: string): Promise<boolean> {
-    try {
-      const result = await this.makeRequest<{ result: number }>('DEL', [key]);
-      return (result?.result ?? 0) > 0;
-    } catch (error) {
-      console.error(`❌ [Redis] DEL failed`);
-      return false;
-    }
+    const res = await this.request<number>('POST', `/del/${enc(key)}`);
+    return (res ?? 0) > 0;
   }
 
-  /**
-   * Check if a key exists in Redis
-   */
   async exists(key: string): Promise<boolean> {
-    try {
-      const result = await this.makeRequest<number>('EXISTS', [key]);
-      return (result || 0) > 0;
-    } catch (error) {
-      console.error(`❌ [Redis] EXISTS failed`);
-      return false;
-    }
+    const res = await this.request<number>('GET', `/exists/${enc(key)}`);
+    return (res ?? 0) > 0;
   }
 
-  /**
-   * Set expiration on a key
-   */
-  async expire(key: string, seconds: number): Promise<boolean> {
-    try {
-      const result = await this.makeRequest<number>('EXPIRE', [
-        key,
-        seconds.toString(),
-      ]);
-      return (result || 0) > 0;
-    } catch (error) {
-      console.error(`❌ [Redis] EXPIRE failed`);
-      return false;
-    }
-  }
-
-  /**
-   * Get remaining TTL for a key
-   */
   async ttl(key: string): Promise<number> {
-    try {
-      const result = await this.makeRequest<number>('TTL', [key]);
-      return result || -2; // -2 = key doesn't exist, -1 = key exists but no expiration
-    } catch (error) {
-      console.error(`❌ [Redis] TTL failed`);
-      return -2;
-    }
+    const res = await this.request<number>('GET', `/ttl/${enc(key)}`);
+    return res ?? -2; // -2 = key not found, -1 = no expiry
   }
 
   /**
-   * Get all keys matching a pattern
+   * Keys matching a pattern — use sparingly in production.
+   * Upstash supports KEYS via the pipeline endpoint.
    */
   async keys(pattern: string): Promise<string[]> {
+    const res = await this.request<string[]>('GET', `/keys/${enc(pattern)}`);
+    return res ?? [];
+  }
+
+  async flushAll(): Promise<boolean> {
+    const res = await this.request<string>('POST', '/flushall');
+    return res === 'OK';
+  }
+
+  async incr(key: string): Promise<number> {
+    const res = await this.request<number>('POST', `/incr/${enc(key)}`);
+    return res ?? 0;
+  }
+
+  async ping(): Promise<boolean> {
+    const res = await this.request<string>('GET', '/ping');
+    const ok = res === 'PONG';
+    if (!ok) this._available = false;
+    return ok;
+  }
+
+  /**
+   * Pipeline: execute multiple commands in a single HTTP round-trip.
+   * Each command is [command, ...args].
+   * Returns array of results in same order.
+   */
+  async pipeline(
+    commands: Array<[string, ...string[]]>,
+  ): Promise<Array<unknown>> {
+    if (!this._available || !this.baseUrl || !this.token) return [];
     try {
-      const result = await this.makeRequest<string[]>('KEYS', [pattern]);
-      return result || [];
-    } catch (error) {
-      console.error(`❌ [Redis] KEYS failed`);
+      const res = await fetch(`${this.baseUrl}/pipeline`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(commands),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Array<UpstashResponse<unknown>>;
+      return json.map((r) => r.result ?? null);
+    } catch {
       return [];
     }
   }
 
   /**
-   * Clear all keys
+   * Batch-delete keys using a pipeline (avoids N round-trips).
    */
-  async flushAll(): Promise<boolean> {
-    try {
-      const result = await this.makeRequest<{ status: string }>(
-        'FLUSHALL',
-        [],
-      );
-      return result?.status === 'OK';
-    } catch (error) {
-      console.error(`❌ [Redis] FLUSHALL failed`);
-      return false;
-    }
+  async delMany(keys: string[]): Promise<number> {
+    if (!keys.length) return 0;
+    const cmds = keys.map((k): [string, string] => ['DEL', k]);
+    const results = await this.pipeline(cmds);
+    return results.filter((r) => (r as number) > 0).length;
   }
 
   /**
-   * Increment a counter
+   * Re-enable Redis after it was auto-disabled (call after fixing config).
    */
-  async incr(key: string): Promise<number> {
-    try {
-      const result = await this.makeRequest<number>('INCR', [key]);
-      return result || 0;
-    } catch (error) {
-      console.error(`❌ [Redis] INCR failed`);
-      return 0;
-    }
-  }
-
-  /**
-   * Get statistics about the Redis connection
-   */
-  async ping(): Promise<boolean> {
-    try {
-      const result = await this.makeRequest<string>('PING', []);
-      return result === 'PONG';
-    } catch (error) {
-      console.error(`❌ [Redis] PING failed`);
-      this.isAvailable = false;
-      return false;
+  reconnect(): void {
+    if (this.baseUrl && this.token) {
+      this._available = true;
+      console.log('🔄 [Redis] Reconnected');
     }
   }
 }
 
-// Export singleton instance
-export const redisClient = new RedisClientWrapper();
+function enc(s: string): string {
+  return encodeURIComponent(s);
+}
 
-export type { RedisClientConfig };
+export const redisClient = new RedisClientWrapper();
 export { RedisClientWrapper };
