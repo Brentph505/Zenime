@@ -356,116 +356,115 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
       item.description &&
       item.cover !== item.image,
   );
+  const hasCarouselItems = validData.length > 0;
+
+  if (loading || error || !hasCarouselItems) {
+    return <SkeletonSlide />;
+  }
 
   return (
-    <>
-      {loading || error ? (
-        <SkeletonSlide />
-      ) : (
-        <PaginationStyle>
-          <StyledSwiperContainer
-            spaceBetween={30}
-            slidesPerView={1}
-            loop={true}
-            autoplay={{
-              delay: 5000,
-              disableOnInteraction: false,
-            }}
-            navigation={{
-              nextEl: '.swiper-button-next',
-              prevEl: '.swiper-button-prev',
-            }}
-            pagination={{
-              el: '.swiper-pagination',
-              clickable: true,
-              dynamicBullets: true,
-              type: 'bullets',
-            }}
-            freeMode={false}
-            virtual={true}
-            grabCursor={true}
-            keyboard={true}
-            centeredSlides={true}
-          >
-            {validData.map(
-              ({
-                id,
-                cover,
-                title,
-                description,
-                rating,
-                totalEpisodes,
-                duration,
-                type,
-              }) => (
-                <StyledSwiperSlide
-                  key={id}
-                  title={title.english || title.romaji}
-                >
-                  <SlideImageWrapper>
-                    <SlideImage
-                      src={cover}
-                      alt={title.english || title.romaji + ' Banner Image'}
-                      loading='eager'
+    <PaginationStyle>
+      <StyledSwiperContainer
+        spaceBetween={30}
+        slidesPerView={1}
+        loop={validData.length > 1}
+        autoplay={{
+          delay: 5000,
+          disableOnInteraction: false,
+        }}
+        navigation={{
+          nextEl: '.swiper-button-next',
+          prevEl: '.swiper-button-prev',
+        }}
+        pagination={{
+          el: '.swiper-pagination',
+          clickable: true,
+          dynamicBullets: true,
+          type: 'bullets',
+        }}
+        freeMode={false}
+        virtual={true}
+        grabCursor={true}
+        keyboard={true}
+        centeredSlides={true}
+      >
+        {validData.map(
+          ({
+            id,
+            cover,
+            title,
+            description,
+            rating,
+            totalEpisodes,
+            duration,
+            type,
+          }) => (
+            <StyledSwiperSlide
+              key={id}
+              title={title.english || title.romaji}
+            >
+              <SlideImageWrapper>
+                <SlideImage
+                  src={cover}
+                  alt={title.english || title.romaji + ' Banner Image'}
+                  loading='eager'
+                />
+                <ContentWrapper>
+                  <SlideContent>
+                    <SlideTitle>{truncateTitle(title.english)}</SlideTitle>
+                    <SlideInfo>
+                      {type && <SlideInfoItem>{type}</SlideInfoItem>}
+                      {totalEpisodes && (
+                        <SlideInfoItem>
+                          <TbCards />
+                          {totalEpisodes}
+                        </SlideInfoItem>
+                      )}
+                      {rating && (
+                        <SlideInfoItem>
+                          <FaStar />
+                          {rating}
+                        </SlideInfoItem>
+                      )}
+                      {duration && (
+                        <SlideInfoItem>
+                          <FaClock />
+                          {duration}mins
+                        </SlideInfoItem>
+                      )}
+                    </SlideInfo>
+                    <SlideDescription
+                      dangerouslySetInnerHTML={{ __html: description }}
                     />
-                    <ContentWrapper>
-                      <SlideContent>
-                        <SlideTitle>{truncateTitle(title.english)}</SlideTitle>
-                        <SlideInfo>
-                          {type && <SlideInfoItem>{type}</SlideInfoItem>}
-                          {totalEpisodes && (
-                            <SlideInfoItem>
-                              <TbCards />
-                              {totalEpisodes}
-                            </SlideInfoItem>
-                          )}
-                          {rating && (
-                            <SlideInfoItem>
-                              <FaStar />
-                              {rating}
-                            </SlideInfoItem>
-                          )}
-                          {duration && (
-                            <SlideInfoItem>
-                              <FaClock />
-                              {duration}mins
-                            </SlideInfoItem>
-                          )}
-                        </SlideInfo>
-                        <SlideDescription
-                          dangerouslySetInnerHTML={{ __html: description }}
-                        />
-                      </SlideContent>
-                      <PlayButtonWrapper>
-                        <DetailButton
-                          onClick={() => handleDetailButtonClick(id)}
-                          title={
-                            'Details for ' + (title.english || title.romaji)
-                          }
-                        >
-                          <DetailIcon />
-                          <span>DETAILS</span>
-                        </DetailButton>
-                        <PlayButton
-                          onClick={() => handlePlayButtonClick(id)}
-                          title={
-                            'Watch ' + (title.english || title.romaji) + ' Now'
-                          }
-                        >
-                          <PlayIcon />
-                          <span>WATCH NOW</span>
-                        </PlayButton>
-                      </PlayButtonWrapper>
-                    </ContentWrapper>
-                    <DarkOverlay />
-                  </SlideImageWrapper>
-                </StyledSwiperSlide>
-              ),
-            )}
-            <div className='swiper-pagination'></div>
-          </StyledSwiperContainer>
-        </PaginationStyle>
-      )}
-    </>
+                  </SlideContent>
+                  <PlayButtonWrapper>
+                    <DetailButton
+                      onClick={() => handleDetailButtonClick(id)}
+                      title={
+                        'Details for ' + (title.english || title.romaji)
+                      }
+                    >
+                      <DetailIcon />
+                      <span>DETAILS</span>
+                    </DetailButton>
+                    <PlayButton
+                      onClick={() => handlePlayButtonClick(id)}
+                      title={
+                        'Watch ' + (title.english || title.romaji) + ' Now'
+                      }
+                    >
+                      <PlayIcon />
+                      <span>WATCH NOW</span>
+                    </PlayButton>
+                  </PlayButtonWrapper>
+                </ContentWrapper>
+                <DarkOverlay />
+              </SlideImageWrapper>
+            </StyledSwiperSlide>
+          ),
+        )}
+        <div className='swiper-pagination'></div>
+      </StyledSwiperContainer>
+    </PaginationStyle>
   );
 };

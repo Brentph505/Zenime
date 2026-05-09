@@ -1,6 +1,10 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { setupPeriodicRefresh } from './lib/caching';
+
+// Initialize cache system and periodic refresh
+setupPeriodicRefresh();
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
