@@ -15,6 +15,7 @@ import {
   fetchAnimeStreamingLinks,
   SkeletonPlayer,
   useCountdown,
+  useAuth,
 } from '../index';
 import { Episode } from '../index';
 
@@ -156,6 +157,9 @@ const LOCAL_STORAGE_KEYS = {
 
 // TODO Main Component
 const Watch: React.FC = () => {
+  // User authentication data
+  const { isLoggedIn, userData } = useAuth();
+
   const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
   const [videoPlayerWidth, setVideoPlayerWidth] = useState('100%');
   const getLanguageKey = (animeId: string | undefined) =>
