@@ -52,10 +52,18 @@ export const fetchUserData = async (accessToken: string): Promise<UserData> => {
     // Test basic connectivity first
     console.log('🔍 [AuthService] Testing AniList API connectivity...');
     try {
-      const testResponse = await axios.get('https://graphql.anilist.co', { timeout: 5000 });
+      await axios.post('https://graphql.anilist.co', {
+        query: `query { __typename }`
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 5000
+      });
       console.log('✅ [AuthService] AniList API is reachable');
     } catch (connectError) {
-      console.error('❌ [AuthService] Cannot reach AniList API:', connectError.message);
+      const errorMessage = connectError instanceof Error ? connectError.message : 'Unknown connectivity error';
+      console.error('❌ [AuthService] Cannot reach AniList API:', errorMessage);
       throw new Error('Network connectivity issue');
     }
 
