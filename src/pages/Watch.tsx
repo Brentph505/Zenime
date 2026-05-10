@@ -170,9 +170,22 @@ const Watch: React.FC = () => {
     return localStorage.getItem(getEpisodeServerKey(animeId, episodeId)) || null;
   };
   
-  const saveServerForEpisode = (animeId: string | undefined, episodeId: string | undefined, server: string) => {
+  const saveServerForEpisode = async (
+    animeId: string | undefined,
+    episodeId: string | undefined,
+    server: string
+  ) => {
     if (!animeId || !episodeId) return;
+    // Save to localStorage for instant access
     localStorage.setItem(getEpisodeServerKey(animeId, episodeId), server);
+    // Also cache in Redis for cross-device persistence (fire and forget)
+    try {
+      const { redisClient } = await import('../lib/caching/redisClient');
+      const key = `server-${animeId}-${episodeId}`;
+      await redisClient.set(key, server, 30 * 24 * 60 * 60); // 30 days TTL in seconds
+    } catch (err) {
+      console.warn('[Watch] Failed to save server preference to Redis:', err);
+    }
   };
   
   const updateVideoPlayerWidth = useCallback(() => {

@@ -22,28 +22,52 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [authLoading, setAuthLoading] = useState(true); // Add a loading state for auth status
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Calculate username from userData
-  const username = userData ? userData.name : null; // Assuming 'username' is a property of UserData
+  const username = userData ? userData.name : null;
 
+  // Helper function to validate token and fetch user data
+  const validateAndSetUserData = async (token: string) => {
+    try {
+      const data = await fetchUserData(token);
+      setUserData(data);
+      setIsLoggedIn(true);
+      setAuthLoading(false);
+      console.log('✅ [Auth] User data fetched successfully:', data.name);
+    } catch (err) {
+      console.error('❌ [Auth] Failed to fetch user data:', err);
+      localStorage.removeItem('accessToken');
+      setIsLoggedIn(false);
+      setUserData(null);
+      setAuthLoading(false);
+    }
+  };
+
+  // Initial auth check on mount
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (token) {
-      fetchUserData(token)
-        .then((data) => {
-          setUserData(data);
-          setIsLoggedIn(true);
-          setAuthLoading(false); // Set loading to false once user data is fetched
-        })
-        .catch((err) => {
-          console.error('Failed to fetch user data:', err);
-          logout(); // Ensures clean state on failure
-          setAuthLoading(false); // Ensure loading state is handled even in error
-        });
+      validateAndSetUserData(token);
     } else {
-      setAuthLoading(false); // If no token, ensure loading is set to false
+      setAuthLoading(false);
     }
+  }, []);
+
+  // Listen for token changes from OAuth callback
+  useEffect(() => {
+    const handleTokenReceived = (event: Event) => {
+      const customEvent = event as CustomEvent<{ token: string }>;
+      const token = customEvent.detail?.token;
+      if (token) {
+        console.log('🔄 [Auth] Token received from OAuth, validating...');
+        setAuthLoading(true);
+        validateAndSetUserData(token);
+      }
+    };
+
+    window.addEventListener('authTokenReceived', handleTokenReceived);
+    return () => window.removeEventListener('authTokenReceived', handleTokenReceived);
   }, []);
 
   const login = async () => {
@@ -63,7 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('accessToken');
     setIsLoggedIn(false);
     setUserData(null);
-    setAuthLoading(true); // Reset auth loading state on logout
+    setAuthLoading(false);
     window.location.href = '/profile';
     window.dispatchEvent(new CustomEvent('authUpdate'));
   };
