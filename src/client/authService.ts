@@ -123,6 +123,187 @@ const GET_USER_ANIME_LIST = gql`
   }
 `;
 
+// GraphQL mutations for updating watch progress
+const SAVE_MEDIA_LIST_ENTRY = `
+  mutation SaveMediaListEntry($mediaId: Int!, $progress: Int, $status: MediaListStatus) {
+    SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
+      id
+      progress
+      status
+      media {
+        id
+        title {
+          romaji
+          english
+        }
+      }
+    }
+  }
+`;
+
+const UPDATE_MEDIA_LIST_ENTRY = `
+  mutation UpdateMediaListEntry($id: Int!, $progress: Int, $status: MediaListStatus) {
+    UpdateMediaListEntry(id: $id, progress: $progress, status: $status) {
+      id
+      progress
+      status
+      media {
+        id
+        title {
+          romaji
+          english
+        }
+      }
+    }
+  }
+`;
+
+// Get user's media list entry for a specific anime
+export const getUserMediaListEntry = async (
+  accessToken: string,
+  mediaId: number
+): Promise<any> => {
+  try {
+    const response = await axios.post(
+      'https://graphql.anilist.co',
+      {
+        query: `
+          query GetMediaListEntry($mediaId: Int!) {
+            MediaList(mediaId: $mediaId) {
+              id
+              progress
+              status
+              media {
+                id
+                title {
+                  romaji
+                  english
+                }
+                episodes
+              }
+            }
+          }
+        `,
+        variables: { mediaId },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      },
+    );
+    return response.data.data.MediaList;
+  } catch (error) {
+    console.error('Error fetching media list entry:', error);
+    return null;
+  }
+};
+
+// Save or update watch progress on AniList
+export const saveWatchProgress = async (
+  accessToken: string,
+  mediaId: number,
+  progress: number,
+  status?: string
+): Promise<any> => {
+  try {
+    // First check if user already has this anime in their list
+    const existingEntry = await getUserMediaListEntry(accessToken, mediaId);
+
+    let mutation;
+    let variables;
+
+    if (existingEntry) {
+      // Update existing entry
+      mutation = UPDATE_MEDIA_LIST_ENTRY;
+      variables = {
+        id: existingEntry.id,
+        progress: progress,
+        status: status || existingEntry.status,
+      };
+    } else {
+      // Create new entry
+      mutation = SAVE_MEDIA_LIST_ENTRY;
+      variables = {
+        mediaId: mediaId,
+        progress: progress,
+        status: status || 'CURRENT',
+      };
+    }
+
+    const response = await axios.post(
+      'https://graphql.anilist.co',
+      {
+        query: mutation,
+        variables: variables,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      },
+    );
+
+    console.log('✅ [AniList] Watch progress saved:', {
+      mediaId,
+      progress,
+      status: variables.status,
+    });
+
+    return response.data.data.SaveMediaListEntry || response.data.data.UpdateMediaListEntry;
+  } catch (error) {
+    console.error('❌ [AniList] Failed to save watch progress:', error);
+    throw new Error('Failed to save watch progress to AniList');
+  }
+};
+
+// Mark anime as completed on AniList
+export const markAnimeCompleted = async (
+  accessToken: string,
+  mediaId: number,
+  totalEpisodes: number
+): Promise<any> => {
+  try {
+    return await saveWatchProgress(accessToken, mediaId, totalEpisodes, 'COMPLETED');
+  } catch (error) {
+    console.error('❌ [AniList] Failed to mark anime as completed:', error);
+    throw error;
+  }
+};
+
+// Convert MAL ID to AniList ID
+export const getAniListIdFromMalId = async (malId: number): Promise<number | null> => {
+  try {
+    const response = await axios.post(
+      'https://graphql.anilist.co',
+      {
+        query: `
+          query GetAniListId($idMal: Int!) {
+            Media(idMal: $idMal, type: ANIME) {
+              id
+            }
+          }
+        `,
+        variables: { idMal: malId },
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      },
+    );
+    return response.data.data.Media?.id || null;
+  } catch (error) {
+    console.error('❌ [AniList] Failed to get AniList ID from MAL ID:', error);
+    return null;
+  }
+};
+
 export const useUserAnimeList = (username: string, status: MediaListStatus) => {
   const { data, loading, error } = useQuery(GET_USER_ANIME_LIST, {
     variables: { username, status },
