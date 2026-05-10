@@ -571,6 +571,8 @@ export async function fetchAnimeData(
   provider: string = 'kickassanime',
 ) {
   const finalProvider = provider || 'kickassanime';
+  const canTryAnimePahe = finalProvider !== 'animepahe';
+  const canTryAnimeKai = finalProvider !== 'animekai';
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/data/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey('animeData', animeId, finalProvider);
@@ -578,39 +580,52 @@ export async function fetchAnimeData(
   try {
     const data = await fetchFromProxy(url, 'Data', cacheKey);
 
-    if ((!data || (typeof data === 'object' && Object.keys(data).length === 0)) && finalProvider !== 'animekai') {
-      console.log(`⚠️ No data from ${finalProvider}, trying animekai...`);
-      const fallbackParams = new URLSearchParams({ provider: 'animekai' });
-      const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
-      const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
-      const fallbackData = await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
-
-      if ((!fallbackData || (typeof fallbackData === 'object' && Object.keys(fallbackData).length === 0)) && finalProvider !== 'animepahe') {
-        console.log(`⚠️ No data from animekai, trying animepahe...`);
+    if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
+      if (canTryAnimePahe) {
+        console.log(`⚠️ No data from ${finalProvider}, trying animepahe...`);
         const paheParams = new URLSearchParams({ provider: 'animepahe' });
         const paheUrl = `${BASE_URL}meta/anilist/data/${animeId}?${paheParams.toString()}`;
         const paheCacheKey = generateCacheKey('animeData', animeId, 'animepahe');
-        return await fetchFromProxy(paheUrl, 'Data', paheCacheKey);
+        const paheData = await fetchFromProxy(paheUrl, 'Data', paheCacheKey);
+        if (paheData && !(typeof paheData === 'object' && Object.keys(paheData).length === 0)) {
+          return paheData;
+        }
       }
-      return fallbackData;
+      if (canTryAnimeKai) {
+        console.log(`⚠️ No data from ${finalProvider}, trying animekai...`);
+        const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+        const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
+        const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
+        return await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
+      }
     }
 
     return data;
   } catch (error) {
-    if (finalProvider !== 'animekai') {
+    if (canTryAnimePahe) {
+      console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
+      const paheParams = new URLSearchParams({ provider: 'animepahe' });
+      const paheUrl = `${BASE_URL}meta/anilist/data/${animeId}?${paheParams.toString()}`;
+      const paheCacheKey = generateCacheKey('animeData', animeId, 'animepahe');
+      try {
+        return await fetchFromProxy(paheUrl, 'Data', paheCacheKey);
+      } catch (paheError) {
+        if (canTryAnimeKai) {
+          console.log(`⚠️ Error from animepahe, trying animekai...`, paheError);
+          const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+          const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
+          const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
+          return await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
+        }
+        throw paheError;
+      }
+    }
+    if (canTryAnimeKai) {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/data/${animeId}?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeData', animeId, 'animekai');
-      try {
-        return await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
-      } catch (animekaierror) {
-        console.log(`⚠️ Error from animekai, trying animepahe...`, animekaierror);
-        const paheParams = new URLSearchParams({ provider: 'animepahe' });
-        const paheUrl = `${BASE_URL}meta/anilist/data/${animeId}?${paheParams.toString()}`;
-        const paheCacheKey = generateCacheKey('animeData', animeId, 'animepahe');
-        return await fetchFromProxy(paheUrl, 'Data', paheCacheKey);
-      }
+      return await fetchFromProxy(fallbackUrl, 'Data', fallbackCacheKey);
     }
     throw error;
   }
@@ -621,6 +636,8 @@ export async function fetchAnimeInfo(
   provider: string = 'kickassanime',
 ) {
   const finalProvider = provider || 'kickassanime';
+  const canTryAnimePahe = finalProvider !== 'animepahe';
+  const canTryAnimeKai = finalProvider !== 'animekai';
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/info/${animeId}?${params.toString()}`;
   const cacheKey = generateCacheKey('animeInfo', animeId, finalProvider);
@@ -628,39 +645,52 @@ export async function fetchAnimeInfo(
   try {
     const info = await fetchFromProxy(url, 'Info', cacheKey);
 
-    if ((!info || (typeof info === 'object' && Object.keys(info).length === 0)) && finalProvider !== 'animekai') {
-      console.log(`⚠️ No info from ${finalProvider}, trying animekai...`);
-      const fallbackParams = new URLSearchParams({ provider: 'animekai' });
-      const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
-      const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
-      const fallbackInfo = await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
-
-      if ((!fallbackInfo || (typeof fallbackInfo === 'object' && Object.keys(fallbackInfo).length === 0)) && finalProvider !== 'animepahe') {
-        console.log(`⚠️ No info from animekai, trying animepahe...`);
+    if (!info || (typeof info === 'object' && Object.keys(info).length === 0)) {
+      if (canTryAnimePahe) {
+        console.log(`⚠️ No info from ${finalProvider}, trying animepahe...`);
         const paheParams = new URLSearchParams({ provider: 'animepahe' });
         const paheUrl = `${BASE_URL}meta/anilist/info/${animeId}?${paheParams.toString()}`;
         const paheCacheKey = generateCacheKey('animeInfo', animeId, 'animepahe');
-        return await fetchFromProxy(paheUrl, 'Info', paheCacheKey);
+        const paheInfo = await fetchFromProxy(paheUrl, 'Info', paheCacheKey);
+        if (paheInfo && !(typeof paheInfo === 'object' && Object.keys(paheInfo).length === 0)) {
+          return paheInfo;
+        }
       }
-      return fallbackInfo;
+      if (canTryAnimeKai) {
+        console.log(`⚠️ No info from ${finalProvider}, trying animekai...`);
+        const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+        const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
+        const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
+        return await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
+      }
     }
 
     return info;
   } catch (error) {
-    if (finalProvider !== 'animekai') {
+    if (canTryAnimePahe) {
+      console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
+      const paheParams = new URLSearchParams({ provider: 'animepahe' });
+      const paheUrl = `${BASE_URL}meta/anilist/info/${animeId}?${paheParams.toString()}`;
+      const paheCacheKey = generateCacheKey('animeInfo', animeId, 'animepahe');
+      try {
+        return await fetchFromProxy(paheUrl, 'Info', paheCacheKey);
+      } catch (paheError) {
+        if (canTryAnimeKai) {
+          console.log(`⚠️ Error from animepahe, trying animekai...`, paheError);
+          const fallbackParams = new URLSearchParams({ provider: 'animekai' });
+          const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
+          const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
+          return await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
+        }
+        throw paheError;
+      }
+    }
+    if (canTryAnimeKai) {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({ provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/info/${animeId}?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeInfo', animeId, 'animekai');
-      try {
-        return await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
-      } catch (animekaierror) {
-        console.log(`⚠️ Error from animekai, trying animepahe...`, animekaierror);
-        const paheParams = new URLSearchParams({ provider: 'animepahe' });
-        const paheUrl = `${BASE_URL}meta/anilist/info/${animeId}?${paheParams.toString()}`;
-        const paheCacheKey = generateCacheKey('animeInfo', animeId, 'animepahe');
-        return await fetchFromProxy(paheUrl, 'Info', paheCacheKey);
-      }
+      return await fetchFromProxy(fallbackUrl, 'Info', fallbackCacheKey);
     }
     throw error;
   }
@@ -804,6 +834,8 @@ export async function fetchAnimeEpisodes(
   dub: boolean = false,
 ) {
   const finalProvider = provider || 'kickassanime';
+  const canTryAnimePahe = finalProvider !== 'animepahe';
+  const canTryAnimeKai = finalProvider !== 'animekai';
   const params = new URLSearchParams({
     provider: finalProvider,
     dub: dub ? 'true' : 'false',
@@ -829,36 +861,11 @@ export async function fetchAnimeEpisodes(
       finalProvider,
     );
 
-    if (
-      (!episodes ||
+    if (!episodes ||
         (Array.isArray(episodes) && episodes.length === 0) ||
-        (typeof episodes === 'object' && Object.keys(episodes).length === 0)) &&
-      finalProvider !== 'animekai'
-    ) {
-      console.log(`⚠️ No episodes from ${finalProvider}, trying animekai...`);
-      const fallbackParams = new URLSearchParams({
-        provider: 'animekai',
-        dub: dub ? 'true' : 'false',
-      });
-      const fallbackUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${fallbackParams.toString()}`;
-      const fallbackCacheKey = generateCacheKey(
-        'animeEpisodes',
-        animeId,
-        'animekai',
-        dub ? 'dub' : 'sub',
-      );
-      const fallbackEpisodes = attachProvider(
-        await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
-        'animekai',
-      );
-
-      if (
-        (!fallbackEpisodes ||
-          (Array.isArray(fallbackEpisodes) && fallbackEpisodes.length === 0) ||
-          (typeof fallbackEpisodes === 'object' && Object.keys(fallbackEpisodes).length === 0)) &&
-        finalProvider !== 'animepahe'
-      ) {
-        console.log(`⚠️ No episodes from animekai, trying animepahe...`);
+        (typeof episodes === 'object' && Object.keys(episodes).length === 0)) {
+      if (canTryAnimePahe) {
+        console.log(`⚠️ No episodes from ${finalProvider}, trying animepahe...`);
         const paheParams = new URLSearchParams({
           provider: 'animepahe',
           dub: dub ? 'true' : 'false',
@@ -870,18 +877,77 @@ export async function fetchAnimeEpisodes(
           'animepahe',
           dub ? 'dub' : 'sub',
         );
-        return attachProvider(
+        const paheEpisodes = attachProvider(
           await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
           'animepahe',
         );
+        if (paheEpisodes && !(Array.isArray(paheEpisodes) && paheEpisodes.length === 0) && !(typeof paheEpisodes === 'object' && Object.keys(paheEpisodes).length === 0)) {
+          return paheEpisodes;
+        }
       }
-
-      return fallbackEpisodes;
+      if (canTryAnimeKai) {
+        console.log(`⚠️ No episodes from ${finalProvider}, trying animekai...`);
+        const fallbackParams = new URLSearchParams({
+          provider: 'animekai',
+          dub: dub ? 'true' : 'false',
+        });
+        const fallbackUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${fallbackParams.toString()}`;
+        const fallbackCacheKey = generateCacheKey(
+          'animeEpisodes',
+          animeId,
+          'animekai',
+          dub ? 'dub' : 'sub',
+        );
+        return attachProvider(
+          await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
+          'animekai',
+        );
+      }
     }
 
     return episodes;
   } catch (error) {
-    if (finalProvider !== 'animekai') {
+    if (canTryAnimePahe) {
+      console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
+      const paheParams = new URLSearchParams({
+        provider: 'animepahe',
+        dub: dub ? 'true' : 'false',
+      });
+      const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
+      const paheCacheKey = generateCacheKey(
+        'animeEpisodes',
+        animeId,
+        'animepahe',
+        dub ? 'dub' : 'sub',
+      );
+      try {
+        return attachProvider(
+          await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
+          'animepahe',
+        );
+      } catch (paheError) {
+        if (canTryAnimeKai) {
+          console.log(`⚠️ Error from animepahe, trying animekai...`, paheError);
+          const fallbackParams = new URLSearchParams({
+            provider: 'animekai',
+            dub: dub ? 'true' : 'false',
+          });
+          const fallbackUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${fallbackParams.toString()}`;
+          const fallbackCacheKey = generateCacheKey(
+            'animeEpisodes',
+            animeId,
+            'animekai',
+            dub ? 'dub' : 'sub',
+          );
+          return attachProvider(
+            await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
+            'animekai',
+          );
+        }
+        throw paheError;
+      }
+    }
+    if (canTryAnimeKai) {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({
         provider: 'animekai',
@@ -894,29 +960,10 @@ export async function fetchAnimeEpisodes(
         'animekai',
         dub ? 'dub' : 'sub',
       );
-      try {
-        return attachProvider(
-          await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
-          'animekai',
-        );
-      } catch (animekaierror) {
-        console.log(`⚠️ Error from animekai, trying animepahe...`, animekaierror);
-        const paheParams = new URLSearchParams({
-          provider: 'animepahe',
-          dub: dub ? 'true' : 'false',
-        });
-        const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
-        const paheCacheKey = generateCacheKey(
-          'animeEpisodes',
-          animeId,
-          'animepahe',
-          dub ? 'dub' : 'sub',
-        );
-        return attachProvider(
-          await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
-          'animepahe',
-        );
-      }
+      return attachProvider(
+        await fetchFromProxy(fallbackUrl, 'Episodes', fallbackCacheKey),
+        'animekai',
+      );
     }
     throw error;
   }
@@ -943,6 +990,8 @@ export async function fetchAnimeStreamingLinks(
   server?: string,
 ) {
   const finalProvider = provider || 'kickassanime';
+  const canTryAnimePahe = finalProvider !== 'animepahe';
+  const canTryAnimeKai = finalProvider !== 'animekai';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
   const cacheKey = generateCacheKey(
@@ -955,39 +1004,52 @@ export async function fetchAnimeStreamingLinks(
   try {
     const links = await fetchFromProxy(url, 'Video Sources', cacheKey);
     
-    if ((!links || (typeof links === 'object' && Object.keys(links).length === 0)) && finalProvider !== 'animekai') {
-      console.log(`⚠️ No streaming links from ${finalProvider}, trying animekai...`);
-      const fallbackParams = new URLSearchParams({ episodeId, provider: 'animekai' });
-      const fallbackUrl = `${BASE_URL}meta/anilist/watch?${fallbackParams.toString()}`;
-      const fallbackCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animekai', server || '');
-      const fallbackLinks = await fetchFromProxy(fallbackUrl, 'Video Sources', fallbackCacheKey);
-      
-      if ((!fallbackLinks || (typeof fallbackLinks === 'object' && Object.keys(fallbackLinks).length === 0)) && finalProvider !== 'animepahe') {
-        console.log(`⚠️ No streaming links from animekai, trying animepahe...`);
+    if (!links || (typeof links === 'object' && Object.keys(links).length === 0)) {
+      if (canTryAnimePahe) {
+        console.log(`⚠️ No streaming links from ${finalProvider}, trying animepahe...`);
         const paheParams = new URLSearchParams({ episodeId, provider: 'animepahe' });
         const paheUrl = `${BASE_URL}meta/anilist/watch?${paheParams.toString()}`;
         const paheCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animepahe', server || '');
-        return await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey);
+        const paheLinks = await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey);
+        if (paheLinks && !(typeof paheLinks === 'object' && Object.keys(paheLinks).length === 0)) {
+          return paheLinks;
+        }
       }
-      return fallbackLinks;
+      if (canTryAnimeKai) {
+        console.log(`⚠️ No streaming links from ${finalProvider}, trying animekai...`);
+        const fallbackParams = new URLSearchParams({ episodeId, provider: 'animekai' });
+        const fallbackUrl = `${BASE_URL}meta/anilist/watch?${fallbackParams.toString()}`;
+        const fallbackCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animekai', server || '');
+        return await fetchFromProxy(fallbackUrl, 'Video Sources', fallbackCacheKey);
+      }
     }
     
     return links;
   } catch (error) {
-    if (finalProvider !== 'animekai') {
+    if (canTryAnimePahe) {
+      console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
+      const paheParams = new URLSearchParams({ episodeId, provider: 'animepahe' });
+      const paheUrl = `${BASE_URL}meta/anilist/watch?${paheParams.toString()}`;
+      const paheCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animepahe', server || '');
+      try {
+        return await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey);
+      } catch (paheError) {
+        if (canTryAnimeKai) {
+          console.log(`⚠️ Error from animepahe, trying animekai...`, paheError);
+          const fallbackParams = new URLSearchParams({ episodeId, provider: 'animekai' });
+          const fallbackUrl = `${BASE_URL}meta/anilist/watch?${fallbackParams.toString()}`;
+          const fallbackCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animekai', server || '');
+          return await fetchFromProxy(fallbackUrl, 'Video Sources', fallbackCacheKey);
+        }
+        throw paheError;
+      }
+    }
+    if (canTryAnimeKai) {
       console.log(`⚠️ Error from ${finalProvider}, trying animekai...`, error);
       const fallbackParams = new URLSearchParams({ episodeId, provider: 'animekai' });
       const fallbackUrl = `${BASE_URL}meta/anilist/watch?${fallbackParams.toString()}`;
       const fallbackCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animekai', server || '');
-      try {
-        return await fetchFromProxy(fallbackUrl, 'Video Sources', fallbackCacheKey);
-      } catch (animekaierror) {
-        console.log(`⚠️ Error from animekai, trying animepahe...`, animekaierror);
-        const paheParams = new URLSearchParams({ episodeId, provider: 'animepahe' });
-        const paheUrl = `${BASE_URL}meta/anilist/watch?${paheParams.toString()}`;
-        const paheCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animepahe', server || '');
-        return await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey);
-      }
+      return await fetchFromProxy(fallbackUrl, 'Video Sources', fallbackCacheKey);
     }
     throw error;
   }
@@ -1106,8 +1168,13 @@ export async function fetchRecentEpisodesWithFallback(
   try {
     return await fetchRecentEpisodes(page, perPage, 'kickassanime');
   } catch (error) {
-    console.warn('kickassanime failed for recent episodes, trying animekai');
-    return await fetchRecentEpisodes(page, perPage, 'animekai');
+    console.warn('kickassanime failed for recent episodes, trying animepahe');
+    try {
+      return await fetchRecentEpisodes(page, perPage, 'animepahe');
+    } catch (paheError) {
+      console.warn('animepahe failed for recent episodes, trying animekai');
+      return await fetchRecentEpisodes(page, perPage, 'animekai');
+    }
   }
 }
 

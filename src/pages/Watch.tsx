@@ -698,6 +698,7 @@ const Watch: React.FC = () => {
     const episodeProvider = currentEpisode.provider || 'kickassanime';
     const isAnimekai = episodeProvider === 'animekai';
     const isKickassanime = episodeProvider === 'kickassanime';
+    const isAnimepahe = episodeProvider === 'animepahe';
 
     if (sourceType === 'embedded') {
       // Zen selected — make sure embeddedUrl points to the Zen player URL
@@ -791,6 +792,20 @@ const Watch: React.FC = () => {
           setHlsDirectUrl(isDirectHlsUrl ? selectedEntry.url : '');
         }
       }
+    } else if (isAnimepahe) {
+      // For animepahe: embedded servers should resolve to their iframe URLs.
+      if (serverEntries.length === 0) return;
+
+      const baseName = sourceType.replace(/__EM$/, '');
+      const selectedEntry = serverEntries.find(
+        (s) => s.name.toLowerCase() === baseName.toLowerCase()
+      );
+
+      if (selectedEntry?.url) {
+        setEmbeddedUrl(selectedEntry.url);
+        setServerUrl(selectedEntry.url);
+        setHlsDirectUrl('');
+      }
     }
   }, [
     currentEpisode.id,
@@ -818,9 +833,11 @@ const Watch: React.FC = () => {
 
         const isAnimekai = episodeProvider === 'animekai';
         const isKickassanime = episodeProvider === 'kickassanime';
+        const isAnimepahe = episodeProvider === 'animepahe';
 
         // For animekai: extract iframe servers from API response
         // For kickassanime: create BOTH m3u8 and iframe versions of servers
+        // For animepahe: treat servers as embedded iframes when sources are empty
         let serverEntriesFromResponse: Array<{ name: string; url: string; type: string }> = [];
         
         if (Array.isArray(response?.servers)) {
@@ -855,6 +872,13 @@ const Watch: React.FC = () => {
                 },
               ];
               return entries;
+            } else if (isAnimepahe) {
+              // For animepahe: treat servers as embedded iframes
+              return [{
+                name: serverName,
+                url: serverUrl,
+                type: 'iframe',
+              }];
             } else {
               // Animekai: just return as-is
               return [{
@@ -911,6 +935,32 @@ const Watch: React.FC = () => {
           
           servers = [...kickassanimeServers];
           console.log('Kickassanime servers (both M3U8 and EM):', servers);
+        } else if (isAnimepahe && serverEntriesFromResponse.length > 0) {
+          // For animepahe: treat servers as embedded iframes
+          // If sources are available too, show both embedded (EM) and m3u8 versions
+          const availableAnimepaheServers = Array.isArray(response?.availableServers)
+            ? response.availableServers
+            : serverEntriesFromResponse.map((s: any) => s.name);
+
+          let allServers: string[] = [];
+          const hasSources = response?.sources && response.sources.length > 0;
+
+          if (hasSources) {
+            // Create both m3u8 and embedded versions similar to kickassanime
+            allServers = availableAnimepaheServers.flatMap((serverName: string) => [
+              serverName, // M3U8 version
+              `${serverName}__EM`, // Embedded version
+            ]);
+            const iframeServerKeys = allServers.filter((name: string) => name.endsWith('__EM'));
+            setEmbeddedServerKeys(new Set(['embedded', ...iframeServerKeys]));
+          } else {
+            // Only embedded servers available (no m3u8 sources)
+            allServers = availableAnimepaheServers;
+            setEmbeddedServerKeys(new Set(['embedded', ...availableAnimepaheServers]));
+          }
+
+          servers = allServers;
+          console.log('Animepahe servers:', hasSources ? '(both M3U8 and EM)' : '(embedded EM only)', servers);
         } else if (response?.availableServers?.length > 0) {
           // For kickassanime: expose the available m3u8 server names directly.
           // These are the real provider names like vidstreamz, catstream, etc.
