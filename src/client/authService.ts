@@ -47,6 +47,18 @@ export const getAccessToken = async (code: string): Promise<string> => {
 
 export const fetchUserData = async (accessToken: string): Promise<UserData> => {
   try {
+    console.log('🔍 [AuthService] Fetching user data with token:', accessToken ? accessToken.substring(0, 20) + '...' : 'null');
+
+    // Test basic connectivity first
+    console.log('🔍 [AuthService] Testing AniList API connectivity...');
+    try {
+      const testResponse = await axios.get('https://graphql.anilist.co', { timeout: 5000 });
+      console.log('✅ [AuthService] AniList API is reachable');
+    } catch (connectError) {
+      console.error('❌ [AuthService] Cannot reach AniList API:', connectError.message);
+      throw new Error('Network connectivity issue');
+    }
+
     const response = await axios.post(
       'https://graphql.anilist.co',
       {
@@ -77,12 +89,21 @@ export const fetchUserData = async (accessToken: string): Promise<UserData> => {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
+        timeout: 10000, // 10 second timeout
       },
     );
+
+    console.log('✅ [AuthService] User data response received:', response.data?.data?.Viewer?.name);
     return response.data.data.Viewer;
-  } catch (error) {
-    console.error('Error fetching user data:', error);
-    throw new Error('Failed to fetch user data');
+  } catch (error: any) {
+    console.error('❌ [AuthService] Error fetching user data:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      message: error.message,
+      code: error.code
+    });
+    throw error;
   }
 };
 

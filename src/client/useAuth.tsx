@@ -68,6 +68,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const validateAndSetUserData = async (token: string, retryCount = 0) => {
     try {
       setIsValidatingToken(true);
+      console.log(`🔄 [Auth] Validating token (attempt ${retryCount + 1})`);
       const data = await fetchUserData(token);
       setUserData(data);
       setIsLoggedIn(true);
@@ -83,24 +84,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const isTokenError = err.response?.status === 401 || err.response?.status === 403;
 
       if (isNetworkError && retryCount < 3) {
-        // Network error - retry with cached data if available
-        const cachedData = loadUserData();
-        if (cachedData && !userData) {
-          console.log('📦 [Auth] Using cached user data while retrying');
-          setUserData(cachedData);
-          setIsLoggedIn(true);
-        }
+        // Network error - keep cached data and retry
         console.log(`🔄 [Auth] Network error, retrying token validation (attempt ${retryCount + 1})`);
         setTimeout(() => {
           validateAndSetUserData(token, retryCount + 1);
         }, 2000 * (retryCount + 1)); // Exponential backoff
       } else if (isTokenError || retryCount >= 3) {
         // Token is invalid or max retries reached
-        console.log('❌ [Auth] Token is invalid or max retries reached, removing token');
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('userData');
-        setIsLoggedIn(false);
-        setUserData(null);
+        console.log('❌ [Auth] Token is invalid or max retries reached');
+
+        // Only clear auth state if we don't have cached data
+        const hasCachedData = loadUserData() !== null;
+        if (!hasCachedData) {
+          console.log('❌ [Auth] No cached data, clearing authentication');
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('userData');
+          setIsLoggedIn(false);
+          setUserData(null);
+        } else {
+          console.log('📦 [Auth] Keeping cached data despite token validation failure');
+        }
+
         setAuthLoading(false);
         setIsValidatingToken(false);
       } else {
@@ -111,25 +115,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }, 1000);
       }
     } finally {
-      setIsValidatingToken(false);
+      // Only set validating to false if we're not retrying
+      if (retryCount >= 3) {
+        setIsValidatingToken(false);
+      }
     }
   };
 
   // Initial auth check on mount
   useEffect(() => {
+    // Check localStorage availability
+    try {
+      localStorage.setItem('test', 'test');
+      localStorage.removeItem('test');
+      console.log('✅ [Auth] localStorage is available');
+    } catch (e) {
+      console.error('❌ [Auth] localStorage is not available:', e);
+      setAuthLoading(false);
+      return;
+    }
+
     const token = localStorage.getItem('accessToken');
-    if (token) {
+    console.log('🔍 [Auth] Initial auth check - token exists:', !!token);
+    console.log('🔍 [Auth] Token length:', token ? token.length : 0);
+    console.log('🔍 [Auth] Token value (first 20 chars):', token ? token.substring(0, 20) + '...' : 'null');
+
+    // More robust token validation
+    const isValidToken = token && typeof token === 'string' && token.trim().length > 10;
+    console.log('🔍 [Auth] Token is valid:', isValidToken);
+
+    if (isValidToken) {
       // Load cached user data immediately for better UX
       const cachedData = loadUserData();
       if (cachedData) {
         setUserData(cachedData);
         setIsLoggedIn(true);
         console.log('📦 [Auth] Loaded cached user data:', cachedData.name);
+      } else {
+        console.log('📦 [Auth] No cached user data found');
       }
-      // Validate token in background
-      setIsValidatingToken(true);
-      validateAndSetUserData(token);
+
+      // Validate token in background with a small delay to ensure stability
+      console.log('🔄 [Auth] Starting background token validation');
+      setTimeout(() => validateAndSetUserData(token), 100);
     } else {
+      console.log('🔍 [Auth] No valid token found, user not logged in');
       setAuthLoading(false);
     }
   }, []);
