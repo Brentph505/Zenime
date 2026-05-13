@@ -5,7 +5,6 @@ import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
 import { SiAnilist } from 'react-icons/si';
 import { CgProfile } from 'react-icons/cg';
 import { FiClock, FiStar, FiTv, FiFilm, FiChevronDown, FiUser, FiLogOut, FiSettings } from 'react-icons/fi';
-import { useNavigate } from 'react-router-dom';
 
 /* ── Animations ── */
 const fadeUp = keyframes`
@@ -445,7 +444,6 @@ export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     document.title =
@@ -510,7 +508,7 @@ export const Profile: React.FC = () => {
                         <DropdownItem onClick={() => setMenuOpen(false)}>
                           <FiUser size={13} /> Profile
                         </DropdownItem>
-                        <DropdownItem onClick={() => { setMenuOpen(false); navigate('/profile/settings'); }}>
+                        <DropdownItem onClick={() => setMenuOpen(false)}>
                           <FiSettings size={13} /> Settings
                         </DropdownItem>
                         <DropdownDivider />

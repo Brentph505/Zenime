@@ -21,8 +21,6 @@ import {
   fetchAnimeStreamingLinksProxied,
   useSettings,
 } from '../../../index';
-import { useAuth } from '../../../client/useAuth';
-import { saveWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
 import {
   DefaultAudioLayout,
   defaultLayoutIcons,
@@ -114,6 +112,8 @@ type PlayerProps = {
   hlsDirectUrl?: string;
   /** Subtitles to inject when using hlsDirectUrl (animekai HLS playback) */
   externalSubtitles?: Array<{ url: string; lang: string }>;
+  /** Map of provider-specific episode IDs: { kickassanime: "ep-1", animepahe: "uuid/hash", animekai: "1" } */
+  providerEpisodeIds?: Record<string, string>;
 };
 
 type StreamingSource = {
@@ -160,6 +160,7 @@ export function Player({
   malId,
   animeId,
   updateDownloadLink,
+  providerEpisodeIds = {},
   onEpisodeEnd,
   onPrevEpisode,
   onNextEpisode,
@@ -171,8 +172,6 @@ export function Player({
   hlsDirectUrl,
   externalSubtitles,
 }: PlayerProps) {
-  const { isLoggedIn, userData } = useAuth();
-  const [lastSavedProgress, setLastSavedProgress] = useState<number>(0);
   const player = useRef<MediaPlayerInstance>(null);
   const [src, setSrc] = useState<PlayerSrc>('');
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
@@ -261,29 +260,6 @@ export function Player({
         localStorage.setItem('all_episode_times', JSON.stringify(all));
       } catch {
         // localStorage unavailable — ignore
-      }
-    };
-
-    // Save progress to AniList when user is logged in
-    const saveAniListProgress = async (episodeNumber: number) => {
-      if (!isLoggedIn || !userData?.accessToken || !malId || !settings.aniListSync) return;
-
-      try {
-        const malIdNum = parseInt(malId);
-        if (isNaN(malIdNum)) return;
-
-        // Get AniList ID from MAL ID
-        const aniListId = await getAniListIdFromMalId(malIdNum);
-        if (!aniListId) {
-          console.warn('⚠️ [AniList] Could not find AniList ID for MAL ID:', malId);
-          return;
-        }
-
-        // Save progress to AniList
-        await saveWatchProgress(userData.accessToken, aniListId, episodeNumber);
-        console.log('✅ [AniList] Progress saved for episode', episodeNumber);
-      } catch (error) {
-        console.error('❌ [AniList] Failed to save progress:', error);
       }
     };
 
@@ -707,10 +683,21 @@ export function Player({
     }
 
     try {
+      // Extract provider from server key if available (format: "provider:servername")
+      let provider = episodeProvider || 'kickassanime';
+      
+      if (sourceType && sourceType.includes(':')) {
+        const keyParts = sourceType.split(':');
+        provider = keyParts[0]; // e.g., "animepahe" from "animepahe:kwik__EM"
+      }
+      
+      // Use the provider-specific episode ID from providerEpisodeIds if available
+      const providerSpecificEpisodeId = providerEpisodeIds?.[provider] || episodeId;
+      
       const response: StreamingResponse =
         await fetchAnimeStreamingLinksProxied(
-          episodeId,
-          episodeProvider || 'kickassanime',
+          providerSpecificEpisodeId,
+          provider,
           serverParam,
           serverUrl,
         );
@@ -778,12 +765,6 @@ export function Player({
     try {
       player.current?.pause();
       await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // Save progress to AniList if user is logged in
-      if (propEpisodeNumber) {
-        await saveAniListProgress(propEpisodeNumber);
-      }
-
       await onEpisodeEndRef.current();
     } catch (error) {
       console.error('Error moving to the next episode:', error);

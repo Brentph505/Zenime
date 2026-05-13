@@ -24,6 +24,7 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 // M3U8 Proxy configuration
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
 const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
+const SUB_PROXY_URL = import.meta.env.VITE_SUB_PROXY_URL as string;
 
 // Image Proxy configuration (Cloudflare Worker)
 const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
@@ -198,6 +199,30 @@ export function proxyM3U8Sources(
       };
     }
     return source;
+  });
+}
+
+export function proxySubtitles(
+  subtitles: any[],
+  referer: string,
+  proxyUrl?: string,
+  includeHeaders: boolean = true,
+): any[] {
+  const selectedProxy = proxyUrl || SUB_PROXY_URL || M3U8_PROXY_URL;
+  if (!selectedProxy) return subtitles;
+
+  return subtitles.map((subtitle) => {
+    if (subtitle?.url && isValidUrl(subtitle.url)) {
+      if (subtitle.url.includes(selectedProxy)) {
+        return subtitle;
+      }
+      return {
+        ...subtitle,
+        url: buildM3U8ProxyUrl(subtitle.url, referer, proxyUrl, includeHeaders),
+      };
+    }
+
+    return subtitle;
   });
 }
 
@@ -832,10 +857,11 @@ export async function fetchAnimeEpisodes(
   animeId: string,
   provider: string = 'kickassanime',
   dub: boolean = false,
+  allowFallback: boolean = true,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const canTryAnimePahe = finalProvider !== 'animepahe';
-  const canTryAnimeKai = finalProvider !== 'animekai';
+  const canTryAnimePahe = allowFallback && finalProvider !== 'animepahe';
+  const canTryAnimeKai = allowFallback && finalProvider !== 'animekai';
   const params = new URLSearchParams({
     provider: finalProvider,
     dub: dub ? 'true' : 'false',
@@ -988,10 +1014,11 @@ export async function fetchAnimeStreamingLinks(
   episodeId: string,
   provider: string = 'kickassanime',
   server?: string,
+  allowFallback: boolean = true,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const canTryAnimePahe = finalProvider !== 'animepahe';
-  const canTryAnimeKai = finalProvider !== 'animekai';
+  const canTryAnimePahe = allowFallback && finalProvider !== 'animepahe';
+  const canTryAnimeKai = allowFallback && finalProvider !== 'animekai';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
   const cacheKey = generateCacheKey(
@@ -1110,7 +1137,16 @@ export async function fetchAnimeStreamingLinksProxied(
       data.sources,
       serverUrl,
       proxyUrl,
-      true,
+      finalProvider !== 'animekai', // Skip headers for animekai
+    );
+  }
+
+  if (Array.isArray(data?.subtitles)) {
+    data.subtitles = proxySubtitles(
+      data.subtitles,
+      serverUrl,
+      proxyUrl,
+      finalProvider !== 'animekai', // Skip headers for animekai
     );
   }
 

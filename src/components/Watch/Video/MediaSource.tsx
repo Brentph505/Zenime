@@ -241,8 +241,18 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
         ? embeddedServerKeys.has(server)
         : server.includes('embed') || server.includes('iframe');
 
-      // Strip internal __EM marker for display
-      const displayName = server.replace(/__EM$/, '');
+      // Extract display name from key format "provider:name" or "__EM" suffix
+      let displayName = server;
+      
+      if (server.includes(':')) {
+        // New format: "provider:servername__EM" or "provider:servername"
+        const parts = server.split(':');
+        displayName = parts.slice(1).join(':'); // Handle multiple colons
+      }
+      
+      // Strip internal __EM marker and any internal numeric suffix used for uniqueness
+      displayName = displayName.replace(/__EM$/, '');
+      displayName = displayName.replace(/__\d+$/, '');
 
       return {
         key: server,

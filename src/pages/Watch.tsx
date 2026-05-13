@@ -15,11 +15,13 @@ import {
   fetchAnimeStreamingLinks,
   SkeletonPlayer,
   useCountdown,
-  useAuth,
 } from '../index';
 import { Episode } from '../index';
 
-type WatchEpisode = Episode & { provider?: string };
+type WatchEpisode = Episode & {
+  provider?: string;
+  providerEpisodeIds?: Record<string, string>;
+};
 
 const WatchContainer = styled.div``;
 
@@ -157,9 +159,6 @@ const LOCAL_STORAGE_KEYS = {
 
 // TODO Main Component
 const Watch: React.FC = () => {
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
-
   const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
   const [videoPlayerWidth, setVideoPlayerWidth] = useState('100%');
   const getLanguageKey = (animeId: string | undefined) =>
@@ -174,22 +173,9 @@ const Watch: React.FC = () => {
     return localStorage.getItem(getEpisodeServerKey(animeId, episodeId)) || null;
   };
   
-  const saveServerForEpisode = async (
-    animeId: string | undefined,
-    episodeId: string | undefined,
-    server: string
-  ) => {
+  const saveServerForEpisode = (animeId: string | undefined, episodeId: string | undefined, server: string) => {
     if (!animeId || !episodeId) return;
-    // Save to localStorage for instant access
     localStorage.setItem(getEpisodeServerKey(animeId, episodeId), server);
-    // Also cache in Redis for cross-device persistence (fire and forget)
-    try {
-      const { redisClient } = await import('../lib/caching/redisClient');
-      const key = `server-${animeId}-${episodeId}`;
-      await redisClient.set(key, server, 30 * 24 * 60 * 60); // 30 days TTL in seconds
-    } catch (err) {
-      console.warn('[Watch] Failed to save server preference to Redis:', err);
-    }
   };
   
   const updateVideoPlayerWidth = useCallback(() => {
@@ -235,7 +221,7 @@ const Watch: React.FC = () => {
   const [availableServers, setAvailableServers] = useState<string[]>([]);
   const [hasFetchedServers, setHasFetchedServers] = useState<boolean>(false);
   const [serverEntries, setServerEntries] = useState<
-    Array<{ name: string; url: string; type: string }>
+    Array<{ key: string; provider: string; name: string; url: string; type: string }>
   >([]);
   const [embeddedUrl, setEmbeddedUrl] = useState<string>('');
   const [serverUrl, setServerUrl] = useState<string>('');
@@ -244,16 +230,8 @@ const Watch: React.FC = () => {
   const [embeddedServerKeys, setEmbeddedServerKeys] = useState<Set<string>>(
     new Set(['embedded']),
   );
-  // HLS (M3U8) sources extracted from animekai API response
-  const [animekaiHlsSources, setAnimekaiHlsSources] = useState<
-    Array<{ name: string; url: string }>
-  >([]);
-  // Direct M3U8 URL to pass to Player when an animekai HLS server is selected
   const [hlsDirectUrl, setHlsDirectUrl] = useState<string>('');
-  // Subtitles extracted from animekai API response (used for HLS playback)
-  const [animekaiSubtitles, setAnimekaiSubtitles] = useState<
-    Array<{ url: string; lang: string }>
-  >([]);
+  const animekaiSubtitles: Array<{ url: string; lang: string }> = [];
   const EMBEDDED_PLAYER_1 = (import.meta.env.VITE_EMBEDDED_PLAYER_1 as string) || '';
   const hasEmbeddedPlayer = Boolean(EMBEDDED_PLAYER_1?.trim());
 
@@ -290,6 +268,45 @@ const Watch: React.FC = () => {
     } else {
       return serverUrl;
     }
+  };
+
+  const normalizeEpisodeNumber = (
+    ep: any,
+    _provider: string,
+    index: number,
+  ): string => {
+    if (ep == null) return String(index + 1);
+    if (typeof ep.number === 'number') return String(ep.number);
+    if (typeof ep.number === 'string' && /^[0-9]+$/.test(ep.number)) {
+      return ep.number;
+    }
+
+    const id = String(ep.id || '');
+    const patterns = [
+      /episode\/ep-(\d+)/i,
+      /-episode-ep-(\d+)/i,
+      /episode-(\d+)/i,
+      /ep-(\d+)/i,
+      /episode\s+(\d+)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = id.match(pattern) || String(ep.title || '').match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+
+    return String(index + 1);
+  };
+
+  const buildServerKey = (
+    provider: string,
+    serverName: string,
+    isEmbedded = false,
+  ) => {
+    const suffix = isEmbedded ? '__EM' : '';
+    return `${provider}:${serverName}${suffix}`;
   };
 
   const nextEpisodeAiringTime =
@@ -465,101 +482,125 @@ const Watch: React.FC = () => {
       if (!animeId) return;
       try {
         const isDub = language === 'dub';
-        const animeData = await fetchAnimeEpisodes(animeId, 'kickassanime', isDub);
-        if (isMounted && animeData) {
-          const transformedEpisodes = animeData
-            .filter((ep: any) => ep.id)
-            .map((ep: any, index: number) => {
-              let episodeNumber = String(index + 1);
-              let episodeTitle = ep.title || '';
-              
-              if (ep.id.includes('/episode/')) {
-                const episodePart = ep.id.split('/episode/')[1];
-                const episodeNumberMatch = episodePart.match(/^ep-(\d+)/);
-                if (episodeNumberMatch) {
-                  episodeNumber = episodeNumberMatch[1];
-                }
-              } else if (ep.id.includes('-episode-')) {
-                const episodePart = ep.id.split('-episode-')[1];
-                const episodeNumberMatch = episodePart.match(/^ep-(\d+)/);
-                if (episodeNumberMatch) {
-                  episodeNumber = episodeNumberMatch[1];
-                }
-              }
-              
-              if (episodeTitle) {
-                episodeTitle = episodeTitle.replace(/^\d+-\d+\.\s+/, '');
-              }
-              
-              return {
-                ...ep,
-                provider: ep.provider || 'kickassanime',
-                number: episodeNumber,
-                id: ep.id,
-                title: episodeTitle || `Episode ${episodeNumber}`,
-                image: ep.image,
-              };
-            });
-          setEpisodes(transformedEpisodes);
-          const navigateToEpisode = (() => {
-            if (languageChanged) {
-              const currentEpisodeNumber =
-                episodeNumber || String(currentEpisode.number);
-              return (
-                transformedEpisodes.find(
-                  (ep: any) => String(ep.number) === currentEpisodeNumber,
-                ) || transformedEpisodes[transformedEpisodes.length - 1]
-              );
-            } else if (episodeNumber) {
-              return (
-                transformedEpisodes.find((ep: any) => String(ep.number) === episodeNumber) ||
-                transformedEpisodes[0]
-              );
-            } else {
-              const savedEpisodeData = localStorage.getItem(
-                LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId,
-              );
-              const savedEpisode = savedEpisodeData
-                ? JSON.parse(savedEpisodeData)
-                : null;
-              return savedEpisode
-                ? transformedEpisodes.find(
-                    (ep: any) => String(ep.number) === String(savedEpisode.number),
-                  ) || transformedEpisodes[0]
-                : transformedEpisodes[0];
-            }
-          })();
+        const providers = ['kickassanime', 'animepahe', 'animekai'];
 
-          if (navigateToEpisode && String(navigateToEpisode.number) !== episodeNumber) {
-            setCurrentEpisode({
-              id: navigateToEpisode.id,
-              number: navigateToEpisode.number,
-              image: navigateToEpisode.image,
-              title: navigateToEpisode.title,
-              description: navigateToEpisode.description,
-              imageHash: navigateToEpisode.imageHash,
-              airDate: navigateToEpisode.airDate,
-              provider: navigateToEpisode.provider,
-            });
+        const episodeResults = await Promise.allSettled(
+          providers.map((provider) =>
+            fetchAnimeEpisodes(animeId, provider, isDub, false),
+          ),
+        );
 
-            navigate(
-              `/watch/${animeId}?ep=${navigateToEpisode.number}`,
-              { replace: true },
-            );
-            setLanguageChanged(false);
-          } else if (navigateToEpisode) {
-            setCurrentEpisode({
-              id: navigateToEpisode.id,
-              number: navigateToEpisode.number,
-              image: navigateToEpisode.image,
-              title: navigateToEpisode.title,
-              description: navigateToEpisode.description,
-              imageHash: navigateToEpisode.imageHash,
-              airDate: navigateToEpisode.airDate,
-              provider: navigateToEpisode.provider,
-            });
-            setLanguageChanged(false);
+        const episodesByNumber = new Map<string, WatchEpisode>();
+
+        episodeResults.forEach((result, index) => {
+          const provider = providers[index];
+          if (result.status !== 'fulfilled' || !Array.isArray(result.value)) {
+            console.warn(`No episode list for ${provider}`);
+            return;
           }
+
+          result.value.forEach((ep: any, episodeIndex: number) => {
+            if (!ep || !ep.id) return;
+
+            const episodeNumber = normalizeEpisodeNumber(ep, provider, episodeIndex);
+            const title = ep.title ? String(ep.title).replace(/^\d+-\d+\.\s+/, '') : `Episode ${episodeNumber}`;
+            const normalizedId = String(episodeNumber);
+
+            const existing = episodesByNumber.get(episodeNumber) || {
+              id: normalizedId,
+              provider: 'kickassanime',
+              number: Number(episodeNumber),
+              title,
+              description: ep.description || null,
+              image: ep.image || '',
+              imageHash: ep.imageHash || '',
+              airDate: ep.airDate || null,
+              providerEpisodeIds: {},
+            } as WatchEpisode;
+
+            existing.title = existing.title || title;
+            existing.description = existing.description || ep.description || null;
+            existing.image = existing.image || ep.image || '';
+            existing.imageHash = existing.imageHash || ep.imageHash || '';
+            existing.airDate = existing.airDate || ep.airDate || null;
+            existing.providerEpisodeIds = {
+              ...(existing.providerEpisodeIds || {}),
+              [provider]: ep.id,
+            };
+
+            if (!existing.provider) {
+              existing.provider = provider;
+            }
+
+            episodesByNumber.set(episodeNumber, existing);
+          });
+        });
+
+        const transformedEpisodes = Array.from(episodesByNumber.values())
+          .sort((a, b) => Number(a.number) - Number(b.number));
+
+        setEpisodes(transformedEpisodes);
+
+        const navigateToEpisode = (() => {
+          if (languageChanged) {
+            const currentEpisodeNumber =
+              episodeNumber || String(currentEpisode.number);
+            return (
+              transformedEpisodes.find(
+                (ep) => String(ep.number) === currentEpisodeNumber,
+              ) || transformedEpisodes[transformedEpisodes.length - 1]
+            );
+          } else if (episodeNumber) {
+            return (
+              transformedEpisodes.find((ep) => String(ep.number) === episodeNumber) ||
+              transformedEpisodes[0]
+            );
+          } else {
+            const savedEpisodeData = localStorage.getItem(
+              LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId,
+            );
+            const savedEpisode = savedEpisodeData
+              ? JSON.parse(savedEpisodeData)
+              : null;
+            return savedEpisode
+              ? transformedEpisodes.find(
+                  (ep) => String(ep.number) === String(savedEpisode.number),
+                ) || transformedEpisodes[0]
+              : transformedEpisodes[0];
+          }
+        })();
+
+        if (navigateToEpisode && String(navigateToEpisode.number) !== episodeNumber) {
+          setCurrentEpisode({
+            id: navigateToEpisode.id,
+            number: navigateToEpisode.number,
+            image: navigateToEpisode.image,
+            title: navigateToEpisode.title,
+            description: navigateToEpisode.description,
+            imageHash: navigateToEpisode.imageHash,
+            airDate: navigateToEpisode.airDate,
+            provider: navigateToEpisode.provider,
+            providerEpisodeIds: navigateToEpisode.providerEpisodeIds,
+          });
+
+          navigate(
+            `/watch/${animeId}?ep=${navigateToEpisode.number}`,
+            { replace: true },
+          );
+          setLanguageChanged(false);
+        } else if (navigateToEpisode) {
+          setCurrentEpisode({
+            id: navigateToEpisode.id,
+            number: navigateToEpisode.number,
+            image: navigateToEpisode.image,
+            title: navigateToEpisode.title,
+            description: navigateToEpisode.description,
+            imageHash: navigateToEpisode.imageHash,
+            airDate: navigateToEpisode.airDate,
+            provider: navigateToEpisode.provider,
+            providerEpisodeIds: navigateToEpisode.providerEpisodeIds,
+          });
+          setLanguageChanged(false);
         }
       } catch (error) {
         console.error('Failed to fetch episodes:', error);
@@ -689,8 +730,6 @@ const Watch: React.FC = () => {
       setEmbeddedUrl('');
       setServerUrl('');
       setHlsDirectUrl('');
-      setAnimekaiHlsSources([]);
-      setAnimekaiSubtitles([]);
       setEmbeddedServerKeys(new Set(['embedded']));
     }
   }, [currentEpisode.id]);
@@ -698,11 +737,9 @@ const Watch: React.FC = () => {
   // Resolve the correct player URL/source whenever the selected server changes.
   // For animekai:
   //   - 'embedded'         → Zen Sub/Dub iframe (restore EMBEDDED_PLAYER_1 URL)
-  //   - iframe server name → set embeddedUrl to that server's iframe URL
-  //   - HLS server name    → set hlsDirectUrl to the M3U8 URL (HLS player)
-  // For kickassanime:
-  //   - 'embedded'         → Zen Sub/Dub iframe
-  //   - iframe server name → set embeddedUrl to that server's proxied iframe URL
+  //   - server key         → set embeddedUrl or hlsDirectUrl based on entry type
+  // For other providers:
+  //   - server key         → selected entry is resolved by key and type
   useEffect(() => {
     if (
       !currentEpisode.id ||
@@ -712,13 +749,7 @@ const Watch: React.FC = () => {
       return;
     }
 
-    const episodeProvider = currentEpisode.provider || 'kickassanime';
-    const isAnimekai = episodeProvider === 'animekai';
-    const isKickassanime = episodeProvider === 'kickassanime';
-    const isAnimepahe = episodeProvider === 'animepahe';
-
     if (sourceType === 'embedded') {
-      // Zen selected — make sure embeddedUrl points to the Zen player URL
       if (hasEmbeddedPlayer) {
         setEmbeddedUrl(
           buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
@@ -728,108 +759,37 @@ const Watch: React.FC = () => {
       return;
     }
 
-    // For animekai: check if it's an HLS source or iframe server
-    if (isAnimekai) {
-      // Check if the selected server is one of the animekai HLS sources
-      const hlsSource = animekaiHlsSources.find((s) => s.name === sourceType);
-      if (hlsSource) {
-        setHlsDirectUrl(hlsSource.url);
-        // No embeddedUrl change needed — isEmbedded will be false for this server
-        return;
-      }
+    if (serverEntries.length === 0) return;
 
-      // Otherwise it's an animekai iframe server (e.g. Megaup Sub/Dub)
-      setHlsDirectUrl('');
-      if (serverEntries.length === 0) return;
-
-      const normalizedSource = sourceType.toLowerCase();
-
-      // Extract base name and occurrence index from names like "Megaup Sub 1 (2)"
-      const indexMatch = normalizedSource.match(/^(.+?)\s*\((\d+)\)$/);
-      let baseName = normalizedSource;
-      let targetIndex = 1;
-      if (indexMatch) {
-        baseName = indexMatch[1].trim();
-        targetIndex = parseInt(indexMatch[2], 10);
-      }
-
-      // Find the nth matching server entry
-      let matchCount = 0;
-      let matchingServer: (typeof serverEntries)[number] | null = null;
-      for (const entry of serverEntries) {
-        if (entry.name.toLowerCase() === baseName) {
-          matchCount++;
-          if (matchCount === targetIndex) {
-            matchingServer = entry;
-            break;
-          }
-        }
-      }
-      // Fallback to first match
-      matchingServer =
-        matchingServer ||
-        serverEntries.find((e) => e.name.toLowerCase() === baseName) ||
-        serverEntries[0];
-
-      if (matchingServer?.url) {
-        // Override embeddedUrl with this specific server's iframe URL
-        setEmbeddedUrl(matchingServer.url);
-        setServerUrl(matchingServer.url);
-      }
-    } else if (isKickassanime) {
-      // For kickassanime: both m3u8 and iframe versions may have same display name
-      // Iframe versions are marked with "__EM" suffix internally
-      if (serverEntries.length === 0) return;
-
-      const isEmbedded = sourceType.endsWith('__EM');
-      const baseName = sourceType.replace(/__EM$/, '');
-
-      // Find the matching entry based on name and type
-      const selectedEntry = serverEntries.find(
-        (s) => {
-          const nameMatch = s.name.toLowerCase() === baseName.toLowerCase();
-          const typeMatch = isEmbedded ? s.type === 'iframe' : s.type === 'hls';
-          return nameMatch && typeMatch;
-        }
-      );
-
-      if (selectedEntry?.url) {
-        if (isEmbedded) {
-          // Iframe version
-          setEmbeddedUrl(selectedEntry.url);
-          setServerUrl(selectedEntry.url);
-          setHlsDirectUrl('');
-        } else {
-          // Kickassanime server URL may be a player page, not a direct m3u8 manifest.
-          // Only treat it as a direct HLS source when it looks like a real m3u8 manifest.
-          const isDirectHlsUrl = /\.m3u8$/i.test(selectedEntry.url) ||
-            /\/manifest\//i.test(selectedEntry.url);
-          setEmbeddedUrl('');
-          setServerUrl(selectedEntry.url);
-          setHlsDirectUrl(isDirectHlsUrl ? selectedEntry.url : '');
-        }
-      }
-    } else if (isAnimepahe) {
-      // For animepahe: embedded servers should resolve to their iframe URLs.
-      if (serverEntries.length === 0) return;
-
-      const baseName = sourceType.replace(/__EM$/, '');
-      const selectedEntry = serverEntries.find(
-        (s) => s.name.toLowerCase() === baseName.toLowerCase()
-      );
-
-      if (selectedEntry?.url) {
-        setEmbeddedUrl(selectedEntry.url);
-        setServerUrl(selectedEntry.url);
-        setHlsDirectUrl('');
-      }
+    const selectedEntry = serverEntries.find((entry) => entry.key === sourceType);
+    if (!selectedEntry) {
+      return;
     }
+
+    if (selectedEntry.type === 'iframe') {
+      setEmbeddedUrl(selectedEntry.url);
+      setServerUrl(selectedEntry.url);
+      setHlsDirectUrl('');
+      return;
+    }
+
+    if (selectedEntry.type === 'hls') {
+      setEmbeddedUrl('');
+      setServerUrl(selectedEntry.url);
+      const isDirectHlsUrl = /\.m3u8$/i.test(selectedEntry.url) || /\/manifest\//i.test(selectedEntry.url);
+      setHlsDirectUrl(isDirectHlsUrl ? selectedEntry.url : '');
+      return;
+    }
+
+    // Fallback: if the selected entry is unknown type, treat it as iframe.
+    setEmbeddedUrl(selectedEntry.url);
+    setServerUrl(selectedEntry.url);
+    setHlsDirectUrl('');
   }, [
     currentEpisode.id,
     currentEpisode.provider,
     sourceType,
     serverEntries,
-    animekaiHlsSources,
     language,
     hasEmbeddedPlayer,
     animeId,
@@ -843,155 +803,132 @@ const Watch: React.FC = () => {
 
     const fetchAvailableServers = async () => {
       setHasFetchedServers(false);
-      console.log('Fetching available servers for episode:', currentEpisode.id);
+      console.log('Fetching available servers for episode:', currentEpisode.number);
       try {
-        const episodeProvider = currentEpisode.provider || 'kickassanime';
-        const response = await fetchAnimeStreamingLinks(currentEpisode.id, episodeProvider);
+        const providerEpisodeIds = currentEpisode.providerEpisodeIds || {
+          [currentEpisode.provider || 'kickassanime']: currentEpisode.id,
+        };
 
-        const isAnimekai = episodeProvider === 'animekai';
-        const isKickassanime = episodeProvider === 'kickassanime';
-        const isAnimepahe = episodeProvider === 'animepahe';
+        const providerEntries = Object.entries(providerEpisodeIds).filter(
+          ([, episodeId]) => Boolean(episodeId),
+        );
 
-        // For animekai: extract iframe servers from API response
-        // For kickassanime: create BOTH m3u8 and iframe versions of servers
-        // For animepahe: treat servers as embedded iframes when sources are empty
-        let serverEntriesFromResponse: Array<{ name: string; url: string; type: string }> = [];
-        
-        if (Array.isArray(response?.servers)) {
-          const filtered = response.servers.filter((server: any) => {
-            if (isAnimekai) {
-              // Animekai: filter by language
-              return server.type === language;
+        const aggregatedEntries: Array<{
+          key: string;
+          provider: string;
+          name: string;
+          url: string;
+          type: string;
+        }> = [];
+
+        await Promise.all(
+          providerEntries.map(async ([provider, episodeId]) => {
+            try {
+              const response = await fetchAnimeStreamingLinks(
+                episodeId,
+                provider,
+                undefined,
+                false,
+              );
+
+              const isAnimekai = provider === 'animekai';
+              const isKickassanime = provider === 'kickassanime';
+              const isAnimepahe = provider === 'animepahe';
+
+              if (Array.isArray(response?.servers)) {
+                const filtered = response.servers.filter((server: any) => {
+                  if (isAnimekai) {
+                    return server.type === language;
+                  }
+                  return true;
+                });
+
+                const providerEntries = filtered.flatMap((server: any, index: number) => {
+                  const serverName = server?.name || '';
+                  const serverUrl = server?.url || '';
+                  if (!serverName || !serverUrl) return [];
+
+                  if (isKickassanime) {
+                    return [
+                      {
+                        key: buildServerKey(provider, serverName, false),
+                        provider,
+                        name: serverName,
+                        url: serverUrl,
+                        type: 'hls',
+                      },
+                      {
+                        key: buildServerKey(provider, serverName, true),
+                        provider,
+                        name: serverName,
+                        url: buildKickassanimeIframeUrl(serverUrl),
+                        type: 'iframe',
+                      },
+                    ];
+                  }
+
+                  if (isAnimepahe) {
+                    return [
+                      {
+                        key: buildServerKey(provider, serverName, true),
+                        provider,
+                        name: serverName,
+                        url: serverUrl,
+                        type: 'iframe',
+                      },
+                    ];
+                  }
+
+                  if (isAnimekai) {
+                    const animekaiServerName = `Megaup ${serverName}`;
+                    const uniqueServerKey = `${buildServerKey(provider, animekaiServerName, false)}__${index}`;
+                    return [
+                      {
+                        key: uniqueServerKey,
+                        provider,
+                        name: animekaiServerName,
+                        url: serverUrl,
+                        type: 'hls',
+                      },
+                    ];
+                  }
+
+                  return [
+                    {
+                      key: buildServerKey(provider, serverName, isAnimekai),
+                      provider,
+                      name: serverName,
+                      url: serverUrl,
+                      type: server?.type || 'iframe',
+                    },
+                  ];
+                });
+
+                aggregatedEntries.push(...providerEntries);
+              }
+            } catch (error) {
+              console.warn(`⚠️ Failed to fetch servers from ${provider}:`, error);
             }
-            return true;
-          });
+          }),
+        );
 
-          serverEntriesFromResponse = filtered.flatMap((server: any) => {
-            const serverName = server?.name || '';
-            const serverUrl = server?.url || '';
-
-            if (!serverName || !serverUrl) return [];
-
-            if (isKickassanime) {
-              // For kickassanime: create BOTH m3u8 and iframe versions
-              const entries = [
-                // Original M3U8 version (no EM badge)
-                {
-                  name: serverName,
-                  url: serverUrl,
-                  type: 'hls',
-                },
-                // Proxied iframe version (will get EM badge in UI)
-                {
-                  name: serverName,
-                  url: buildKickassanimeIframeUrl(serverUrl),
-                  type: 'iframe',
-                },
-              ];
-              return entries;
-            } else if (isAnimepahe) {
-              // For animepahe: treat servers as embedded iframes
-              return [{
-                name: serverName,
-                url: serverUrl,
-                type: 'iframe',
-              }];
-            } else {
-              // Animekai: just return as-is
-              return [{
-                name: serverName,
-                url: serverUrl,
-                type: server?.type || '',
-              }];
-            }
-          });
-        }
-
-        setServerEntries(serverEntriesFromResponse);
+        setServerEntries(aggregatedEntries);
 
         if (hasEmbeddedPlayer) {
-          // Always show Zen Sub/Dub when EMBEDDED_PLAYER_1 is configured, regardless of provider.
           setEmbeddedUrl(
             buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
           );
           setEmbeddedServerName(getEmbeddedServerName(language));
         }
 
-        let servers: string[] = [];
+        const availableServerKeys = aggregatedEntries.map((entry) => entry.key);
+        const embeddedKeys = aggregatedEntries
+          .filter((entry) => entry.type === 'iframe')
+          .map((entry) => entry.key);
 
-        if (isAnimekai && serverEntriesFromResponse.length > 0) {
-          // For animekai: show iframe servers only, because M3U8 sources are unreliable.
-          // Prefer the API-provided availableServers list, which preserves sub/dub labels.
-          const availableAnimekaiServers = Array.isArray(response?.availableServers)
-            ? response.availableServers
-            : [];
+        setEmbeddedServerKeys(new Set(['embedded', ...embeddedKeys]));
 
-          const iframeServerKeys = availableAnimekaiServers.length
-            ? availableAnimekaiServers
-            : serverEntriesFromResponse.map((s: any) => s.name);
-
-          // Do not expose animekai M3U8/HLS sources in the UI; they are not always reliable.
-          setAnimekaiHlsSources([]);
-          setAnimekaiSubtitles([]);
-
-          // Iframe servers are embedded; HLS servers are not
-          setEmbeddedServerKeys(new Set(['embedded', ...iframeServerKeys]));
-
-          servers = [...iframeServerKeys];
-          console.log('Animekai servers (iframe EM only):', servers);
-        } else if (isKickassanime && serverEntriesFromResponse.length > 0) {
-          // For kickassanime: show BOTH m3u8 and iframe (EM) versions with same display name
-          // Internal tracking uses suffixes, but they're hidden from display
-          const kickassanimeServers = serverEntriesFromResponse.map((s: any) => 
-            s.type === 'iframe' ? `${s.name}__EM` : s.name
-          );
-          
-          // Mark only the iframe versions as embedded
-          const iframeServerKeys = kickassanimeServers.filter((name: string) => name.endsWith('__EM'));
-          setEmbeddedServerKeys(new Set(['embedded', ...iframeServerKeys]));
-          
-          servers = [...kickassanimeServers];
-          console.log('Kickassanime servers (both M3U8 and EM):', servers);
-        } else if (isAnimepahe && serverEntriesFromResponse.length > 0) {
-          // For animepahe: treat servers as embedded iframes
-          // If sources are available too, show both embedded (EM) and m3u8 versions
-          const availableAnimepaheServers = Array.isArray(response?.availableServers)
-            ? response.availableServers
-            : serverEntriesFromResponse.map((s: any) => s.name);
-
-          let allServers: string[] = [];
-          const hasSources = response?.sources && response.sources.length > 0;
-
-          if (hasSources) {
-            // Create both m3u8 and embedded versions similar to kickassanime
-            allServers = availableAnimepaheServers.flatMap((serverName: string) => [
-              serverName, // M3U8 version
-              `${serverName}__EM`, // Embedded version
-            ]);
-            const iframeServerKeys = allServers.filter((name: string) => name.endsWith('__EM'));
-            setEmbeddedServerKeys(new Set(['embedded', ...iframeServerKeys]));
-          } else {
-            // Only embedded servers available (no m3u8 sources)
-            allServers = availableAnimepaheServers;
-            setEmbeddedServerKeys(new Set(['embedded', ...availableAnimepaheServers]));
-          }
-
-          servers = allServers;
-          console.log('Animepahe servers:', hasSources ? '(both M3U8 and EM)' : '(embedded EM only)', servers);
-        } else if (response?.availableServers?.length > 0) {
-          // For kickassanime: expose the available m3u8 server names directly.
-          // These are the real provider names like vidstreamz, catstream, etc.
-          servers = response.availableServers;
-        } else if (response?.sources?.length > 0) {
-          // If the API returned sources but did not list servers, fall back
-          // to the synthetic 'direct' option so the player still tries to load.
-          servers = ['direct'];
-        } else if (serverEntriesFromResponse.length > 0) {
-          // Fallback: provider has server entries but no sources/availableServers list.
-          // Use 'direct' so the HLS player attempts a default fetch.
-          servers = ['direct'];
-        }
-
+        const servers = availableServerKeys.length > 0 ? availableServerKeys : ['direct'];
         console.log('Available servers:', servers);
         setAvailableServers(servers);
       } catch (error) {
@@ -1003,7 +940,7 @@ const Watch: React.FC = () => {
     };
 
     fetchAvailableServers();
-  }, [currentEpisode.id, animeId, language]);
+  }, [currentEpisode.id, animeId, currentEpisode.providerEpisodeIds, language]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1151,6 +1088,7 @@ const Watch: React.FC = () => {
                         ? animekaiSubtitles
                         : undefined
                     }
+                    providerEpisodeIds={currentEpisode.providerEpisodeIds}
                   />
                 )}
               </VideoPlayerContainer>

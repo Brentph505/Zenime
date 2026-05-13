@@ -16,7 +16,6 @@ import {
   Anime,
   Manga,
   CardItem as AnimeCardItem,
-  useAuth,
 } from '../index';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 
@@ -863,9 +862,6 @@ const Info: React.FC = () => {
 
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
-
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
 
   const [provider, setProvider] = useState<Provider>(() => {
     if (queryType === 'MANGA') {

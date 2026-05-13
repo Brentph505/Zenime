@@ -8,7 +8,6 @@ import {
   fetchStudio,
   fetchStudioJikan,
   type JikanProducer,
-  useAuth,
 } from '../index';
 import type { Anime } from '../hooks/animeInterface';
 import { SkeletonStudio } from '../components/Skeletons/Skeletons';
@@ -330,9 +329,6 @@ const FILTER_TYPES: AnimeType[] = ['ALL', 'TV', 'MOVIE', 'ONA', 'OVA', 'TV_SHORT
 
 function Studio() {
   const { studioId } = useParams<{ studioId: string }>();
-
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
 
   const [data, setData] = useState<StudioData | null>(null);
   const [jikanData, setJikanData] = useState<JikanProducer | null>(null);
