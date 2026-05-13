@@ -21,6 +21,8 @@ import {
   fetchAnimeStreamingLinksProxied,
   useSettings,
 } from '../../../index';
+import { useAuth } from '../../../client/useAuth';
+import { saveWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
 import {
   DefaultAudioLayout,
   defaultLayoutIcons,
@@ -106,14 +108,12 @@ type PlayerProps = {
   sourceType?: string;
   embeddedUrl?: string;
   serverUrl?: string;
-  /** Set of server keys that should render as iframes (includes 'embedded' + animekai iframe servers) */
+  /** Set of server keys that should render as iframes (includes 'embedded' servers) */
   embeddedServerKeys?: Set<string>;
-  /** Direct M3U8 URL to use for animekai HLS servers (bypasses API fetch) */
+  /** Direct M3U8 URL to use for HLS servers (bypasses API fetch) */
   hlsDirectUrl?: string;
   /** Subtitles to inject when using hlsDirectUrl (animekai HLS playback) */
   externalSubtitles?: Array<{ url: string; lang: string }>;
-  /** Map of provider-specific episode IDs: { kickassanime: "ep-1", animepahe: "uuid/hash", animekai: "1" } */
-  providerEpisodeIds?: Record<string, string>;
 };
 
 type StreamingSource = {
@@ -160,7 +160,6 @@ export function Player({
   malId,
   animeId,
   updateDownloadLink,
-  providerEpisodeIds = {},
   onEpisodeEnd,
   onPrevEpisode,
   onNextEpisode,
@@ -172,6 +171,7 @@ export function Player({
   hlsDirectUrl,
   externalSubtitles,
 }: PlayerProps) {
+  const { isLoggedIn } = useAuth();
   const player = useRef<MediaPlayerInstance>(null);
   const [src, setSrc] = useState<PlayerSrc>('');
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
@@ -206,8 +206,7 @@ export function Player({
   // Determine whether to show the iframe player or the HLS player.
   const isEmbedded = embeddedServerKeys
     ? embeddedServerKeys.has(sourceType)
-    : sourceType === 'embedded' ||
-      (episodeProvider === 'animekai' && !!sourceType && sourceType !== '');
+    : sourceType === 'embedded';
 
   // Build the embedded URL, injecting autoplay=1 when the user has autoplay on
   const builtEmbeddedUrl = React.useMemo(() => {
@@ -215,18 +214,13 @@ export function Player({
     try {
       const u = new URL(embeddedUrl);
       if (autoPlay) {
-        if (episodeProvider === 'animekai') {
-          u.searchParams.set('autostart', 'true');
-        } else {
-          u.searchParams.set('autoplay', '1');
-        }
+        u.searchParams.set('autoplay', '1');
       }
-      
       return u.toString();
     } catch {
       return embeddedUrl;
     }
-  }, [embeddedUrl, autoPlay, episodeProvider]);
+  }, [embeddedUrl, autoPlay]);
 
   useEffect(() => {
     console.log('[Player] sourceType changed:', sourceType, '| isEmbedded:', isEmbedded);
@@ -683,39 +677,25 @@ export function Player({
     }
 
     try {
-      // Extract provider from server key if available (format: "provider:servername")
-      let provider = episodeProvider || 'kickassanime';
-      
-      if (sourceType && sourceType.includes(':')) {
-        const keyParts = sourceType.split(':');
-        provider = keyParts[0]; // e.g., "animepahe" from "animepahe:kwik__EM"
-      }
-      
-      // Use the provider-specific episode ID from providerEpisodeIds if available
-      const providerSpecificEpisodeId = providerEpisodeIds?.[provider] || episodeId;
-      
       const response: StreamingResponse =
         await fetchAnimeStreamingLinksProxied(
-          providerSpecificEpisodeId,
-          provider,
+          episodeId,
+          episodeProvider || 'kickassanime',
           serverParam,
           serverUrl,
         );
 
       if (response.sources && response.sources.length > 0) {
-        const isDubServer =
-          episodeProvider === 'animekai'
-            ? sourceType?.toLowerCase().includes('dub') ?? false
-            : undefined;
-
+        const isDubServer = sourceType?.toLowerCase().includes('dub')
+          ? true
+          : sourceType?.toLowerCase().includes('sub')
+          ? false
+          : undefined;
         const candidateSources = response.sources.filter(
-          (source: any) =>
+          (source: StreamingSource & { isDub?: boolean }) =>
             (source.isM3U8 || source.url?.endsWith('.m3u8')) &&
-            (isDubServer === undefined ||
-              (source as any).isDub === isDubServer),
+            (isDubServer === undefined || source.isDub === isDubServer),
         );
-
-        // Fall back to any M3U8 if the language-filtered list is empty.
         const m3u8Sources =
           candidateSources.length > 0
             ? candidateSources
@@ -753,6 +733,31 @@ export function Player({
     }
   } // ← closes fetchAndSetAnimeSource
 
+  const saveAniListProgress = async (episodeNumber: number) => {
+    const accessToken =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('accessToken')
+        : null;
+
+    if (!isLoggedIn || !accessToken || !malId || !settings.aniListSync) return;
+
+    try {
+      const malIdNum = parseInt(malId);
+      if (isNaN(malIdNum)) return;
+
+      const aniListId = await getAniListIdFromMalId(malIdNum);
+      if (!aniListId) {
+        console.warn('⚠️ [AniList] Could not find AniList ID for MAL ID:', malId);
+        return;
+      }
+
+      await saveWatchProgress(accessToken, aniListId, episodeNumber);
+      console.log('✅ [AniList] Progress saved for episode', episodeNumber);
+    } catch (error) {
+      console.error('❌ [AniList] Failed to save progress:', error);
+    }
+  };
+
   const toggleAutoPlay = () =>
     setSettings({ ...settings, autoPlay: !autoPlay });
   const toggleAutoNext = () =>
@@ -765,6 +770,12 @@ export function Player({
     try {
       player.current?.pause();
       await new Promise((resolve) => setTimeout(resolve, 200));
+
+      // Save progress to AniList if user is logged in
+      if (propEpisodeNumber) {
+        await saveAniListProgress(propEpisodeNumber);
+      }
+
       await onEpisodeEndRef.current();
     } catch (error) {
       console.error('Error moving to the next episode:', error);

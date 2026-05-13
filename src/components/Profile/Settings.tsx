@@ -12,6 +12,7 @@ interface Preferences {
   autoskipIntroOutro: string;
   autoPlay: string;
   autoNext: string;
+  aniListSync: string;
   defaultServers: string;
   restoreDefaultPreferences: string;
   clearContinueWatching: string;
@@ -111,6 +112,7 @@ export const Settings: React.FC = () => {
     autoskipIntroOutro: settings.autoSkip ? 'Enabled' : 'Disabled',
     autoPlay: settings.autoPlay ? 'Enabled' : 'Disabled',
     autoNext: settings.autoNext ? 'Enabled' : 'Disabled',
+    aniListSync: settings.aniListSync ? 'Enabled' : 'Disabled',
     defaultServers: 'Default',
     restoreDefaultPreferences: 'Restore',
     clearContinueWatching: 'Clear',
@@ -124,6 +126,7 @@ export const Settings: React.FC = () => {
       autoskipIntroOutro: settings.autoSkip ? 'Enabled' : 'Disabled',
       autoPlay: settings.autoPlay ? 'Enabled' : 'Disabled',
       autoNext: settings.autoNext ? 'Enabled' : 'Disabled',
+      aniListSync: settings.aniListSync ? 'Enabled' : 'Disabled',
     }));
   }, [settings]);
 
@@ -149,6 +152,8 @@ export const Settings: React.FC = () => {
         return ['Default', 'Vidstreaming', 'Gogo'];
       case 'autoNext':
         return ['Enabled', 'Disabled'];
+      case 'aniListSync':
+        return ['Enabled', 'Disabled'];
       default:
         return [];
     }
@@ -172,6 +177,9 @@ export const Settings: React.FC = () => {
         break;
       case 'autoNext':
         setSettings({ autoNext: value === 'Enabled' });
+        break;
+      case 'aniListSync':
+        setSettings({ aniListSync: value === 'Enabled' });
         break;
       case 'defaultLanguage':
         setSettings({ defaultLanguage: value });
@@ -253,6 +261,7 @@ export const Settings: React.FC = () => {
             'autoskipIntroOutro',
             'autoPlay',
             'autoNext',
+            'aniListSync',
           ].map((key) => (
             <TableRow key={key}>
               <TableCell>{formatPreferenceName(key)}</TableCell>

@@ -16,6 +16,7 @@ import {
   Anime,
   Manga,
   CardItem as AnimeCardItem,
+  useAuth,
 } from '../index';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 
@@ -53,7 +54,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe' | 'animekai';
+type AnimeProvider = 'kickassanime' | 'animepahe';
 type MangaProvider = 'mangahere' | 'mangapill';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -863,6 +864,9 @@ const Info: React.FC = () => {
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
 
+  // User authentication data
+  const { isLoggedIn, userData } = useAuth();
+
   const [provider, setProvider] = useState<Provider>(() => {
     if (queryType === 'MANGA') {
       return (queryProvider === 'mangapill' ? 'mangapill'
@@ -977,11 +981,9 @@ const Info: React.FC = () => {
 
       } else {
         // ── Anime fetch ──────────────────────────────────────────────────────
-        const candidates: AnimeProvider[] = provider === 'animekai'
-          ? ['animekai', 'animepahe', 'kickassanime']
-          : provider === 'animepahe'
-            ? ['animepahe', 'kickassanime', 'animekai']
-            : ['kickassanime', 'animepahe', 'animekai'];
+        const candidates: AnimeProvider[] = provider === 'animepahe'
+          ? ['animepahe', 'kickassanime']
+          : ['kickassanime', 'animepahe'];
 
         let loaded = false;
         let bestData: any = null; // best data found (even without episodes)
