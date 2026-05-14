@@ -111,19 +111,25 @@ function storeCache(data: UserData): void {
   } catch { /* storage unavailable */ }
 }
 
+function isProbablyUserData(value: unknown): value is UserData {
+  return !!value && typeof value === 'object' && (
+    'name' in value || 'avatar' in value || 'statistics' in value
+  );
+}
+
 function loadCache(): UserData | null {
   try {
     const raw = localStorage.getItem(KEYS.CACHE);
     if (!raw) return null;
     const p = JSON.parse(raw);
-    if (p?.data?.name) return p.data as UserData;      // new shape: {data, ts}
-    if (p?.name)       return p as UserData;           // legacy bare UserData
+    if (isProbablyUserData(p?.data)) return p.data as UserData;      // new shape: {data, ts}
+    if (isProbablyUserData(p))        return p as UserData;           // legacy bare UserData
     // Also support old key written by previous code
     const legacy = localStorage.getItem('userData');
     if (legacy) {
       const lp = JSON.parse(legacy);
-      if (lp?.data?.name) return lp.data as UserData;
-      if (lp?.name)       return lp as UserData;
+      if (isProbablyUserData(lp?.data)) return lp.data as UserData;
+      if (isProbablyUserData(lp))        return lp as UserData;
     }
     return null;
   } catch { return null; }
@@ -256,8 +262,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[Auth] Cache fresh, skipping validation');
       }
     } else {
-      // No cache — must validate before showing anything
+      // No cache — allow the app to render while validation runs.
       console.log('[Auth] No cache found, validating token…');
+      setAuthLoading(false);
       validateToken(token);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
