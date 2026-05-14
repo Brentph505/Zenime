@@ -43,8 +43,10 @@ const Callback = () => {
           // Dispatch custom events to notify auth listeners of token change
           window.dispatchEvent(new CustomEvent('authTokenReceived', { detail: { token: response.data.accessToken } }));
           window.dispatchEvent(new CustomEvent('authUpdate'));
-          // After setting the token, navigate to profile
-          navigate('/profile', { replace: true });
+          // Wait a bit for auth processing before navigating
+          setTimeout(() => {
+            navigate('/profile', { replace: true });
+          }, 500);
         })
         .catch((error) => {
           const errMsg = error.response?.data?.error || 'Error logging in :(';

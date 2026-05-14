@@ -83,15 +83,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }, 2000 * (retryCount + 1)); // Exponential backoff
       } else if (isTokenError || retryCount >= 3) {
         // Token is invalid or max retries reached
-        console.log('❌ [Auth] Token is invalid or max retries reached');
-        console.log('❌ [Auth] Clearing authentication state due to token error');
+        console.log('❌ [Auth] Token validation failed, but keeping cached data if available');
 
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('userData');
-        setIsLoggedIn(false);
-        setUserData(null);
-        setAuthLoading(false);
-        setIsValidatingToken(false);
+        const hasCachedData = loadUserData() !== null;
+        if (hasCachedData) {
+          console.log('📦 [Auth] Keeping cached user data despite token validation failure');
+          // Don't clear auth state if we have cached data
+          setAuthLoading(false);
+          setIsValidatingToken(false);
+        } else {
+          console.log('❌ [Auth] No cached data, clearing authentication');
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('userData');
+          setIsLoggedIn(false);
+          setUserData(null);
+          setAuthLoading(false);
+          setIsValidatingToken(false);
+        }
       } else {
         // Other error - retry once more
         console.log(`🔄 [Auth] Retrying token validation (attempt ${retryCount + 1})`);
@@ -137,13 +145,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsLoggedIn(true);
         setAuthLoading(false);
         console.log('📦 [Auth] Loaded cached user data:', cachedData.name);
-      } else {
-        console.log('📦 [Auth] No cached user data found');
-      }
 
-      // Validate token in background with a small delay to ensure stability
-      console.log('🔄 [Auth] Starting background token validation');
-      setTimeout(() => validateAndSetUserData(token), 100);
+        // Validate token in background only if it's been more than 5 minutes since last validation
+        const lastValidation = localStorage.getItem('lastTokenValidation');
+        const now = Date.now();
+        const shouldValidate = !lastValidation || (now - parseInt(lastValidation)) > 5 * 60 * 1000; // 5 minutes
+
+        if (shouldValidate) {
+          console.log('🔄 [Auth] Starting background token validation');
+          setTimeout(() => {
+            validateAndSetUserData(token).then(() => {
+              localStorage.setItem('lastTokenValidation', now.toString());
+            });
+          }, 1000); // Delay validation to not interfere with initial load
+        } else {
+          console.log('🔄 [Auth] Skipping token validation (recently validated)');
+        }
+      } else {
+        console.log('📦 [Auth] No cached user data found, validating token immediately');
+        // No cached data, validate token immediately
+        setTimeout(() => validateAndSetUserData(token), 100);
+      }
     } else {
       console.log('🔍 [Auth] No valid token found, user not logged in');
       setAuthLoading(false);
@@ -169,10 +191,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setAuthLoading(false);
       console.log('📦 [Auth] Synced cached user data from localStorage:', cachedData.name);
     } else {
+      console.log('📦 [Auth] No cached user data found during sync');
       setAuthLoading(true);
+      // Only validate if no cached data
+      setTimeout(() => validateAndSetUserData(storedToken as string), 100);
     }
-
-    setTimeout(() => validateAndSetUserData(storedToken as string), 100);
   };
 
   // Listen for token changes from OAuth callback and auth state updates
@@ -217,11 +240,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('userData');
+    localStorage.removeItem('lastTokenValidation');
     setIsLoggedIn(false);
     setUserData(null);
     setAuthLoading(false);
     window.dispatchEvent(new CustomEvent('authUpdate'));
-    window.location.href = '/profile';
+    // Delay navigation to allow authUpdate to be processed
+    setTimeout(() => {
+      window.location.href = '/profile';
+    }, 100);
   };
 
   // Prevent rendering of children if authentication status is unknown

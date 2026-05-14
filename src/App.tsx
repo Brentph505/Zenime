@@ -37,6 +37,7 @@ register();
 function App() {
   usePreserveScrollOnReload();
   const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
+  const deployPlatform = import.meta.env.VITE_DEPLOY_PLATFORM;
 
   useEffect(() => {
     if (measurementId) {
@@ -80,7 +81,7 @@ function App() {
           </ThemeProvider>
         </AuthProvider>
       </Router>
-      <Analytics />
+      {deployPlatform === 'VERCEL' && <Analytics />}
     </ApolloClientProvider>
   );
 }
