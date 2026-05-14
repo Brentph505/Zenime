@@ -84,19 +84,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else if (isTokenError || retryCount >= 3) {
         // Token is invalid or max retries reached
         console.log('❌ [Auth] Token is invalid or max retries reached');
+        console.log('❌ [Auth] Clearing authentication state due to token error');
 
-        // Only clear auth state if we don't have cached data
-        const hasCachedData = loadUserData() !== null;
-        if (!hasCachedData) {
-          console.log('❌ [Auth] No cached data, clearing authentication');
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('userData');
-          setIsLoggedIn(false);
-          setUserData(null);
-        } else {
-          console.log('📦 [Auth] Keeping cached data despite token validation failure');
-        }
-
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('userData');
+        setIsLoggedIn(false);
+        setUserData(null);
         setAuthLoading(false);
         setIsValidatingToken(false);
       } else {
@@ -142,6 +135,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (cachedData) {
         setUserData(cachedData);
         setIsLoggedIn(true);
+        setAuthLoading(false);
         console.log('📦 [Auth] Loaded cached user data:', cachedData.name);
       } else {
         console.log('📦 [Auth] No cached user data found');
@@ -156,7 +150,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Listen for token changes from OAuth callback
+  const syncAuthState = (token?: string) => {
+    const storedToken = token ?? localStorage.getItem('accessToken');
+    const isValidToken = storedToken && typeof storedToken === 'string' && storedToken.trim().length > 10;
+
+    if (!isValidToken) {
+      setIsLoggedIn(false);
+      setUserData(null);
+      setAuthLoading(false);
+      setIsValidatingToken(false);
+      return;
+    }
+
+    const cachedData = loadUserData();
+    if (cachedData) {
+      setUserData(cachedData);
+      setIsLoggedIn(true);
+      setAuthLoading(false);
+      console.log('📦 [Auth] Synced cached user data from localStorage:', cachedData.name);
+    } else {
+      setAuthLoading(true);
+    }
+
+    setTimeout(() => validateAndSetUserData(storedToken as string), 100);
+  };
+
+  // Listen for token changes from OAuth callback and auth state updates
   useEffect(() => {
     const handleTokenReceived = (event: Event) => {
       const customEvent = event as CustomEvent<{ token: string }>;
@@ -168,8 +187,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
+    const handleAuthUpdate = () => {
+      console.log('🔄 [Auth] authUpdate event received, syncing auth state from localStorage');
+      syncAuthState();
+    };
+
     window.addEventListener('authTokenReceived', handleTokenReceived);
-    return () => window.removeEventListener('authTokenReceived', handleTokenReceived);
+    window.addEventListener('authUpdate', handleAuthUpdate);
+
+    return () => {
+      window.removeEventListener('authTokenReceived', handleTokenReceived);
+      window.removeEventListener('authUpdate', handleAuthUpdate);
+    };
   }, []);
 
   const login = async () => {
@@ -191,8 +220,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setIsLoggedIn(false);
     setUserData(null);
     setAuthLoading(false);
-    window.location.href = '/profile';
     window.dispatchEvent(new CustomEvent('authUpdate'));
+    window.location.href = '/profile';
   };
 
   // Prevent rendering of children if authentication status is unknown

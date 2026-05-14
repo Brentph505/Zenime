@@ -40,9 +40,10 @@ const Callback = () => {
         .then((response) => {
           // Store the access token in localStorage
           localStorage.setItem('accessToken', response.data.accessToken);
-          // Dispatch a custom event to notify AuthProvider of token change
+          // Dispatch custom events to notify auth listeners of token change
           window.dispatchEvent(new CustomEvent('authTokenReceived', { detail: { token: response.data.accessToken } }));
-          // After setting the token, navigate and force a refresh
+          window.dispatchEvent(new CustomEvent('authUpdate'));
+          // After setting the token, navigate to profile
           navigate('/profile', { replace: true });
         })
         .catch((error) => {

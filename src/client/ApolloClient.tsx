@@ -63,12 +63,16 @@ function login() {
     });
 }
 
-function logout() {
-  localStorage.removeItem('accessToken');
+function clearAuthState() {
   isLoggedInVar(false);
   userDataVar(null);
-  window.location.href = '/profile'; // Adjust as necessary
+}
+
+function logout() {
+  localStorage.removeItem('accessToken');
+  clearAuthState();
   window.dispatchEvent(new CustomEvent('authUpdate'));
+  window.location.href = '/profile'; // Adjust as necessary
 }
 
 function handleAuthUpdate() {
@@ -81,11 +85,11 @@ function handleAuthUpdate() {
       })
       .catch((err) => {
         console.error('Failed to fetch user data:', err);
-        logout(); // Ensures clean state on failure
+        localStorage.removeItem('accessToken');
+        clearAuthState();
       });
   } else {
-    isLoggedInVar(false);
-    userDataVar(null);
+    clearAuthState();
   }
 }
 
