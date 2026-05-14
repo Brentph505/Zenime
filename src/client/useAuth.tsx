@@ -89,18 +89,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setTimeout(() => {
           validateAndSetUserData(token, retryCount + 1);
         }, 2000 * (retryCount + 1)); // Exponential backoff
-      } else if (isTokenError || retryCount >= 3) {
-        // Token is invalid or max retries reached
-        console.log('❌ [Auth] Token validation failed, but keeping cached data if available');
+      } else if (!isTokenError && retryCount < 3) {
+        // Unknown error - retry once more before giving up
+        console.log(`🔄 [Auth] Retrying token validation (attempt ${retryCount + 1})`);
+        setTimeout(() => {
+          validateAndSetUserData(token, retryCount + 1);
+        }, 1000);
+      } else if (isTokenError) {
+        console.log('❌ [Auth] Token invalid according to AniList response');
 
         const hasCachedData = loadUserData() !== null;
         if (hasCachedData) {
-          console.log('📦 [Auth] Keeping cached user data despite token validation failure');
-          // Don't clear auth state if we have cached data
+          console.log('📦 [Auth] Keeping cached user data despite invalid token');
           setAuthLoading(false);
           setIsValidatingToken(false);
         } else {
-          console.log('❌ [Auth] No cached data, clearing authentication');
+          console.log('❌ [Auth] No cached data, removing invalid access token');
           localStorage.removeItem('accessToken');
           localStorage.removeItem('userData');
           setIsLoggedIn(false);
@@ -109,11 +113,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setIsValidatingToken(false);
         }
       } else {
-        // Other error - retry once more
-        console.log(`🔄 [Auth] Retrying token validation (attempt ${retryCount + 1})`);
-        setTimeout(() => {
-          validateAndSetUserData(token, retryCount + 1);
-        }, 1000);
+        console.log('⚠️ [Auth] Token validation failed after retries, keeping access token for now');
+        const hasCachedData = loadUserData() !== null;
+        if (!hasCachedData) {
+          setIsLoggedIn(false);
+          setUserData(null);
+        }
+        setAuthLoading(false);
+        setIsValidatingToken(false);
       }
     } finally {
       // Only set validating to false if we're not retrying
@@ -142,7 +149,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     console.log('🔍 [Auth] Token value (first 20 chars):', token ? token.substring(0, 20) + '...' : 'null');
 
     // More robust token validation
-    const isValidToken = token && typeof token === 'string' && token.trim().length > 10;
+    const isValidToken =
+      token &&
+      typeof token === 'string' &&
+      token.trim().length > 10 &&
+      token.trim() !== 'undefined' &&
+      token.trim() !== 'null';
     console.log('🔍 [Auth] Token is valid:', isValidToken);
 
     if (isValidToken) {
