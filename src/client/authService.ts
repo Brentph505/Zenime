@@ -517,3 +517,71 @@ export async function saveWatchProgress(
 export async function getAniListIdFromMalId(malId: number): Promise<number | null> {
   return malIdToAniListId(malId);
 }
+
+// ─── Full-card anime list fetch (used by WatchingAnilist) ────────────────────
+
+export interface AnimeListEntry {
+  id: number;
+  progress: number;
+  score: number;
+  status: MediaListStatus;
+  media: {
+    id: number;
+    format: string;
+    status: string;
+    episodes: number | null;
+    averageScore: number | null;
+    startDate: { year: number | null; month: number | null; day: number | null };
+    title: { romaji: string; english: string | null };
+    coverImage: { large: string; color: string | null };
+  };
+}
+
+/**
+ * Fetch a user's anime list for a given status with full card-ready fields.
+ * Does NOT require an auth token — AniList public lists are readable without one.
+ */
+export async function fetchUserAnimeList(
+  username: string,
+  status: MediaListStatus,
+): Promise<AnimeListEntry[]> {
+  const QUERY = `
+    query GetUserAnimeList($username: String!, $status: MediaListStatus!) {
+      MediaListCollection(
+        userName: $username
+        type: ANIME
+        status: $status
+        sort: UPDATED_TIME_DESC
+      ) {
+        lists {
+          entries {
+            id progress score status
+            media {
+              id format status episodes averageScore
+              startDate { year month day }
+              title     { romaji english }
+              coverImage { large color }
+            }
+          }
+        }
+      }
+    }
+  `;
+
+  const res = await fetch('https://graphql.anilist.co', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: QUERY, variables: { username, status } }),
+  });
+
+  if (!res.ok) throw new Error(`AniList request failed: ${res.status}`);
+  const json = await res.json();
+
+  if (json.errors?.length) {
+    throw new Error(json.errors.map((e: { message: string }) => e.message).join(', '));
+  }
+
+  return json.data?.MediaListCollection?.lists?.flatMap(
+    (l: { entries: AnimeListEntry[] }) => l.entries,
+  ) ?? [];
+}
