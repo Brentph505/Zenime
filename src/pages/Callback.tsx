@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import styled from 'styled-components';
+import { fetchUserData } from '../client/authService';
 
 const Message = styled.div`
   text-align: center;
@@ -37,11 +38,22 @@ const Callback = () => {
     if (code) {
       axios
         .post(apiEndpoint, { code })
-        .then((response) => {
+        .then(async (response) => {
+          const accessToken = response.data.accessToken;
           // Store the access token in localStorage
-          localStorage.setItem('accessToken', response.data.accessToken);
+          localStorage.setItem('accessToken', accessToken);
+
+          try {
+            const data = await fetchUserData(accessToken);
+            localStorage.setItem('userData', JSON.stringify({ data, timestamp: Date.now() }));
+            localStorage.setItem('lastTokenValidation', Date.now().toString());
+            console.log('✅ [Callback] Cached user data after token exchange:', data.name);
+          } catch (fetchError) {
+            console.warn('⚠️ [Callback] Could not fetch user data immediately after token exchange:', fetchError);
+          }
+
           // Dispatch custom events to notify auth listeners of token change
-          window.dispatchEvent(new CustomEvent('authTokenReceived', { detail: { token: response.data.accessToken } }));
+          window.dispatchEvent(new CustomEvent('authTokenReceived', { detail: { token: accessToken } }));
           window.dispatchEvent(new CustomEvent('authUpdate'));
           // Wait a bit for auth processing before navigating
           setTimeout(() => {

@@ -49,7 +49,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!stored) return null;
 
       const cacheData = JSON.parse(stored);
-      return cacheData.data;
+      if (cacheData && typeof cacheData === 'object') {
+        if ('data' in cacheData && cacheData.data) {
+          return cacheData.data;
+        }
+        if ('name' in cacheData || 'id' in cacheData) {
+          return cacheData as UserData;
+        }
+      }
+      return null;
     } catch (err) {
       console.warn('Failed to load user data from localStorage:', err);
       return null;
@@ -164,7 +172,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } else {
         console.log('📦 [Auth] No cached user data found, validating token immediately');
         // No cached data, validate token immediately
-        setTimeout(() => validateAndSetUserData(token), 100);
+        setTimeout(() => {
+          validateAndSetUserData(token).then(() => {
+            localStorage.setItem('lastTokenValidation', Date.now().toString());
+          });
+        }, 100);
       }
     } else {
       console.log('🔍 [Auth] No valid token found, user not logged in');
