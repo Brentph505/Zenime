@@ -3,16 +3,17 @@ import {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
 } from 'react';
 import axios from 'axios';
-import { UserData } from './userInfoTypes'; // Adjust the path as necessary
-import { fetchUserData, buildAuthUrl } from './authService'; // Adjust the path as necessary
+import { UserData } from './userInfoTypes';
+import { fetchUserData, buildAuthUrl } from './authService';
 
 type AuthContextType = {
   isLoggedIn: boolean;
   userData: UserData | null;
-  username: string | null; // This property must be handled
+  username: string | null;
   isValidatingToken: boolean;
   login: () => void;
   logout: () => void;
@@ -20,244 +21,215 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// ─── Cache helpers (module-level, no state) ───────────────────────────────────
+
+function storeUserData(data: UserData) {
+  try {
+    localStorage.setItem('userData', JSON.stringify({ data, timestamp: Date.now() }));
+  } catch (err) {
+    console.warn('[Auth] Failed to store user data:', err);
+  }
+}
+
+function loadUserData(): UserData | null {
+  try {
+    const stored = localStorage.getItem('userData');
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+    // Handle both { data: UserData, timestamp } and bare UserData shapes
+    if (parsed && typeof parsed === 'object') {
+      if ('data' in parsed && parsed.data && 'name' in parsed.data) {
+        return parsed.data as UserData;
+      }
+      if ('name' in parsed) {
+        return parsed as UserData;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn('[Auth] Failed to load user data:', err);
+    return null;
+  }
+}
+
+function isTokenValid(token: string | null): token is string {
+  return (
+    typeof token === 'string' &&
+    token.trim().length > 10 &&
+    token.trim() !== 'undefined' &&
+    token.trim() !== 'null'
+  );
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
+  // Start as true only if a token exists; avoids unnecessary loading flash
   const [authLoading, setAuthLoading] = useState(true);
   const [isValidatingToken, setIsValidatingToken] = useState(false);
 
-  // Calculate username from userData
-  const username = userData ? userData.name : null;
+  const username = userData?.name ?? null;
 
-  // Helper function to store user data in localStorage
-  const storeUserData = (data: UserData) => {
+  // Track whether the component is still mounted to avoid state updates after unmount
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
+  // ─── Token validation ───────────────────────────────────────────────────────
+
+  const validateToken = async (token: string, attempt = 0): Promise<void> => {
+    if (!isMounted.current) return;
+
+    setIsValidatingToken(true);
+
     try {
-      const cacheData = {
-        data,
-        timestamp: Date.now(),
-      };
-      localStorage.setItem('userData', JSON.stringify(cacheData));
-    } catch (err) {
-      console.warn('Failed to store user data in localStorage:', err);
-    }
-  };
-
-  // Helper function to load user data from localStorage
-  const loadUserData = (): UserData | null => {
-    try {
-      const stored = localStorage.getItem('userData');
-      if (!stored) return null;
-
-      const cacheData = JSON.parse(stored);
-      if (cacheData && typeof cacheData === 'object') {
-        if ('data' in cacheData && cacheData.data) {
-          return cacheData.data;
-        }
-        if ('name' in cacheData || 'id' in cacheData) {
-          return cacheData as UserData;
-        }
-      }
-      return null;
-    } catch (err) {
-      console.warn('Failed to load user data from localStorage:', err);
-      return null;
-    }
-  };
-
-  // Helper function to validate token and fetch user data
-  const validateAndSetUserData = async (token: string, retryCount = 0) => {
-    try {
-      setIsValidatingToken(true);
-      console.log(`🔄 [Auth] Validating token (attempt ${retryCount + 1})`);
+      console.log(`[Auth] Validating token (attempt ${attempt + 1})`);
       const data = await fetchUserData(token);
+
+      if (!isMounted.current) return;
+
       setUserData(data);
       setIsLoggedIn(true);
-      setAuthLoading(false);
-      setIsValidatingToken(false);
-      storeUserData(data); // Cache the user data
-      console.log('✅ [Auth] User data fetched successfully:', data.name);
+      storeUserData(data);
+      localStorage.setItem('lastTokenValidation', Date.now().toString());
+      console.log('[Auth] Token valid, user:', data.name);
     } catch (err: any) {
-      console.error('❌ [Auth] Failed to fetch user data:', err);
+      if (!isMounted.current) return;
 
-      // Check if it's a network error or token error
-      const isNetworkError = !err.response || err.code === 'NETWORK_ERROR';
-      const isTokenError = err.response?.status === 401 || err.response?.status === 403;
+      const status = err.response?.status;
+      const isAuthError = status === 401 || status === 403;
+      const isNetworkError = !err.response || err.code === 'ERR_NETWORK';
 
-      if (isNetworkError && retryCount < 3) {
-        // Network error - keep cached data and retry
-        console.log(`🔄 [Auth] Network error, retrying token validation (attempt ${retryCount + 1})`);
-        setTimeout(() => {
-          validateAndSetUserData(token, retryCount + 1);
-        }, 2000 * (retryCount + 1)); // Exponential backoff
-      } else if (!isTokenError && retryCount < 3) {
-        // Unknown error - retry once more before giving up
-        console.log(`🔄 [Auth] Retrying token validation (attempt ${retryCount + 1})`);
-        setTimeout(() => {
-          validateAndSetUserData(token, retryCount + 1);
-        }, 1000);
-      } else if (isTokenError) {
-        console.log('❌ [Auth] Token invalid according to AniList response');
+      console.warn('[Auth] Token validation error:', { status, isAuthError, isNetworkError });
 
-        const hasCachedData = loadUserData() !== null;
-        if (hasCachedData) {
-          console.log('📦 [Auth] Keeping cached user data despite invalid token');
-          setAuthLoading(false);
-          setIsValidatingToken(false);
+      if (!isAuthError && attempt < 2) {
+        // Transient / network error — retry with back-off
+        const delay = isNetworkError ? 3000 * (attempt + 1) : 1500;
+        console.log(`[Auth] Retrying in ${delay}ms…`);
+        setTimeout(() => validateToken(token, attempt + 1), delay);
+        return; // keep isValidatingToken true while retrying
+      }
+
+      if (isAuthError) {
+        // Token is definitively rejected by AniList
+        const cached = loadUserData();
+        if (cached) {
+          // Keep showing cached data — don't force logout on every network hiccup
+          console.log('[Auth] Token rejected but keeping cached user data');
+          // Leave isLoggedIn / userData as-is (already set from cache below)
         } else {
-          console.log('❌ [Auth] No cached data, removing invalid access token');
+          console.log('[Auth] Token rejected, no cache — clearing session');
           localStorage.removeItem('accessToken');
           localStorage.removeItem('userData');
-          setIsLoggedIn(false);
-          setUserData(null);
-          setAuthLoading(false);
-          setIsValidatingToken(false);
-        }
-      } else {
-        console.log('⚠️ [Auth] Token validation failed after retries, keeping access token for now');
-        const hasCachedData = loadUserData() !== null;
-        if (!hasCachedData) {
+          localStorage.removeItem('lastTokenValidation');
           setIsLoggedIn(false);
           setUserData(null);
         }
-        setAuthLoading(false);
-        setIsValidatingToken(false);
       }
+      // For non-auth errors after retries: keep whatever state we already have
     } finally {
-      // Only set validating to false if we're not retrying
-      if (retryCount >= 3) {
+      if (isMounted.current) {
         setIsValidatingToken(false);
-      }
-    }
-  };
-
-  // Initial auth check on mount
-  useEffect(() => {
-    // Check localStorage availability
-    try {
-      localStorage.setItem('test', 'test');
-      localStorage.removeItem('test');
-      console.log('✅ [Auth] localStorage is available');
-    } catch (e) {
-      console.error('❌ [Auth] localStorage is not available:', e);
-      setAuthLoading(false);
-      return;
-    }
-
-    const token = localStorage.getItem('accessToken');
-    console.log('🔍 [Auth] Initial auth check - token exists:', !!token);
-    console.log('🔍 [Auth] Token length:', token ? token.length : 0);
-    console.log('🔍 [Auth] Token value (first 20 chars):', token ? token.substring(0, 20) + '...' : 'null');
-
-    // More robust token validation
-    const isValidToken =
-      token &&
-      typeof token === 'string' &&
-      token.trim().length > 10 &&
-      token.trim() !== 'undefined' &&
-      token.trim() !== 'null';
-    console.log('🔍 [Auth] Token is valid:', isValidToken);
-
-    if (isValidToken) {
-      // Load cached user data immediately for better UX
-      const cachedData = loadUserData();
-      if (cachedData) {
-        setUserData(cachedData);
-        setIsLoggedIn(true);
         setAuthLoading(false);
-        console.log('📦 [Auth] Loaded cached user data:', cachedData.name);
-
-        // Validate token in background only if it's been more than 5 minutes since last validation
-        const lastValidation = localStorage.getItem('lastTokenValidation');
-        const now = Date.now();
-        const shouldValidate = !lastValidation || (now - parseInt(lastValidation)) > 5 * 60 * 1000; // 5 minutes
-
-        if (shouldValidate) {
-          console.log('🔄 [Auth] Starting background token validation');
-          setTimeout(() => {
-            validateAndSetUserData(token).then(() => {
-              localStorage.setItem('lastTokenValidation', now.toString());
-            });
-          }, 1000); // Delay validation to not interfere with initial load
-        } else {
-          console.log('🔄 [Auth] Skipping token validation (recently validated)');
-        }
-      } else {
-        console.log('📦 [Auth] No cached user data found, validating token immediately');
-        // No cached data, validate token immediately
-        setTimeout(() => {
-          validateAndSetUserData(token).then(() => {
-            localStorage.setItem('lastTokenValidation', Date.now().toString());
-          });
-        }, 100);
       }
-    } else {
-      console.log('🔍 [Auth] No valid token found, user not logged in');
-      setAuthLoading(false);
-    }
-  }, []);
-
-  const syncAuthState = (token?: string) => {
-    const storedToken = token ?? localStorage.getItem('accessToken');
-    const isValidToken = storedToken && typeof storedToken === 'string' && storedToken.trim().length > 10;
-
-    if (!isValidToken) {
-      setIsLoggedIn(false);
-      setUserData(null);
-      setAuthLoading(false);
-      setIsValidatingToken(false);
-      return;
-    }
-
-    const cachedData = loadUserData();
-    if (cachedData) {
-      setUserData(cachedData);
-      setIsLoggedIn(true);
-      setAuthLoading(false);
-      console.log('📦 [Auth] Synced cached user data from localStorage:', cachedData.name);
-    } else {
-      console.log('📦 [Auth] No cached user data found during sync');
-      setAuthLoading(true);
-      // Only validate if no cached data
-      setTimeout(() => validateAndSetUserData(storedToken as string), 100);
     }
   };
 
-  // Listen for token changes from OAuth callback and auth state updates
+  // ─── Initial auth check on mount ───────────────────────────────────────────
+
   useEffect(() => {
-    const handleTokenReceived = (event: Event) => {
-      const customEvent = event as CustomEvent<{ token: string }>;
-      const token = customEvent.detail?.token;
-      if (token) {
-        console.log('🔄 [Auth] Token received from OAuth, validating...');
-        setAuthLoading(true);
-        validateAndSetUserData(token);
+    const token = localStorage.getItem('accessToken');
+
+    if (!isTokenValid(token)) {
+      // No usable token → not logged in, done loading immediately
+      setAuthLoading(false);
+      return;
+    }
+
+    // Show cached data immediately so the UI isn't blank on refresh
+    const cached = loadUserData();
+    if (cached) {
+      setUserData(cached);
+      setIsLoggedIn(true);
+      console.log('[Auth] Restored from cache:', cached.name);
+
+      // Only re-validate if it's been more than 5 minutes
+      const last = localStorage.getItem('lastTokenValidation');
+      const stale = !last || Date.now() - parseInt(last) > 5 * 60 * 1000;
+
+      if (stale) {
+        console.log('[Auth] Cache stale, background-validating token…');
+        // Don't block render — setAuthLoading(false) happens after cache restore
+        setAuthLoading(false);
+        validateToken(token);
+      } else {
+        console.log('[Auth] Cache fresh, skipping validation');
+        setAuthLoading(false);
+      }
+    } else {
+      // No cache — must validate before showing anything
+      console.log('[Auth] No cache, validating token immediately…');
+      validateToken(token);
+      // authLoading will be set to false inside validateToken's finally block
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ─── Listen for OAuth callback events ──────────────────────────────────────
+
+  useEffect(() => {
+    const onTokenReceived = (e: Event) => {
+      const token = (e as CustomEvent<{ token: string }>).detail?.token;
+      if (token && isTokenValid(token)) {
+        console.log('[Auth] OAuth token received, validating…');
+        validateToken(token);
       }
     };
 
-    const handleAuthUpdate = () => {
-      console.log('🔄 [Auth] authUpdate event received, syncing auth state from localStorage');
-      syncAuthState();
+    const onAuthUpdate = () => {
+      console.log('[Auth] authUpdate event — re-syncing from localStorage');
+      const token = localStorage.getItem('accessToken');
+      if (!isTokenValid(token)) {
+        setIsLoggedIn(false);
+        setUserData(null);
+        setAuthLoading(false);
+        return;
+      }
+      const cached = loadUserData();
+      if (cached) {
+        setUserData(cached);
+        setIsLoggedIn(true);
+      } else {
+        validateToken(token!);
+      }
     };
 
-    window.addEventListener('authTokenReceived', handleTokenReceived);
-    window.addEventListener('authUpdate', handleAuthUpdate);
-
+    window.addEventListener('authTokenReceived', onTokenReceived);
+    window.addEventListener('authUpdate', onAuthUpdate);
     return () => {
-      window.removeEventListener('authTokenReceived', handleTokenReceived);
-      window.removeEventListener('authUpdate', handleAuthUpdate);
+      window.removeEventListener('authTokenReceived', onTokenReceived);
+      window.removeEventListener('authUpdate', onAuthUpdate);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ─── Login / Logout ─────────────────────────────────────────────────────────
 
   const login = async () => {
     try {
-      const PLATFORM = import.meta.env.VITE_DEPLOY_PLATFORM;
-      const csrfEndpoint = PLATFORM === 'VERCEL' ? '/api/get-csrf-token' : '/.netlify/functions/get-csrf-token';
-      const response = await axios.get(csrfEndpoint);
-      const csrfToken = response.data.csrfToken;
-      const authUrl = buildAuthUrl(csrfToken);
-      window.location.href = authUrl;
-    } catch (error) {
-      console.error('Error fetching CSRF token or building auth URL:', error);
+      const platform = import.meta.env.VITE_DEPLOY_PLATFORM;
+      const csrfEndpoint =
+        platform === 'VERCEL'
+          ? '/api/get-csrf-token'
+          : '/.netlify/functions/get-csrf-token';
+      const { data } = await axios.get(csrfEndpoint);
+      window.location.href = buildAuthUrl(data.csrfToken);
+    } catch (err) {
+      console.error('[Auth] Failed to start login flow:', err);
     }
   };
 
@@ -269,30 +241,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUserData(null);
     setAuthLoading(false);
     window.dispatchEvent(new CustomEvent('authUpdate'));
-    // Delay navigation to allow authUpdate to be processed
-    setTimeout(() => {
-      window.location.href = '/profile';
-    }, 100);
+    setTimeout(() => { window.location.href = '/profile'; }, 100);
   };
 
-  // Prevent rendering of children if authentication status is unknown
-  if (authLoading) {
-    return null; // Or you could return a loading spinner or a similar component
-  }
+  // Block render only during the very first auth check
+  if (authLoading) return null;
 
   return (
-    <AuthContext.Provider
-      value={{ isLoggedIn, userData, username, isValidatingToken, login, logout }}
-    >
+    <AuthContext.Provider value={{ isLoggedIn, userData, username, isValidatingToken, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
