@@ -1,9 +1,26 @@
 import axios from 'axios';
 
 export const handler = async (event: import('@netlify/functions').HandlerEvent) => {
+  // Handle CORS preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      },
+      body: '',
+    };
+  }
+
   if (event.httpMethod !== 'POST') {
     return {
       statusCode: 405,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
       body: 'Method Not Allowed',
     };
   }
@@ -13,6 +30,10 @@ export const handler = async (event: import('@netlify/functions').HandlerEvent) 
   if (!code) {
     return {
       statusCode: 400,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
       body: 'Authorization code is required',
     };
   }
@@ -38,7 +59,11 @@ export const handler = async (event: import('@netlify/functions').HandlerEvent) 
     if (response.data.access_token) {
       return {
         statusCode: 200,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({ accessToken: response.data.access_token }),
       };
     } else {
@@ -47,9 +72,14 @@ export const handler = async (event: import('@netlify/functions').HandlerEvent) 
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     const details = axios.isAxiosError(error) && error.response ? error.response.data : message;
+    console.error('Token exchange error:', details);
     return {
       statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type',
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         error: 'Failed to exchange token',
         details,

@@ -1,16 +1,38 @@
 import axios from 'axios';
 export const handler = async (event) => {
+    // Handle CORS preflight requests
+    if (event.httpMethod === 'OPTIONS') {
+        return {
+            statusCode: 200,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            },
+            body: '',
+        };
+    }
     if (event.httpMethod !== 'POST') {
-        return new Response('Method Not Allowed', {
-            status: 405,
-        });
+        return {
+            statusCode: 405,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+            },
+            body: 'Method Not Allowed',
+        };
     }
     const body = event.body ?? '{}';
     const { code } = JSON.parse(body);
     if (!code) {
-        return new Response('Authorization code is required', {
-            status: 400,
-        });
+        return {
+            statusCode: 400,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+            },
+            body: 'Authorization code is required',
+        };
     }
     const payload = {
         client_id: process.env.VITE_CLIENT_ID,
@@ -28,10 +50,15 @@ export const handler = async (event) => {
             },
         });
         if (response.data.access_token) {
-            return new Response(JSON.stringify({ accessToken: response.data.access_token }), {
-                status: 200,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            return {
+                statusCode: 200,
+                headers: {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ accessToken: response.data.access_token }),
+            };
         }
         else {
             throw new Error('Access token not found in the response');
@@ -40,12 +67,18 @@ export const handler = async (event) => {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const details = axios.isAxiosError(error) && error.response ? error.response.data : message;
-        return new Response(JSON.stringify({
-            error: 'Failed to exchange token',
-            details,
-        }), {
-            status: 500,
-            headers: { 'Content-Type': 'application/json' },
-        });
+        console.error('Token exchange error:', details);
+        return {
+            statusCode: 500,
+            headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                error: 'Failed to exchange token',
+                details,
+            }),
+        };
     }
 };
