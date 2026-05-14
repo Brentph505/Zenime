@@ -1,211 +1,289 @@
+/**
+ * useAuth.tsx
+ *
+ * Stable, feature-rich authentication context for AniList OAuth.
+ *
+ * Features:
+ *  - Instant UI restore from cache on every page refresh (no blank flash)
+ *  - Background token re-validation (non-blocking, 5-min window)
+ *  - Exponential back-off retries for transient network errors
+ *  - Full AniList list management: add, update, delete, toggle favourite
+ *  - Unread notification count, polled every 5 min while logged in
+ *  - Per-media progress tracking via updateProgress helper
+ *  - Safe unmount guard (no state updates after unmount)
+ *  - Single source of truth for all AniList mutations
+ */
+
 import {
   createContext,
   useContext,
   useState,
   useEffect,
   useRef,
+  useCallback,
   ReactNode,
 } from 'react';
-import axios from 'axios';
 import { UserData } from './userInfoTypes';
-import { fetchUserData, buildAuthUrl } from './authService';
+import {
+  fetchUserData,
+  buildAuthUrl,
+  saveMediaListEntry,
+  deleteMediaListEntry,
+  toggleFavourite,
+  fetchMediaListEntry,
+  fetchNotificationCount,
+  type MediaListStatus,
+  type SaveEntryInput,
+} from './authService';
 
-type AuthContextType = {
+// ─── Re-export so callers don't need to import authService directly ──────────
+export type { MediaListStatus, SaveEntryInput };
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface MediaListEntry {
+  id: number;
+  status: MediaListStatus;
+  score: number;
+  progress: number;
+  progressVolumes: number | null;
+  repeat: number;
+  private: boolean;
+  notes: string | null;
+  startedAt: { year: number | null; month: number | null; day: number | null };
+  completedAt: { year: number | null; month: number | null; day: number | null };
+  updatedAt: number;
+  media: {
+    id: number;
+    title: { romaji: string; english: string | null };
+    episodes: number | null;
+    chapters: number | null;
+    type: 'ANIME' | 'MANGA';
+  };
+}
+
+export interface AuthContextType {
+  // State
   isLoggedIn: boolean;
   userData: UserData | null;
   username: string | null;
   isValidatingToken: boolean;
+  unreadNotifications: number;
+
+  // Auth
   login: () => void;
   logout: () => void;
-};
+  refreshUserData: () => Promise<void>;
+
+  // List management
+  saveEntry: (input: SaveEntryInput) => Promise<MediaListEntry | null>;
+  deleteEntry: (listEntryId: number) => Promise<boolean>;
+  toggleFav: (params: {
+    animeId?: number;
+    mangaId?: number;
+    characterId?: number;
+    staffId?: number;
+    studioId?: number;
+  }) => Promise<boolean>;
+  getListEntry: (mediaId: number) => Promise<MediaListEntry | null>;
+  updateProgress: (
+    mediaId: number,
+    progress: number,
+    status?: MediaListStatus,
+  ) => Promise<MediaListEntry | null>;
+}
+
+// ─── Storage keys ─────────────────────────────────────────────────────────────
+
+const KEYS = {
+  TOKEN: 'accessToken',
+  CACHE: 'zenime_userData',
+  LAST_VALIDATED: 'zenime_lastValidation',
+} as const;
+
+const REVALIDATE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+// ─── Cache helpers ────────────────────────────────────────────────────────────
+
+function storeCache(data: UserData): void {
+  try {
+    localStorage.setItem(KEYS.CACHE, JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* storage unavailable */ }
+}
+
+function loadCache(): UserData | null {
+  try {
+    const raw = localStorage.getItem(KEYS.CACHE);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (p?.data?.name) return p.data as UserData;      // new shape: {data, ts}
+    if (p?.name)       return p as UserData;           // legacy bare UserData
+    // Also support old key written by previous code
+    const legacy = localStorage.getItem('userData');
+    if (legacy) {
+      const lp = JSON.parse(legacy);
+      if (lp?.data?.name) return lp.data as UserData;
+      if (lp?.name)       return lp as UserData;
+    }
+    return null;
+  } catch { return null; }
+}
+
+function clearSession(): void {
+  try {
+    [KEYS.TOKEN, KEYS.CACHE, KEYS.LAST_VALIDATED,
+     'userData', 'lastTokenValidation'].forEach(k => localStorage.removeItem(k));
+  } catch { /* ignore */ }
+}
+
+function getToken(): string | null {
+  try { return localStorage.getItem(KEYS.TOKEN); } catch { return null; }
+}
+
+function isValidToken(t: string | null): t is string {
+  return typeof t === 'string' && t.trim().length > 10 &&
+    t !== 'undefined' && t !== 'null';
+}
+
+function needsRevalidation(): boolean {
+  try {
+    const last = localStorage.getItem(KEYS.LAST_VALIDATED);
+    return !last || Date.now() - parseInt(last, 10) > REVALIDATE_INTERVAL_MS;
+  } catch { return true; }
+}
+
+function stampValidation(): void {
+  try { localStorage.setItem(KEYS.LAST_VALIDATED, Date.now().toString()); }
+  catch { /* ignore */ }
+}
+
+// ─── Context ──────────────────────────────────────────────────────────────────
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ─── Cache helpers (module-level, no state) ───────────────────────────────────
-
-function storeUserData(data: UserData) {
-  try {
-    localStorage.setItem('userData', JSON.stringify({ data, timestamp: Date.now() }));
-  } catch (err) {
-    console.warn('[Auth] Failed to store user data:', err);
-  }
-}
-
-function loadUserData(): UserData | null {
-  try {
-    const stored = localStorage.getItem('userData');
-    if (!stored) return null;
-    const parsed = JSON.parse(stored);
-    // Handle both { data: UserData, timestamp } and bare UserData shapes
-    if (parsed && typeof parsed === 'object') {
-      if ('data' in parsed && parsed.data && 'name' in parsed.data) {
-        return parsed.data as UserData;
-      }
-      if ('name' in parsed) {
-        return parsed as UserData;
-      }
-    }
-    return null;
-  } catch (err) {
-    console.warn('[Auth] Failed to load user data:', err);
-    return null;
-  }
-}
-
-function isTokenValid(token: string | null): token is string {
-  return (
-    typeof token === 'string' &&
-    token.trim().length > 10 &&
-    token.trim() !== 'undefined' &&
-    token.trim() !== 'null'
-  );
-}
-
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userData, setUserData] = useState<UserData | null>(null);
-  // Start as true only if a token exists; avoids unnecessary loading flash
-  const [authLoading, setAuthLoading] = useState(true);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [isLoggedIn, setIsLoggedIn]               = useState(false);
+  const [userData, setUserData]                   = useState<UserData | null>(null);
+  const [authLoading, setAuthLoading]             = useState(true);
   const [isValidatingToken, setIsValidatingToken] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
 
-  const username = userData?.name ?? null;
+  // Guard against state updates after unmount
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  // Track whether the component is still mounted to avoid state updates after unmount
-  const isMounted = useRef(true);
-  useEffect(() => {
-    isMounted.current = true;
-    return () => { isMounted.current = false; };
-  }, []);
+  // ── Token validation (with retry) ─────────────────────────────────────────
 
-  // ─── Token validation ───────────────────────────────────────────────────────
+  const validateToken = useCallback(async (token: string, attempt = 0): Promise<void> => {
+    if (!mounted.current) return;
 
-  const validateToken = async (token: string, attempt = 0): Promise<void> => {
-    if (!isMounted.current) return;
-
-    setIsValidatingToken(true);
+    if (attempt === 0) setIsValidatingToken(true);
 
     try {
-      console.log(`[Auth] Validating token (attempt ${attempt + 1})`);
       const data = await fetchUserData(token);
-
-      if (!isMounted.current) return;
+      if (!mounted.current) return;
 
       setUserData(data);
       setIsLoggedIn(true);
-      storeUserData(data);
-      localStorage.setItem('lastTokenValidation', Date.now().toString());
-      console.log('[Auth] Token valid, user:', data.name);
+      setIsValidatingToken(false);
+      setAuthLoading(false);
+      storeCache(data);
+      stampValidation();
+      console.log('[Auth] ✅ Token valid, user:', data.name);
+
     } catch (err: any) {
-      if (!isMounted.current) return;
+      if (!mounted.current) return;
 
-      const status = err.response?.status;
-      const isAuthError = status === 401 || status === 403;
-      const isNetworkError = !err.response || err.code === 'ERR_NETWORK';
+      const status: number | undefined = err?.response?.status;
+      const isHardAuthError = status === 401 || status === 403;
+      const isNetworkError  = !err?.response;
 
-      console.warn('[Auth] Token validation error:', { status, isAuthError, isNetworkError });
-
-      if (!isAuthError && attempt < 2) {
-        // Transient / network error — retry with back-off
-        const delay = isNetworkError ? 3000 * (attempt + 1) : 1500;
-        console.log(`[Auth] Retrying in ${delay}ms…`);
+      if (!isHardAuthError && attempt < 3) {
+        // Transient failure → exponential back-off retry
+        const delay = isNetworkError
+          ? Math.min(2000 * 2 ** attempt, 16_000)
+          : 1000;
+        console.warn(`[Auth] ⚠️ Validation failed (attempt ${attempt + 1}), retrying in ${delay}ms…`);
         setTimeout(() => validateToken(token, attempt + 1), delay);
         return; // keep isValidatingToken true while retrying
       }
 
-      if (isAuthError) {
-        // Token is definitively rejected by AniList
-        const cached = loadUserData();
-        if (cached) {
-          // Keep showing cached data — don't force logout on every network hiccup
-          console.log('[Auth] Token rejected but keeping cached user data');
-          // Leave isLoggedIn / userData as-is (already set from cache below)
-        } else {
-          console.log('[Auth] Token rejected, no cache — clearing session');
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('userData');
-          localStorage.removeItem('lastTokenValidation');
+      // Hard auth error or exhausted retries
+      if (isHardAuthError) {
+        const cached = loadCache();
+        if (!cached) {
+          console.warn('[Auth] ❌ Token rejected, no cache — clearing session');
+          clearSession();
           setIsLoggedIn(false);
           setUserData(null);
+        } else {
+          // Preserve user experience: keep showing cached profile even with a bad token.
+          // The user can still see their data; they'll need to re-login for mutations.
+          console.warn('[Auth] ⚠️ Token rejected by AniList, keeping cached data');
         }
+      } else {
+        console.error('[Auth] ❌ Validation exhausted after retries, preserving state');
       }
-      // For non-auth errors after retries: keep whatever state we already have
-    } finally {
-      if (isMounted.current) {
-        setIsValidatingToken(false);
-        setAuthLoading(false);
-      }
-    }
-  };
 
-  // ─── Initial auth check on mount ───────────────────────────────────────────
+      setIsValidatingToken(false);
+      setAuthLoading(false);
+    }
+  }, []);
+
+  // ── Initial auth check ────────────────────────────────────────────────────
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
+    const token = getToken();
 
-    if (!isTokenValid(token)) {
-      // No usable token → not logged in, done loading immediately
+    if (!isValidToken(token)) {
       setAuthLoading(false);
       return;
     }
 
-    // Show cached data immediately so the UI isn't blank on refresh
-    const cached = loadUserData();
+    const cached = loadCache();
     if (cached) {
+      // Instantly restore UI — no blank screen on refresh
       setUserData(cached);
       setIsLoggedIn(true);
-      console.log('[Auth] Restored from cache:', cached.name);
+      setAuthLoading(false);
 
-      // Only re-validate if it's been more than 5 minutes
-      const last = localStorage.getItem('lastTokenValidation');
-      const stale = !last || Date.now() - parseInt(last) > 5 * 60 * 1000;
-
-      if (stale) {
-        console.log('[Auth] Cache stale, background-validating token…');
-        // Don't block render — setAuthLoading(false) happens after cache restore
-        setAuthLoading(false);
+      if (needsRevalidation()) {
+        console.log('[Auth] Cache restored, re-validating token in background…');
         validateToken(token);
       } else {
         console.log('[Auth] Cache fresh, skipping validation');
-        setAuthLoading(false);
       }
     } else {
       // No cache — must validate before showing anything
-      console.log('[Auth] No cache, validating token immediately…');
+      console.log('[Auth] No cache found, validating token…');
       validateToken(token);
-      // authLoading will be set to false inside validateToken's finally block
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ─── Listen for OAuth callback events ──────────────────────────────────────
+  // ── OAuth event listeners ─────────────────────────────────────────────────
 
   useEffect(() => {
     const onTokenReceived = (e: Event) => {
       const token = (e as CustomEvent<{ token: string }>).detail?.token;
-      if (token && isTokenValid(token)) {
+      if (isValidToken(token)) {
         console.log('[Auth] OAuth token received, validating…');
+        setAuthLoading(true);
         validateToken(token);
       }
     };
 
     const onAuthUpdate = () => {
-      console.log('[Auth] authUpdate event — re-syncing from localStorage');
-      const token = localStorage.getItem('accessToken');
-      if (!isTokenValid(token)) {
-        setIsLoggedIn(false);
-        setUserData(null);
-        setAuthLoading(false);
+      const token = getToken();
+      if (!isValidToken(token)) {
+        setIsLoggedIn(false); setUserData(null); setAuthLoading(false);
         return;
       }
-      const cached = loadUserData();
-      if (cached) {
-        setUserData(cached);
-        setIsLoggedIn(true);
-      } else {
-        validateToken(token!);
-      }
+      const cached = loadCache();
+      if (cached) { setUserData(cached); setIsLoggedIn(true); }
+      else validateToken(token);
     };
 
     window.addEventListener('authTokenReceived', onTokenReceived);
@@ -214,50 +292,133 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       window.removeEventListener('authTokenReceived', onTokenReceived);
       window.removeEventListener('authUpdate', onAuthUpdate);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [validateToken]);
 
-  // ─── Login / Logout ─────────────────────────────────────────────────────────
+  // ── Notification polling ─────────────────────────────────────────────────
 
-  const login = async () => {
+  useEffect(() => {
+    if (!isLoggedIn) { setUnreadNotifications(0); return; }
+
+    const token = getToken();
+    if (!isValidToken(token)) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const count = await fetchNotificationCount(token);
+        if (!cancelled && mounted.current) setUnreadNotifications(count);
+      } catch { /* non-critical */ }
+    };
+
+    poll();
+    const id = setInterval(poll, REVALIDATE_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [isLoggedIn]);
+
+  // ── Auth actions ──────────────────────────────────────────────────────────
+
+  const login = useCallback(async () => {
     try {
       const platform = import.meta.env.VITE_DEPLOY_PLATFORM;
-      const csrfEndpoint =
-        platform === 'VERCEL'
-          ? '/api/get-csrf-token'
-          : '/.netlify/functions/get-csrf-token';
-      const { data } = await axios.get(csrfEndpoint);
-      window.location.href = buildAuthUrl(data.csrfToken);
+      const endpoint = platform === 'VERCEL'
+        ? '/api/get-csrf-token'
+        : '/.netlify/functions/get-csrf-token';
+      const res = await fetch(endpoint);
+      if (!res.ok) throw new Error(`CSRF fetch failed: ${res.status}`);
+      const { csrfToken } = await res.json();
+      window.location.href = buildAuthUrl(csrfToken);
     } catch (err) {
-      console.error('[Auth] Failed to start login flow:', err);
+      console.error('[Auth] login() failed:', err);
     }
-  };
+  }, []);
 
-  const logout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('userData');
-    localStorage.removeItem('lastTokenValidation');
+  const logout = useCallback(() => {
+    clearSession();
     setIsLoggedIn(false);
     setUserData(null);
-    setAuthLoading(false);
+    setUnreadNotifications(0);
     window.dispatchEvent(new CustomEvent('authUpdate'));
     setTimeout(() => { window.location.href = '/profile'; }, 100);
-  };
+  }, []);
 
-  // Block render only during the very first auth check
+  const refreshUserData = useCallback(async () => {
+    const token = getToken();
+    if (!isValidToken(token)) return;
+    try {
+      const data = await fetchUserData(token);
+      if (mounted.current) { setUserData(data); setIsLoggedIn(true); }
+      storeCache(data);
+      stampValidation();
+    } catch (err) {
+      console.error('[Auth] refreshUserData failed:', err);
+    }
+  }, []);
+
+  // ── List management ───────────────────────────────────────────────────────
+
+  const saveEntry = useCallback(async (
+    input: SaveEntryInput,
+  ): Promise<MediaListEntry | null> => {
+    const token = getToken();
+    if (!isValidToken(token)) { console.warn('[Auth] saveEntry: not authenticated'); return null; }
+    try { return await saveMediaListEntry(token, input); }
+    catch (err) { console.error('[Auth] saveEntry failed:', err); return null; }
+  }, []);
+
+  const deleteEntry = useCallback(async (listEntryId: number): Promise<boolean> => {
+    const token = getToken();
+    if (!isValidToken(token)) return false;
+    try { await deleteMediaListEntry(token, listEntryId); return true; }
+    catch (err) { console.error('[Auth] deleteEntry failed:', err); return false; }
+  }, []);
+
+  const toggleFav = useCallback(async (params: {
+    animeId?: number; mangaId?: number; characterId?: number;
+    staffId?: number; studioId?: number;
+  }): Promise<boolean> => {
+    const token = getToken();
+    if (!isValidToken(token)) return false;
+    try { await toggleFavourite(token, params); return true; }
+    catch (err) { console.error('[Auth] toggleFav failed:', err); return false; }
+  }, []);
+
+  const getListEntry = useCallback(async (
+    mediaId: number,
+  ): Promise<MediaListEntry | null> => {
+    const token = getToken();
+    if (!isValidToken(token)) return null;
+    try { return await fetchMediaListEntry(token, mediaId); }
+    catch (err) { console.error('[Auth] getListEntry failed:', err); return null; }
+  }, []);
+
+  const updateProgress = useCallback(async (
+    mediaId: number,
+    progress: number,
+    status?: MediaListStatus,
+  ): Promise<MediaListEntry | null> => {
+    return saveEntry({ mediaId, progress, ...(status ? { status } : {}) });
+  }, [saveEntry]);
+
+  // Block the tree only during the very first auth check
   if (authLoading) return null;
 
   return (
-    <AuthContext.Provider value={{ isLoggedIn, userData, username, isValidatingToken, login, logout }}>
+    <AuthContext.Provider value={{
+      isLoggedIn, userData, username: userData?.name ?? null,
+      isValidatingToken, unreadNotifications,
+      login, logout, refreshUserData,
+      saveEntry, deleteEntry, toggleFav, getListEntry, updateProgress,
+    }}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
-  return context;
-};
+export function useAuth(): AuthContextType {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  return ctx;
+}

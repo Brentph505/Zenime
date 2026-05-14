@@ -1,347 +1,519 @@
-// src/services/authService.ts
+/**
+ * authService.ts
+ *
+ * Pure service layer for all AniList API operations.
+ * No React — all functions are plain async utilities called by useAuth.
+ *
+ * Covers:
+ *  - OAuth flow helpers (CSRF, auth URL)
+ *  - User data fetching
+ *  - Full media list CRUD (save, update, delete)
+ *  - Favourite toggle (anime, manga, character, staff, studio)
+ *  - List entry query
+ *  - Notification count polling
+ *  - User anime/manga list queries (via Apollo hook helper)
+ *  - MAL ID → AniList ID conversion
+ *  - Watched/read progress sync
+ */
+
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import { UserData, MediaListStatus } from '../index';
-import { useQuery, gql } from '@apollo/client';
+import { UserData } from './userInfoTypes';
 
-const clientId = import.meta.env.VITE_CLIENT_ID || 'default_client_id';
-const clientSecret =
-  import.meta.env.VITE_CLIENT_SECRET || 'default_client_secret';
-const redirectUri =
-  import.meta.env.VITE_REDIRECT_URI || 'default_redirect_uri';
+// ─── Env ──────────────────────────────────────────────────────────────────────
 
-export const generateCsrfToken = (): string => {
-  return uuidv4();
-};
+const CLIENT_ID     = import.meta.env.VITE_CLIENT_ID     ?? '';
+const CLIENT_SECRET = import.meta.env.VITE_CLIENT_SECRET ?? '';
+const REDIRECT_URI  = import.meta.env.VITE_REDIRECT_URI  ?? '';
 
-export const buildAuthUrl = (csrfToken: string): string => {
-  const scope = encodeURIComponent('');
-  const state = encodeURIComponent(csrfToken);
-  const encodedRedirectUri = encodeURIComponent(redirectUri);
+const ANILIST_GQL = 'https://graphql.anilist.co';
 
-  return `https://anilist.co/api/v2/oauth/authorize?client_id=${clientId}&scope=${scope}&response_type=code&redirect_uri=${encodedRedirectUri}&state=${state}`;
-};
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export const getAccessToken = async (code: string): Promise<string> => {
-  const url = 'https://anilist.co/api/v2/oauth/token';
-  const payload = {
-    client_id: clientId,
-    client_secret: clientSecret,
-    code,
-    grant_type: 'authorization_code',
-    redirect_uri: redirectUri,
+/**
+ * Defined here (not imported from userInfoTypes) so that string literals
+ * assigned to variables of this type are always widened correctly by TS.
+ */
+export type MediaListStatus =
+  | 'CURRENT'
+  | 'PLANNING'
+  | 'COMPLETED'
+  | 'REPEATING'
+  | 'PAUSED'
+  | 'DROPPED';
+
+export interface SaveEntryInput {
+  /** AniList media ID (not MAL ID) */
+  mediaId: number;
+  status?: MediaListStatus;
+  score?: number;              // 0–100 (AniList default scoring)
+  scoreRaw?: number;           // if you prefer raw score
+  progress?: number;           // episodes watched / chapters read
+  progressVolumes?: number;    // manga volumes
+  repeat?: number;             // rewatch / reread count
+  priority?: number;
+  private?: boolean;
+  hiddenFromStatusLists?: boolean;
+  notes?: string;
+  startedAt?: { year?: number; month?: number; day?: number };
+  completedAt?: { year?: number; month?: number; day?: number };
+}
+
+export interface MediaListEntryResult {
+  id: number;
+  status: MediaListStatus;
+  score: number;
+  progress: number;
+  progressVolumes: number | null;
+  repeat: number;
+  private: boolean;
+  notes: string | null;
+  startedAt: { year: number | null; month: number | null; day: number | null };
+  completedAt: { year: number | null; month: number | null; day: number | null };
+  updatedAt: number;
+  media: {
+    id: number;
+    title: { romaji: string; english: string | null };
+    episodes: number | null;
+    chapters: number | null;
+    type: 'ANIME' | 'MANGA';
   };
+}
 
-  try {
-    const response = await axios.post(url, payload);
-    if (response.data.access_token) {
-      return response.data.access_token;
-    } else {
-      throw new Error('Access token not found in the response');
-    }
-  } catch (error) {
-    console.error('Error obtaining access token:', error);
-    throw new Error('Failed to obtain access token');
+export interface AniListUserFull extends UserData {
+  id: number;
+  about: string | null;
+  siteUrl: string;
+  donatorTier: number;
+  donatorBadge: string | null;
+  createdAt: number;
+  updatedAt: number;
+  options: {
+    titleLanguage: string;
+    displayAdultContent: boolean;
+    airingNotifications: boolean;
+    profileColor: string;
+  };
+  mediaListOptions: {
+    scoreFormat: string;
+    rowOrder: string;
+    animeList: { sectionOrder: string[]; splitCompletedSectionByFormat: boolean };
+    mangaList: { sectionOrder: string[]; splitCompletedSectionByFormat: boolean };
+  };
+  favourites: {
+    anime: { nodes: Array<{ id: number; title: { romaji: string; english: string | null } }> };
+    manga: { nodes: Array<{ id: number; title: { romaji: string; english: string | null } }> };
+    characters: { nodes: Array<{ id: number; name: { full: string } }> };
+    staff: { nodes: Array<{ id: number; name: { full: string } }> };
+    studios: { nodes: Array<{ id: number; name: string }> };
+  };
+}
+
+// ─── Low-level GQL helper ────────────────────────────────────────────────────
+
+async function gql<T = any>(
+  query: string,
+  variables: Record<string, unknown> = {},
+  token?: string,
+): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await axios.post<{ data: T; errors?: { message: string }[] }>(
+    ANILIST_GQL,
+    { query, variables },
+    { headers, timeout: 12_000 },
+  );
+
+  if (res.data.errors?.length) {
+    const msg = res.data.errors.map(e => e.message).join(', ');
+    throw new Error(`AniList GraphQL error: ${msg}`);
   }
-};
 
-export const fetchUserData = async (accessToken: string): Promise<UserData> => {
-  try {
-    console.log('🔍 [AuthService] Fetching user data with token:', accessToken ? accessToken.substring(0, 20) + '...' : 'null');
+  return res.data.data;
+}
 
-    // Test basic connectivity first
-    console.log('🔍 [AuthService] Testing AniList API connectivity...');
-    try {
-      await axios.post('https://graphql.anilist.co', {
-        query: `query { __typename }`
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        timeout: 5000
-      });
-      console.log('✅ [AuthService] AniList API is reachable');
-    } catch (connectError) {
-      const errorMessage = connectError instanceof Error ? connectError.message : 'Unknown connectivity error';
-      console.error('❌ [AuthService] Cannot reach AniList API:', errorMessage);
-      throw new Error('Network connectivity issue');
+// ─── OAuth helpers ────────────────────────────────────────────────────────────
+
+export function generateCsrfToken(): string {
+  return uuidv4();
+}
+
+export function buildAuthUrl(csrfToken: string): string {
+  const params = new URLSearchParams({
+    client_id:     CLIENT_ID,
+    scope:         '',
+    response_type: 'code',
+    redirect_uri:  REDIRECT_URI,
+    state:         csrfToken,
+  });
+  return `https://anilist.co/api/v2/oauth/authorize?${params}`;
+}
+
+export async function exchangeCodeForToken(code: string): Promise<string> {
+  const res = await axios.post<{ access_token: string }>(
+    'https://anilist.co/api/v2/oauth/token',
+    {
+      client_id:     CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      code,
+      grant_type:    'authorization_code',
+      redirect_uri:  REDIRECT_URI,
+    },
+  );
+  if (!res.data.access_token) throw new Error('No access_token in response');
+  return res.data.access_token;
+}
+
+// ─── User data ────────────────────────────────────────────────────────────────
+
+const VIEWER_QUERY = /* GraphQL */ `
+  query Viewer {
+    Viewer {
+      id
+      name
+      bannerImage
+      avatar { large medium }
+      statistics {
+        anime {
+          count
+          meanScore
+          standardDeviation
+          minutesWatched
+          episodesWatched
+          formats { format count }
+          statuses { status count }
+          scores   { score count }
+          genres   { genre count }
+        }
+        manga {
+          count
+          meanScore
+          standardDeviation
+          chaptersRead
+          volumesRead
+          formats { format count }
+          statuses { status count }
+          scores   { score count }
+          genres   { genre count }
+        }
+      }
     }
+  }
+`;
 
-    const response = await axios.post(
-      'https://graphql.anilist.co',
-      {
-        query: `
-          query {
-            Viewer {
-              id
-              name
-              bannerImage
-              avatar {
-                large
-              }
-              statistics {
-                anime {
-                  count
-                  episodesWatched
-                  meanScore
-                  minutesWatched
-                }
-              }
-            }
+export async function fetchUserData(token: string): Promise<UserData> {
+  const data = await gql<{ Viewer: UserData }>(VIEWER_QUERY, {}, token);
+  if (!data?.Viewer) throw new Error('No Viewer in response');
+  return data.Viewer;
+}
+
+/** Extended user profile including favourites and preferences */
+export async function fetchAniListUser(token: string): Promise<AniListUserFull> {
+  const FULL_VIEWER_QUERY = /* GraphQL */ `
+    query FullViewer {
+      Viewer {
+        id name bannerImage about siteUrl
+        donatorTier donatorBadge createdAt updatedAt
+        avatar { large medium }
+        options {
+          titleLanguage displayAdultContent
+          airingNotifications profileColor
+        }
+        mediaListOptions {
+          scoreFormat rowOrder
+          animeList { sectionOrder splitCompletedSectionByFormat }
+          mangaList { sectionOrder splitCompletedSectionByFormat }
+        }
+        statistics {
+          anime {
+            count meanScore standardDeviation minutesWatched episodesWatched
+            formats { format count } statuses { status count }
+            scores  { score count  } genres  { genre  count }
           }
-        `,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        timeout: 10000, // 10 second timeout
-      },
+          manga {
+            count meanScore standardDeviation chaptersRead volumesRead
+            formats { format count } statuses { status count }
+            scores  { score count  } genres  { genre  count }
+          }
+        }
+        favourites {
+          anime      { nodes { id title { romaji english } } }
+          manga      { nodes { id title { romaji english } } }
+          characters { nodes { id name  { full } } }
+          staff      { nodes { id name  { full } } }
+          studios    { nodes { id name } }
+        }
+      }
+    }
+  `;
+  const data = await gql<{ Viewer: AniListUserFull }>(FULL_VIEWER_QUERY, {}, token);
+  if (!data?.Viewer) throw new Error('No Viewer in response');
+  return data.Viewer;
+}
+
+// ─── Notification count ───────────────────────────────────────────────────────
+
+export async function fetchNotificationCount(token: string): Promise<number> {
+  const NOTIF_QUERY = /* GraphQL */ `
+    query NotifCount {
+      Viewer { unreadNotificationCount }
+    }
+  `;
+  try {
+    const data = await gql<{ Viewer: { unreadNotificationCount: number } }>(
+      NOTIF_QUERY, {}, token,
     );
-
-    console.log('✅ [AuthService] User data response received:', response.data?.data?.Viewer?.name);
-    return response.data.data.Viewer;
-  } catch (error: any) {
-    console.error('❌ [AuthService] Error fetching user data:', {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      message: error.message,
-      code: error.code
-    });
-    throw error;
+    return data?.Viewer?.unreadNotificationCount ?? 0;
+  } catch {
+    return 0;
   }
-};
+}
 
-const GET_USER_ANIME_LIST = gql`
-  query GetUserAnimeList($username: String!, $status: MediaListStatus!) {
-    MediaListCollection(
-      userName: $username
-      type: ANIME
+// ─── Media list entry query ───────────────────────────────────────────────────
+
+const ENTRY_FIELDS = /* GraphQL */ `
+  id status score progress progressVolumes repeat private notes updatedAt
+  startedAt   { year month day }
+  completedAt { year month day }
+  media {
+    id episodes chapters type
+    title { romaji english }
+  }
+`;
+
+export async function fetchMediaListEntry(
+  token: string,
+  mediaId: number,
+): Promise<MediaListEntryResult | null> {
+  const QUERY = /* GraphQL */ `
+    query GetEntry($mediaId: Int!) {
+      MediaList(mediaId: $mediaId) { ${ENTRY_FIELDS} }
+    }
+  `;
+  try {
+    const data = await gql<{ MediaList: MediaListEntryResult | null }>(
+      QUERY, { mediaId }, token,
+    );
+    return data?.MediaList ?? null;
+  } catch (err: any) {
+    // AniList returns a 404 GraphQL error when the entry doesn't exist
+    if (err?.message?.includes('Not Found') || err?.message?.includes('404')) return null;
+    throw err;
+  }
+}
+
+/** Fetch all entries in a user's anime or manga list with a given status */
+export async function fetchUserList(
+  token: string,
+  username: string,
+  type: 'ANIME' | 'MANGA',
+  status: MediaListStatus,
+): Promise<MediaListEntryResult[]> {
+  const QUERY = /* GraphQL */ `
+    query UserList($username: String!, $type: MediaType!, $status: MediaListStatus!) {
+      MediaListCollection(userName: $username, type: $type, status: $status, sort: UPDATED_TIME_DESC) {
+        lists {
+          entries { ${ENTRY_FIELDS} }
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    MediaListCollection: { lists: Array<{ entries: MediaListEntryResult[] }> }
+  }>(QUERY, { username, type, status }, token);
+
+  return data?.MediaListCollection?.lists?.flatMap(l => l.entries) ?? [];
+}
+
+// ─── Save / update media list entry ──────────────────────────────────────────
+
+const SAVE_MUTATION = /* GraphQL */ `
+  mutation SaveEntry(
+    $mediaId: Int!
+    $status: MediaListStatus
+    $score: Float
+    $scoreRaw: Int
+    $progress: Int
+    $progressVolumes: Int
+    $repeat: Int
+    $priority: Int
+    $private: Boolean
+    $hiddenFromStatusLists: Boolean
+    $notes: String
+    $startedAt: FuzzyDateInput
+    $completedAt: FuzzyDateInput
+  ) {
+    SaveMediaListEntry(
+      mediaId: $mediaId
       status: $status
-      sort: UPDATED_TIME_DESC
+      score: $score
+      scoreRaw: $scoreRaw
+      progress: $progress
+      progressVolumes: $progressVolumes
+      repeat: $repeat
+      priority: $priority
+      private: $private
+      hiddenFromStatusLists: $hiddenFromStatusLists
+      notes: $notes
+      startedAt: $startedAt
+      completedAt: $completedAt
+    ) { ${ENTRY_FIELDS} }
+  }
+`;
+
+export async function saveMediaListEntry(
+  token: string,
+  input: SaveEntryInput,
+): Promise<MediaListEntryResult> {
+  const data = await gql<{ SaveMediaListEntry: MediaListEntryResult }>(
+    SAVE_MUTATION,
+    { ...input },
+    token,
+  );
+  if (!data?.SaveMediaListEntry) throw new Error('SaveMediaListEntry returned null');
+  return data.SaveMediaListEntry;
+}
+
+// ─── Delete media list entry ──────────────────────────────────────────────────
+
+export async function deleteMediaListEntry(
+  token: string,
+  listEntryId: number,
+): Promise<void> {
+  const MUTATION = /* GraphQL */ `
+    mutation DeleteEntry($id: Int!) {
+      DeleteMediaListEntry(id: $id) { deleted }
+    }
+  `;
+  await gql(MUTATION, { id: listEntryId }, token);
+}
+
+// ─── Toggle favourite ─────────────────────────────────────────────────────────
+
+export async function toggleFavourite(
+  token: string,
+  params: {
+    animeId?: number;
+    mangaId?: number;
+    characterId?: number;
+    staffId?: number;
+    studioId?: number;
+  },
+): Promise<void> {
+  const MUTATION = /* GraphQL */ `
+    mutation ToggleFav(
+      $animeId: Int
+      $mangaId: Int
+      $characterId: Int
+      $staffId: Int
+      $studioId: Int
     ) {
-      lists {
-        entries {
-          media {
-            id
-            format
-            title {
-              romaji
-              english
-            }
-            coverImage {
-              large
-              color
-            }
-            status
-            episodes
-            startDate {
-              year
-              month
-              day
-            }
-            averageScore
-            genres
-          }
-        }
+      ToggleFavourite(
+        animeId: $animeId
+        mangaId: $mangaId
+        characterId: $characterId
+        staffId: $staffId
+        studioId: $studioId
+      ) {
+        anime      { nodes { id } }
+        manga      { nodes { id } }
+        characters { nodes { id } }
+        staff      { nodes { id } }
+        studios    { nodes { id } }
       }
     }
-  }
-`;
+  `;
+  await gql(MUTATION, params, token);
+}
 
-// GraphQL mutations for updating watch progress
-const SAVE_MEDIA_LIST_ENTRY = `
-  mutation SaveMediaListEntry($mediaId: Int!, $progress: Int, $status: MediaListStatus) {
-    SaveMediaListEntry(mediaId: $mediaId, progress: $progress, status: $status) {
-      id
-      progress
-      status
-      media {
-        id
-        title {
-          romaji
-          english
-        }
-      }
-    }
-  }
-`;
+// ─── ID conversion ────────────────────────────────────────────────────────────
 
-const UPDATE_MEDIA_LIST_ENTRY = `
-  mutation UpdateMediaListEntry($id: Int!, $progress: Int, $status: MediaListStatus) {
-    UpdateMediaListEntry(id: $id, progress: $progress, status: $status) {
-      id
-      progress
-      status
-      media {
-        id
-        title {
-          romaji
-          english
-        }
-      }
-    }
-  }
-`;
-
-// Get user's media list entry for a specific anime
-export const getUserMediaListEntry = async (
-  accessToken: string,
-  mediaId: number
-): Promise<any> => {
+/** Convert a MyAnimeList ID to an AniList media ID. Returns null on failure. */
+export async function malIdToAniListId(malId: number): Promise<number | null> {
   try {
-    const response = await axios.post(
-      'https://graphql.anilist.co',
-      {
-        query: `
-          query GetMediaListEntry($mediaId: Int!) {
-            MediaList(mediaId: $mediaId) {
-              id
-              progress
-              status
-              media {
-                id
-                title {
-                  romaji
-                  english
-                }
-                episodes
-              }
-            }
-          }
-        `,
-        variables: { mediaId },
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-      },
+    const data = await gql<{ Media: { id: number } | null }>(
+      /* GraphQL */ `query MALtoAL($idMal: Int!) { Media(idMal: $idMal, type: ANIME) { id } }`,
+      { idMal: malId },
     );
-    return response.data.data.MediaList;
-  } catch (error) {
-    console.error('Error fetching media list entry:', error);
+    return data?.Media?.id ?? null;
+  } catch {
     return null;
   }
-};
+}
 
-// Save or update watch progress on AniList
-export const saveWatchProgress = async (
-  accessToken: string,
+// ─── Convenience: sync watch progress ────────────────────────────────────────
+
+/**
+ * Sync watch progress to AniList.
+ * Automatically sets status to CURRENT if it was PLANNING,
+ * and COMPLETED if progress reaches total episodes.
+ */
+export async function syncWatchProgress(
+  token: string,
   mediaId: number,
   progress: number,
-  status?: string
-): Promise<any> => {
+  totalEpisodes?: number | null,
+): Promise<MediaListEntryResult | null> {
   try {
-    // First check if user already has this anime in their list
-    const existingEntry = await getUserMediaListEntry(accessToken, mediaId);
+    // Fetch current entry to determine status
+    const existing = await fetchMediaListEntry(token, mediaId);
+    const currentStatus = existing?.status;
 
-    let mutation;
-    let variables;
-
-    if (existingEntry) {
-      // Update existing entry
-      mutation = UPDATE_MEDIA_LIST_ENTRY;
-      variables = {
-        id: existingEntry.id,
-        progress: progress,
-        status: status || existingEntry.status,
-      };
-    } else {
-      // Create new entry
-      mutation = SAVE_MEDIA_LIST_ENTRY;
-      variables = {
-        mediaId: mediaId,
-        progress: progress,
-        status: status || 'CURRENT',
-      };
+    let newStatus: MediaListStatus | undefined;
+    if (totalEpisodes && progress >= totalEpisodes) {
+      newStatus = 'COMPLETED';
+    } else if (!currentStatus || currentStatus === 'PLANNING') {
+      newStatus = 'CURRENT';
     }
 
-    const response = await axios.post(
-      'https://graphql.anilist.co',
-      {
-        query: mutation,
-        variables: variables,
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-      },
-    );
-
-    console.log('✅ [AniList] Watch progress saved:', {
+    return await saveMediaListEntry(token, {
       mediaId,
       progress,
-      status: variables.status,
+      ...(newStatus ? { status: newStatus } : {}),
     });
-
-    return response.data.data.SaveMediaListEntry || response.data.data.UpdateMediaListEntry;
-  } catch (error) {
-    console.error('❌ [AniList] Failed to save watch progress:', error);
-    throw new Error('Failed to save watch progress to AniList');
-  }
-};
-
-// Mark anime as completed on AniList
-export const markAnimeCompleted = async (
-  accessToken: string,
-  mediaId: number,
-  totalEpisodes: number
-): Promise<any> => {
-  try {
-    return await saveWatchProgress(accessToken, mediaId, totalEpisodes, 'COMPLETED');
-  } catch (error) {
-    console.error('❌ [AniList] Failed to mark anime as completed:', error);
-    throw error;
-  }
-};
-
-// Convert MAL ID to AniList ID
-export const getAniListIdFromMalId = async (malId: number): Promise<number | null> => {
-  try {
-    const response = await axios.post(
-      'https://graphql.anilist.co',
-      {
-        query: `
-          query GetAniListId($idMal: Int!) {
-            Media(idMal: $idMal, type: ANIME) {
-              id
-            }
-          }
-        `,
-        variables: { idMal: malId },
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-      },
-    );
-    return response.data.data.Media?.id || null;
-  } catch (error) {
-    console.error('❌ [AniList] Failed to get AniList ID from MAL ID:', error);
+  } catch (err) {
+    console.error('[authService] syncWatchProgress failed:', err);
     return null;
   }
-};
+}
 
-export const useUserAnimeList = (username: string, status: MediaListStatus) => {
-  const { data, loading, error } = useQuery(GET_USER_ANIME_LIST, {
-    variables: { username, status },
-    skip: !username || !status,
+/**
+ * Mark an anime as completed with all episodes watched.
+ */
+export async function markAnimeCompleted(
+  token: string,
+  mediaId: number,
+  totalEpisodes: number,
+): Promise<MediaListEntryResult | null> {
+  return saveMediaListEntry(token, {
+    mediaId,
+    progress: totalEpisodes,
+    status: 'COMPLETED',
   });
+}
 
-  return {
-    animeList: data?.MediaListCollection,
-    loading,
-    error,
-  };
-};
+// ─── Backward-compatible aliases ──────────────────────────────────────────────
+// The refactor renamed these functions. Aliases keep existing call sites working
+// without requiring changes across the codebase.
+
+/**
+ * @deprecated Use `syncWatchProgress` instead.
+ * Kept for backward compatibility with Player.tsx and other existing callers.
+ */
+export async function saveWatchProgress(
+  token: string,
+  mediaId: number,
+  progress: number,
+  totalEpisodes?: number | null,
+): Promise<MediaListEntryResult | null> {
+  return syncWatchProgress(token, mediaId, progress, totalEpisodes);
+}
+
+/**
+ * @deprecated Use `malIdToAniListId` instead.
+ * Kept for backward compatibility with Player.tsx and other existing callers.
+ */
+export async function getAniListIdFromMalId(malId: number): Promise<number | null> {
+  return malIdToAniListId(malId);
+}
