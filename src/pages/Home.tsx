@@ -259,7 +259,7 @@ const buildInitialLoading = (activeTab: string) => ({
 
 const Home = () => {
   // User authentication data
-  const { isLoggedIn, userData } = useAuth();
+  useAuth();
 
   const [itemsCount, setItemsCount] = useState(
     window.innerWidth > 500 ? 24 : 15,
