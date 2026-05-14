@@ -186,9 +186,17 @@ export function Player({
   const currentHlsUrlIndexRef = useRef<number>(0);
   const hlsRetryCountRef = useRef<number>(0);
   const retryTimerRef = useRef<number | null>(null);
+  const aniListProgressRef = useRef({ lastSavedProgress: 0, lastSavedTime: 0 });
+  const iframeProgressRef = useRef({ currentTime: 0, duration: 0 });
+  const saveAniListProgressRef = useRef<((episodeNumber: number) => Promise<void>) | null>(null);
   const episodeNumber = propEpisodeNumber
     ? String(propEpisodeNumber)
     : getEpisodeNumber(episodeId);
+
+  useEffect(() => {
+    aniListProgressRef.current = { lastSavedProgress: 0, lastSavedTime: 0 };
+  }, [episodeNumber]);
+
   const animeVideoTitle = animeTitle;
 
   const { settings, setSettings } = useSettings();
@@ -246,6 +254,8 @@ export function Player({
     const saveIframeProgress = (currentTime: number, duration: number) => {
       if (!episodeId || duration <= 0) return;
       const playbackPercentage = (currentTime / duration) * 100;
+      iframeProgressRef.current = { currentTime, duration };
+
       try {
         const all = JSON.parse(
           localStorage.getItem('all_episode_times') || '{}',
@@ -254,6 +264,29 @@ export function Player({
         localStorage.setItem('all_episode_times', JSON.stringify(all));
       } catch {
         // localStorage unavailable — ignore
+      }
+
+      if (settings.aniListSync && isLoggedIn && malId && propEpisodeNumber) {
+        const now = Date.now();
+        const minProgress = Math.min(
+          aniListProgressRef.current.lastSavedProgress + 15,
+          99,
+        );
+        if (
+          playbackPercentage >= minProgress &&
+          now - aniListProgressRef.current.lastSavedTime >= 60_000
+        ) {
+          aniListProgressRef.current.lastSavedProgress = playbackPercentage;
+          aniListProgressRef.current.lastSavedTime = now;
+          void saveAniListProgressRef.current?.(propEpisodeNumber);
+        }
+      }
+    };
+
+    const saveIframeProgressOnUnload = () => {
+      const { currentTime, duration } = iframeProgressRef.current;
+      if (duration > 0) {
+        saveIframeProgress(currentTime, duration);
       }
     };
 
@@ -306,6 +339,14 @@ export function Player({
         return;
       }
 
+      // ── Generic player progress fallback ───────────────────────────────────
+      if (
+        typeof data.currentTime === 'number' &&
+        typeof data.duration === 'number'
+      ) {
+        saveIframeProgress(data.currentTime, data.duration);
+      }
+
       // ── Generic fallback ──────────────────────────────────────────────────
       const isEnded =
         data === 'ended' ||
@@ -322,8 +363,15 @@ export function Player({
     };
 
     window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [isEmbedded, episodeId]);
+    window.addEventListener('pagehide', saveIframeProgressOnUnload);
+    window.addEventListener('beforeunload', saveIframeProgressOnUnload);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      window.removeEventListener('pagehide', saveIframeProgressOnUnload);
+      window.removeEventListener('beforeunload', saveIframeProgressOnUnload);
+    };
+  }, [isEmbedded, episodeId, settings, isLoggedIn, malId, propEpisodeNumber]);
 
   const prevIsEmbeddedRef = useRef<boolean>(isEmbedded);
 
@@ -518,6 +566,22 @@ export function Player({
         'all_episode_times',
         JSON.stringify(allPlaybackInfo),
       );
+
+      if (settings.aniListSync && isLoggedIn && malId && propEpisodeNumber) {
+        const now = Date.now();
+        const minProgress = Math.min(
+          aniListProgressRef.current.lastSavedProgress + 15,
+          99,
+        );
+        if (
+          playbackPercentage >= minProgress &&
+          now - aniListProgressRef.current.lastSavedTime >= 60_000
+        ) {
+          aniListProgressRef.current.lastSavedProgress = playbackPercentage;
+          aniListProgressRef.current.lastSavedTime = now;
+          void saveAniListProgressRef.current?.(propEpisodeNumber);
+        }
+      }
 
       if (autoSkip && skipTimes.length) {
         const skipInterval = skipTimes.find(
@@ -757,6 +821,10 @@ export function Player({
       console.error('❌ [AniList] Failed to save progress:', error);
     }
   };
+
+  useEffect(() => {
+    saveAniListProgressRef.current = saveAniListProgress;
+  }, [saveAniListProgress]);
 
   const toggleAutoPlay = () =>
     setSettings({ ...settings, autoPlay: !autoPlay });

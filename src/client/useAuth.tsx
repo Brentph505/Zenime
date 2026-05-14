@@ -49,14 +49,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!stored) return null;
 
       const cacheData = JSON.parse(stored);
-      // Check if cache is older than 24 hours
-      const isExpired = Date.now() - cacheData.timestamp > 24 * 60 * 60 * 1000;
-
-      if (isExpired) {
-        localStorage.removeItem('userData');
-        return null;
-      }
-
       return cacheData.data;
     } catch (err) {
       console.warn('Failed to load user data from localStorage:', err);

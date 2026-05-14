@@ -330,14 +330,34 @@ const Watch: React.FC = () => {
     );
   };
 
-  const updateWatchedEpisodes = (episode: Episode) => {
-    const key = LOCAL_STORAGE_KEYS.WATCHED_EPISODES + animeId;
-    const existing: Episode[] = JSON.parse(localStorage.getItem(key) || '[]');
-    if (!existing.some((ep) => ep.id === episode.id)) {
-      existing.push(episode);
-      localStorage.setItem(key, JSON.stringify(existing));
+  const updateWatchedEpisodes = useCallback(
+    (episode: Episode) => {
+      if (!animeId) return;
+
+      const globalKey = 'watched-episodes';
+      const allWatchedEpisodes: Record<string, Episode[]> = JSON.parse(
+        localStorage.getItem(globalKey) || '{}',
+      );
+      const animeWatchList = allWatchedEpisodes[animeId] || [];
+
+      if (!animeWatchList.some((ep) => ep.id === episode.id)) {
+        const updatedAnimeWatchList = [...animeWatchList, episode];
+        allWatchedEpisodes[animeId] = updatedAnimeWatchList;
+        localStorage.setItem(globalKey, JSON.stringify(allWatchedEpisodes));
+        localStorage.setItem(
+          `${LOCAL_STORAGE_KEYS.WATCHED_EPISODES}${animeId}`,
+          JSON.stringify(updatedAnimeWatchList),
+        );
+      }
+    },
+    [animeId],
+  );
+
+  useEffect(() => {
+    if (currentEpisode?.id && currentEpisode.id !== '0') {
+      updateWatchedEpisodes(currentEpisode);
     }
-  };
+  }, [currentEpisode, updateWatchedEpisodes]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // handleEpisodeSelect
