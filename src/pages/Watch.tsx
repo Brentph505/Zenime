@@ -252,6 +252,8 @@ const Watch: React.FC = () => {
   const [animeInfo, setAnimeInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [episodes, setEpisodes] = useState<WatchEpisode[]>([]);
+  const hasFetchedEpisodesRef = useRef(false);
+  const previousAnimeIdRef = useRef<string | undefined>(undefined);
 
   /**
    * currentEpisode always carries the full `providers` map so that
@@ -519,6 +521,14 @@ const Watch: React.FC = () => {
     let mounted = true;
     if (!animeId) return;
 
+    // If the anime changes, allow the next fetch to run.
+    if (previousAnimeIdRef.current !== animeId) {
+      previousAnimeIdRef.current = animeId;
+      hasFetchedEpisodesRef.current = false;
+    }
+
+    if (hasFetchedEpisodesRef.current && !languageChanged) return;
+
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -600,6 +610,7 @@ const Watch: React.FC = () => {
           setCurrentEpisode(targetEp);
           setLanguageChanged(false);
         }
+        hasFetchedEpisodesRef.current = true;
       } catch (err) {
         console.error('Failed to fetch episodes from multiple providers:', err);
       } finally {
@@ -609,7 +620,15 @@ const Watch: React.FC = () => {
 
     fetchData();
     return () => { mounted = false; };
-  }, [animeId, episodeNumber, navigate, language, languageChanged]);
+  }, [animeId, navigate, language, languageChanged]);
+
+  useEffect(() => {
+    if (!episodeNumber || episodes.length === 0) return;
+    const selected = episodes.find((ep) => String(ep.number) === episodeNumber);
+    if (selected && selected.id !== currentEpisode.id) {
+      setCurrentEpisode(selected);
+    }
+  }, [episodeNumber, episodes, currentEpisode.id]);
 
   // ── Background image ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -718,7 +737,11 @@ const Watch: React.FC = () => {
             url.includes('iframe') ||
             url.includes('kwik.cx') ||
             url.includes('flixcloud') ||
-            type === 'iframe'
+            type === 'iframe' ||
+            // ReAnime returns type:"sub" | "dub" for flixcloud servers.
+            // If the URL is flixcloud the check above already fires, but guard
+            // here too so any future provider using the same convention works.
+            ((type === 'sub' || type === 'dub') && url.includes('flixcloud'))
           );
         };
 
@@ -738,7 +761,9 @@ const Watch: React.FC = () => {
 
         // Process each provider's results
         serverResults.forEach(({ provider, servers, response }) => {
-          // Process embedded/iframe servers
+          // ── Standard server list (kickassanime, animepahe, …) ───────────────
+          // These entries may or may not carry a `.url` field.  We only keep
+          // entries that have a URL; the ones without are handled below.
           servers.forEach((server: any) => {
             const serverName = server?.name || '';
             const serverUrl = server?.url || '';
@@ -747,7 +772,49 @@ const Watch: React.FC = () => {
             addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded);
           });
 
-          // Process HLS sources if available
+          // ── ReAnime-format: response.servers with type "sub" | "dub" ────────
+          //
+          // ReAnime (and providers that embed flixcloud.cc) return full server
+          // objects directly in response.servers:
+          //   { name: "HD-1", url: "https://flixcloud.cc/e/…", type: "sub" }
+          //
+          // fetchServersFromMultipleProviders may surface these as `servers`
+          // above (in which case addServer's urlSet dedup makes this a no-op),
+          // OR it may only return availableServers (string names) and leave the
+          // full objects only in `response.servers`.  We always read from
+          // response.servers here so both cases are covered.
+          //
+          // Key behaviours:
+          //   1. Filter by current `language` — only keep the sub OR dub variant
+          //      that matches what the user selected.
+          //   2. Per-name dedup within this provider — avoids duplicating a
+          //      server whose URL was already added by the `servers` loop above.
+          if (response?.servers && Array.isArray(response.servers) && response.servers.length > 0) {
+            const seenProviderName = new Set<string>();
+
+            response.servers.forEach((srv: any) => {
+              const sName   = (srv?.name || '').trim();
+              const sUrl    = (srv?.url  || '').trim();
+              const sLang   = (srv?.type || '').toLowerCase(); // 'sub' | 'dub' | ''
+
+              if (!sName || !sUrl) return;
+
+              // Language filter: if the server declares sub/dub affinity,
+              // only keep the one that matches the current language setting.
+              const hasSublabel = sLang === 'sub' || sLang === 'dub';
+              if (hasSublabel && sLang !== language) return;
+
+              // Per-provider-name dedup (URL-level dedup is inside addServer).
+              const nameKey = `${provider}:${sName}`;
+              if (seenProviderName.has(nameKey)) return;
+              seenProviderName.add(nameKey);
+
+              const isEmb = isEmbeddedServer(sUrl, sLang);
+              addServer(sName, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb);
+            });
+          }
+
+          // ── HLS sources (direct .m3u8 streams) ──────────────────────────────
           if (response?.sources && Array.isArray(response.sources)) {
             let subCount = 0;
             let dubCount = 0;
