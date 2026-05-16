@@ -12,6 +12,18 @@
  *  - Per-media progress tracking via updateProgress helper
  *  - Safe unmount guard (no state updates after unmount)
  *  - Single source of truth for all AniList mutations
+ *
+ * ── BUG FIX (refresh wipes login) ────────────────────────────────────────────
+ *  Previously, React state was initialised to `isLoggedIn: false` and
+ *  `userData: null`, then a useEffect read localStorage and corrected it.
+ *  Between the first render and the effect, the Provider briefly returned
+ *  `null` (via `if (authLoading) return null`), unmounting the entire child
+ *  tree and flickering a logged-out state.
+ *
+ *  Fix: use React lazy-initialiser functions so `isLoggedIn` and `userData`
+ *  are read from localStorage SYNCHRONOUSLY before the first render.
+ *  `authLoading` and the `return null` guard have been removed entirely —
+ *  the Provider always renders children with the correct initial state.
  */
 
 import {
@@ -170,9 +182,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn]               = useState(false);
-  const [userData, setUserData]                   = useState<UserData | null>(null);
-  const [authLoading, setAuthLoading]             = useState(true);
+  /**
+   * FIX: Lazy initialisers run synchronously before the first render.
+   *
+   * Previously these were `useState(false)` / `useState(null)`, so the first
+   * render always saw a logged-out state and the Provider returned `null` while
+   * waiting for a useEffect to read localStorage.  That caused a full unmount
+   * of children (blank page / logged-out flash) on every hard refresh.
+   *
+   * Now `isLoggedIn` and `userData` are correct from frame 1 — no flicker,
+   * no blank page, no "logged-out" flash.
+   */
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    const token = getToken();
+    return isValidToken(token) && !!loadCache();
+  });
+
+  const [userData, setUserData] = useState<UserData | null>(loadCache);
+
   const [isValidatingToken, setIsValidatingToken] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
 
@@ -194,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUserData(data);
       setIsLoggedIn(true);
       setIsValidatingToken(false);
-      setAuthLoading(false);
       storeCache(data);
       stampValidation();
       console.log('[Auth] ✅ Token valid, user:', data.name);
@@ -234,27 +260,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setIsValidatingToken(false);
-      setAuthLoading(false);
     }
   }, []);
 
   // ── Initial auth check ────────────────────────────────────────────────────
+  // FIX: This effect no longer needs to SET isLoggedIn/userData because lazy
+  // initialisers already did that synchronously.  It only decides whether to
+  // kick off a background re-validation.
 
   useEffect(() => {
     const token = getToken();
 
-    if (!isValidToken(token)) {
-      setAuthLoading(false);
-      return;
-    }
+    if (!isValidToken(token)) return;
 
     const cached = loadCache();
     if (cached) {
-      // Instantly restore UI — no blank screen on refresh
-      setUserData(cached);
-      setIsLoggedIn(true);
-      setAuthLoading(false);
-
+      // State is already correct from lazy init — just decide on revalidation.
       if (needsRevalidation()) {
         console.log('[Auth] Cache restored, re-validating token in background…');
         validateToken(token);
@@ -262,9 +283,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.log('[Auth] Cache fresh, skipping validation');
       }
     } else {
-      // No cache — allow the app to render while validation runs.
+      // No cache — token exists but nothing to show yet. Validate to fetch data.
       console.log('[Auth] No cache found, validating token…');
-      setAuthLoading(false);
       validateToken(token);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -275,17 +295,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const onTokenReceived = (e: Event) => {
       const token = (e as CustomEvent<{ token: string }>).detail?.token;
-      if (isValidToken(token)) {
-        console.log('[Auth] OAuth token received, validating…');
-        setAuthLoading(true);
-        validateToken(token);
+      if (!isValidToken(token)) return;
+
+      // FIX: Do NOT set authLoading here — the cached data is already visible
+      // on screen (set by lazy init or initial effect).  Just validate in the
+      // background so the profile updates with fresh data if needed.
+      console.log('[Auth] OAuth token received, validating…');
+      const cached = loadCache();
+      if (cached) {
+        // Show cached data immediately while background-validating
+        setUserData(cached);
+        setIsLoggedIn(true);
       }
+      validateToken(token);
     };
 
     const onAuthUpdate = () => {
       const token = getToken();
       if (!isValidToken(token)) {
-        setIsLoggedIn(false); setUserData(null); setAuthLoading(false);
+        setIsLoggedIn(false); setUserData(null);
         return;
       }
       const cached = loadCache();
@@ -407,9 +435,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return saveEntry({ mediaId, progress, ...(status ? { status } : {}) });
   }, [saveEntry]);
 
-  // Block the tree only during the very first auth check
-  if (authLoading) return null;
-
+  // FIX: AuthProvider always renders children — the lazy-initialised state
+  // is already correct on frame 1, so there is no need to block rendering
+  // while localStorage is read (that happens synchronously in useState).
   return (
     <AuthContext.Provider value={{
       isLoggedIn, userData, username: userData?.name ?? null,
