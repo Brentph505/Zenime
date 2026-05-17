@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
@@ -663,7 +663,26 @@ const CardThumbWrap = styled.div`
   }
 `;
 
-const CardThumb = styled.img`width: 100%; height: 100%; object-fit: cover; display: block;`;
+const imagePulse = keyframes`
+  0%, 100% { background-color: var(--global-primary-skeleton); }
+  50% { background-color: var(--global-secondary-skeleton); }
+`;
+
+const CardThumbSkeleton = styled.div`
+  position: absolute;
+  inset: 0;
+  background: var(--global-primary-skeleton);
+  animation: ${imagePulse} 1.6s ease-in-out infinite;
+`;
+
+const CardThumb = styled.img<{ $loaded: boolean }>`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: ${({ $loaded }) => ($loaded ? 1 : 0)};
+  transition: opacity 0.2s ease-in-out;
+`;
 
 const CardEpBadge = styled.span`
   position: absolute; bottom: 3px; left: 3px;
@@ -678,6 +697,19 @@ const CardTitle = styled.span`
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   color: #1f2937;
   .dark-mode & { color: ${A.text}; }
+`;
+
+const CardDescription = styled.span`
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #4b5563;
+  margin-top: 0.25rem;
+  .dark-mode & { color: ${A.muted}; }
 `;
 
 const CardMeta = styled.div`display: flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; flex-wrap: wrap;`;
@@ -899,10 +931,15 @@ const Info: React.FC = () => {
   const [epView,   setEpView]   = useState<EpView>(() => queryType === 'MANGA' ? 'list' : 'card');
   const [epSearch, setEpSearch] = useState('');
   const [epRange,  setEpRange]  = useState(0);
+  const [loadedEpisodeImages, setLoadedEpisodeImages] = useState<Record<string, boolean>>({});
 
   // Scroll refs for horizontal carousels
   const recsRef    = useRef<HTMLDivElement>(null);
   const relatedRef = useRef<HTMLDivElement>(null);
+
+  const handleEpisodeImageLoad = useCallback((id: string) => {
+    setLoadedEpisodeImages((prev) => ({ ...prev, [id]: true }));
+  }, []);
 
   const scrollSection = (ref: React.RefObject<HTMLDivElement>, dir: 'left' | 'right') => {
     ref.current?.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
@@ -1091,6 +1128,7 @@ const Info: React.FC = () => {
   useEffect(() => {
     setEpRange(0);
     setEpSearch('');
+    setLoadedEpisodeImages({});
   }, [animeId]);
 
   // Update document title
@@ -1514,11 +1552,23 @@ const Info: React.FC = () => {
                             {currentEps.map(ep => (
                               <EpisodeCardItem key={ep.id} onClick={() => navigateToEntry(ep)}>
                                 <CardThumbWrap>
-                                  <CardThumb src={ep.image || cover} alt={ep.title || ''} />
+                                  {!loadedEpisodeImages[ep.id] && <CardThumbSkeleton />}
+                                  <CardThumb
+                                    src={ep.image || cover}
+                                    alt={ep.title || ''}
+                                    $loaded={!!loadedEpisodeImages[ep.id]}
+                                    onLoad={() => handleEpisodeImageLoad(ep.id)}
+                                    onError={() => handleEpisodeImageLoad(ep.id)}
+                                  />
                                   <CardEpBadge>EP {ep.number}</CardEpBadge>
                                 </CardThumbWrap>
                                 <CardBody>
-                                  <CardTitle>{ep.title || `Episode ${ep.number}`}</CardTitle>
+                                  <div>
+                                    <CardTitle>{ep.title || `Episode ${ep.number}`}</CardTitle>
+                                    {ep.description ? (
+                                      <CardDescription>{ep.description}</CardDescription>
+                                    ) : null}
+                                  </div>
                                   <CardMeta>
                                     {ep.airDate && <CardDate>{ep.airDate}</CardDate>}
                                     <CardIcons>

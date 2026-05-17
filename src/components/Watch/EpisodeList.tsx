@@ -5,7 +5,7 @@ import React, {
   useEffect,
   useRef,
 } from 'react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faPlay,
@@ -57,20 +57,48 @@ const EpisodeGrid = styled.div<{ $isRowLayout: boolean }>`
   }
 `;
 
-const EpisodeImage = styled.img`
-  max-width: 100px;
-  max-height: 60px;
-  height: auto;
-  margin-top: 0.5rem;
+const EpisodeImageWrapper = styled.div`
+  position: relative;
+  width: 100px;
+  height: 60px;
+  flex-shrink: 0;
   border-radius: var(--global-border-radius);
+  overflow: hidden;
+  min-width: 100px;
+  min-height: 60px;
   @media (max-width: 640px) {
-    max-width: 70px;
-    max-height: 42px;
+    width: 70px;
+    height: 42px;
+    min-width: 70px;
+    min-height: 42px;
   }
   @media (max-width: 400px) {
-    max-width: 60px;
-    max-height: 36px;
+    width: 60px;
+    height: 36px;
+    min-width: 60px;
+    min-height: 36px;
   }
+`;
+
+const imagePulse = keyframes`
+  0%, 100% { background-color: var(--global-primary-skeleton); }
+  50% { background-color: var(--global-secondary-skeleton); }
+`;
+
+const EpisodeImageSkeleton = styled.div`
+  position: absolute;
+  inset: 0;
+  background: var(--global-primary-skeleton);
+  animation: ${imagePulse} 1.6s ease-in-out infinite;
+`;
+
+const EpisodeImage = styled.img<{ $loaded: boolean }>`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  opacity: ${({ $loaded }) => ($loaded ? 1 : 0)};
+  transition: opacity 0.2s ease-in-out;
 `;
 
 const ListItem = styled.button<{
@@ -223,6 +251,19 @@ const EpisodeTitle = styled.span<{ $isSelected?: boolean }>`
     $isSelected ? 'var(--global-text)' : 'inherit'};
 `;
 
+const EpisodeDescription = styled.span`
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  opacity: 0.85;
+  max-width: 22rem;
+`;
+
 // The updated EpisodeList component
 export const EpisodeList: React.FC<Props> = ({
   animeId,
@@ -241,6 +282,7 @@ export const EpisodeList: React.FC<Props> = ({
   >(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [watchedEpisodes, setWatchedEpisodes] = useState<Episode[]>([]);
+  const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
   const defaultLayoutMode = episodes.every((episode) => episode.title)
     ? 'list'
     : 'grid';
@@ -255,6 +297,10 @@ export const EpisodeList: React.FC<Props> = ({
 
   const [selectionInitiatedByUser, setSelectionInitiatedByUser] =
     useState(false);
+
+  const handleImageLoad = useCallback((id: string) => {
+    setLoadedImages((prev) => ({ ...prev, [id]: true }));
+  }, []);
   // Update local storage when watched episodes change
   useEffect(() => {
     if (animeId && watchedEpisodes.length > 0) {
@@ -526,15 +572,26 @@ export const EpisodeList: React.FC<Props> = ({
                       flex: 1,
                     }}
                   >
-                    <EpisodeImage
-                      src={episode.image}
-                      alt={`Episode ${episode.number} - ${episode.title}`}
-                    />
+                    <EpisodeImageWrapper>
+                      {!loadedImages[episode.id] && <EpisodeImageSkeleton />}
+                      <EpisodeImage
+                        src={episode.image}
+                        alt={`Episode ${episode.number} - ${episode.title}`}
+                        $loaded={!!loadedImages[episode.id]}
+                        onLoad={() => handleImageLoad(episode.id)}
+                        onError={() => handleImageLoad(episode.id)}
+                      />
+                    </EpisodeImageWrapper>
                     <div>
                       <EpisodeNumber>{episode.number}. </EpisodeNumber>
                       <EpisodeTitle $isSelected={$isSelected}>
                         {episode.title}
                       </EpisodeTitle>
+                      {episode.description ? (
+                        <EpisodeDescription>
+                          {episode.description}
+                        </EpisodeDescription>
+                      ) : null}
                     </div>
                   </div>
                 </>
