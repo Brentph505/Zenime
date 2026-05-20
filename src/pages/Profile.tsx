@@ -441,6 +441,28 @@ const ContentWrap = styled.div`
   @media (min-width: 900px) { padding: 0 0.75rem; }
 `;
 
+const SettingsOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(8px);
+`;
+
+const SettingsPanel = styled.div`
+  width: min(100%, 44rem);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  border-radius: var(--global-border-radius);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  background: rgba(17, 24, 39, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+`;
+
 /* ─────────── Component ─────────── */
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, logout } = useAuth();
@@ -590,8 +612,17 @@ export const Profile: React.FC = () => {
       </ProfileBar>
 
       <ContentWrap>
-        {isSettingsPage ? <Settings /> : <><EpisodeCard /><WatchingAnilist /></>}
+        <EpisodeCard />
+        <WatchingAnilist />
       </ContentWrap>
+
+      {isSettingsPage && (
+        <SettingsOverlay>
+          <SettingsPanel>
+            <Settings onClose={() => navigate('/profile')} />
+          </SettingsPanel>
+        </SettingsOverlay>
+      )}
     </Page>
   );
 };

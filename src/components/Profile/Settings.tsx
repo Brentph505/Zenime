@@ -19,6 +19,10 @@ interface Preferences {
   openButton: string;
 }
 
+interface SettingsProps {
+  onClose?: () => void;
+}
+
 const Goback = styled.div`
   border-radius: var(--global-border-radius);
   display: flex;
@@ -37,11 +41,12 @@ const Goback = styled.div`
 const SettingsDiv = styled.div`
   gap: 1rem;
   max-width: 45rem;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  margin: auto; /* This centers the div horizontally */
+  padding: 1rem;
 `;
 
 const PreferencesTable = styled.table`
@@ -99,7 +104,7 @@ const StyledSelect = styled.select`
   transition: background-color 0.2s ease-in-out;
 `;
 
-export const Settings: React.FC = () => {
+export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const navigate = useNavigate();
   const { settings, setSettings } = useSettings();
 
@@ -199,6 +204,10 @@ export const Settings: React.FC = () => {
   };
 
   const handleGoback = () => {
+    if (onClose) {
+      onClose();
+      return;
+    }
     navigate('/profile');
   };
 
