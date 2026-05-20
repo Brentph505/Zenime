@@ -202,11 +202,6 @@ export const Settings: React.FC = () => {
     navigate('/profile');
   };
 
-  // Profile Page Document Title
-  useEffect(() => {
-    document.title = `Settings | Profile`;
-  });
-
   return (
     <SettingsDiv>
       <Title>

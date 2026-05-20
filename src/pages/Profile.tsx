@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { IoLogOutOutline } from 'react-icons/io5';
 import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
+import { Settings } from '../components/Profile/Settings';
 import { SiAnilist } from 'react-icons/si';
 import { CgProfile } from 'react-icons/cg';
 import { FiClock, FiStar, FiTv, FiFilm, FiChevronDown, FiUser, FiLogOut, FiSettings } from 'react-icons/fi';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 /* ── Animations ── */
 const fadeUp = keyframes`
@@ -447,10 +448,16 @@ export const Profile: React.FC = () => {
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
+  const location = useLocation();
+  const isSettingsPage = location.pathname.endsWith('/settings');
+
   useEffect(() => {
-    document.title =
-      isLoggedIn && userData ? `${userData.name} | Profile` : 'Profile';
-  }, [isLoggedIn, userData]);
+    document.title = isSettingsPage
+      ? 'Settings | Profile'
+      : isLoggedIn && userData
+      ? `${userData.name} | Profile`
+      : 'Profile';
+  }, [isLoggedIn, userData, isSettingsPage]);
 
   /* close dropdown on outside click */
   useEffect(() => {
@@ -583,8 +590,7 @@ export const Profile: React.FC = () => {
       </ProfileBar>
 
       <ContentWrap>
-        <EpisodeCard />
-        <WatchingAnilist />
+        {isSettingsPage ? <Settings /> : <><EpisodeCard /><WatchingAnilist /></>}
       </ContentWrap>
     </Page>
   );
