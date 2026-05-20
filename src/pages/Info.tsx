@@ -16,7 +16,6 @@ import {
   Anime,
   Manga,
   CardItem as AnimeCardItem,
-  useAuth,
 } from '../index';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 
@@ -793,10 +792,10 @@ const FullWidthSection = styled.div`
   .dark-mode & { border-top: 1px solid ${A.border}; }
   @media (max-width: 860px) {
     margin-top: 1.75rem;
-    padding: 1.5rem 0.75rem 0;
-    width: calc(100% + 1rem);
-    margin-left: -0.5rem;
-    margin-right: -0.5rem;
+    padding: 1.5rem 0 0;
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
   }
 `;
 
@@ -895,9 +894,6 @@ const Info: React.FC = () => {
 
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
-
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
 
   const [provider, setProvider] = useState<Provider>(() => {
     if (queryType === 'MANGA') {
