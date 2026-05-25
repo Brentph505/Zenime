@@ -10,15 +10,6 @@
  *  • Cache versioning — bump CACHE_VERSION in cacheConfig to bust all entries
  *  • Background refresh scheduler per key
  *  • Auto-cleanup of expired LocalStorage entries on startup & hourly
- *
- * ── BUG FIX (refresh wipes login) ────────────────────────────────────────────
- *  Previous versions iterated ALL localStorage keys during startup cleanup,
- *  LRU eviction, and clearAll — which deleted `accessToken`, `zenime_userData`,
- *  and `zenime_lastValidation`, causing the user to appear logged out on every
- *  page refresh.
- *
- *  Fix: every cache key is now prefixed with KEY_PREFIX ('_zcache_') so the
- *  manager only ever reads/deletes its own keys and never touches auth data.
  */
 
 import { redisClient } from './redisClient';
@@ -64,13 +55,6 @@ export interface CacheStats {
 // ── Cache Manager ─────────────────────────────────────────────────────────────
 
 class CacheManager {
-  /**
-   * All localStorage keys written by this manager are prefixed with KEY_PREFIX.
-   * This ensures cleanup/eviction never touches unrelated localStorage entries
-   * such as `accessToken`, `zenime_userData`, session storage, etc.
-   */
-  private static readonly KEY_PREFIX = '_zcache_';
-
   /** L1: in-memory map — cleared on page reload */
   private mem = new Map<string, CacheItem<unknown>>();
   private stats = new Map<string, CacheStats>();
@@ -376,8 +360,7 @@ class CacheManager {
 
   async invalidatePattern(cacheKey: string, pattern?: string): Promise<number> {
     let count = 0;
-    // FIX: prefix must include KEY_PREFIX so it matches how buildKey stores keys
-    const prefix = `${CacheManager.KEY_PREFIX}${cacheKey}:`;
+    const prefix = `${cacheKey}:`;
 
     // L1
     for (const k of [...this.mem.keys()]) {
@@ -399,9 +382,7 @@ class CacheManager {
 
     // L3
     if (redisClient.isRedisAvailable()) {
-      const pat = pattern
-        ? `${CacheManager.KEY_PREFIX}${cacheKey}:*${pattern}*`
-        : `${CacheManager.KEY_PREFIX}${cacheKey}:*`;
+      const pat = pattern ? `${cacheKey}:*${pattern}*` : `${cacheKey}:*`;
       const keys = await redisClient.keys(pat);
       if (keys.length) await redisClient.delMany(keys);
       count += keys.length;
@@ -421,14 +402,13 @@ class CacheManager {
     this.refreshTimers.clear();
     this.refreshFns.clear();
 
-    // FIX: Only remove keys that belong to this cache manager (prefixed with KEY_PREFIX).
-    // Previously this removed ALL localStorage keys, wiping auth tokens and user data.
-    const cacheKeys: string[] = [];
+    // Remove all LS keys (only our prefixed ones aren't guaranteed, so clear all)
+    const allLsKeys: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k && k.startsWith(CacheManager.KEY_PREFIX)) cacheKeys.push(k);
+      if (k) allLsKeys.push(k);
     }
-    cacheKeys.forEach((k) => localStorage.removeItem(k));
+    allLsKeys.forEach((k) => localStorage.removeItem(k));
 
     if (redisClient.isRedisAvailable()) await redisClient.flushAll();
     console.log('🧹 [Cache] All caches cleared');
@@ -484,13 +464,8 @@ class CacheManager {
 
   // ── Private ───────────────────────────────────────────────────────────────
 
-  /**
-   * Build a namespaced localStorage key.
-   * The KEY_PREFIX ensures we never accidentally read/delete keys belonging
-   * to auth, routing, or other parts of the application.
-   */
   private buildKey(cacheKey: string, key: string): string {
-    return `${CacheManager.KEY_PREFIX}${cacheKey}:${key}`;
+    return `${cacheKey}:${key}`;
   }
 
   /** Past staleAt but possibly still within expiresAt (SWR window) */
@@ -558,11 +533,6 @@ class CacheManager {
   // ── LocalStorage helpers ──────────────────────────────────────────────────
 
   private lsRead<T>(key: string): CacheItem<T> | null {
-    // FIX: Guard — only read keys that belong to this cache manager.
-    // Without this, runStartupCleanup could accidentally parse and delete
-    // auth tokens or other unrelated localStorage entries.
-    if (!key.startsWith(CacheManager.KEY_PREFIX)) return null;
-
     try {
       const raw = localStorage.getItem(key);
       if (!raw) return null;
@@ -592,9 +562,6 @@ class CacheManager {
 
   /**
    * LRU eviction: remove the oldest 30% of non-permanent LocalStorage entries.
-   *
-   * FIX: Only considers keys with KEY_PREFIX — never touches auth data or other
-   * app localStorage entries.
    */
   private lruEvict(): void {
     type LsEntry = { key: string; createdAt: number };
@@ -602,8 +569,7 @@ class CacheManager {
 
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      // FIX: Skip any key that isn't a cache manager entry
-      if (!k || !k.startsWith(CacheManager.KEY_PREFIX)) continue;
+      if (!k) continue;
       try {
         const raw = localStorage.getItem(k);
         if (!raw) continue;
@@ -611,7 +577,6 @@ class CacheManager {
         if (item.strategy === 'permanent') continue; // never evict permanent
         candidates.push({ key: k, createdAt: item.createdAt ?? 0 });
       } catch {
-        // Unparseable entry with the cache prefix — safe to evict
         candidates.push({ key: k, createdAt: 0 });
       }
     }
@@ -624,20 +589,12 @@ class CacheManager {
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
 
-  /**
-   * On startup: remove expired / version-mismatched cache entries.
-   *
-   * FIX: Previously iterated ALL localStorage keys, causing auth keys like
-   * `accessToken` and `zenime_userData` to be parsed and deleted because they
-   * lack a `version` field. Now scoped exclusively to KEY_PREFIX keys.
-   */
   private runStartupCleanup(): void {
     let removed = 0;
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      // FIX: Only process keys that belong to this cache manager
-      if (!k || !k.startsWith(CacheManager.KEY_PREFIX)) continue;
+      if (!k) continue;
       const item = this.lsRead<unknown>(k);
       if (!item || this.isHardExpired(item)) toRemove.push(k);
     }
@@ -684,8 +641,7 @@ class CacheManager {
   private updateSizeStats(key: string): void {
     const s = this.stats.get(key);
     if (!s) return;
-    // FIX: prefix must match how buildKey formats keys
-    const prefix = `${CacheManager.KEY_PREFIX}${key}:`;
+    const prefix = `${key}:`;
     let bytes = 0;
     for (const [k, v] of this.mem.entries()) {
       if (k.startsWith(prefix)) bytes += JSON.stringify(v).length;

@@ -37,7 +37,6 @@ register();
 function App() {
   usePreserveScrollOnReload();
   const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
-  const deployPlatform = import.meta.env.VITE_DEPLOY_PLATFORM;
 
   useEffect(() => {
     if (measurementId) {
@@ -69,7 +68,7 @@ function App() {
                   <Route path='/read/:animeId' element={<Read />} />
                   <Route path='/studio/:studioId' element={<Studio />} />
                   <Route path='/profile' element={<Profile />} />
-                  <Route path='/profile/settings' element={<Profile />} />
+                  <Route path='/profile/settings' element={<Settings />} />
                   <Route path='/about' element={<About />} />
                   <Route path='/pptos' element={<PolicyTerms />} />
                   <Route path='/callback' element={<Callback />} />
@@ -81,7 +80,7 @@ function App() {
           </ThemeProvider>
         </AuthProvider>
       </Router>
-      {deployPlatform === 'VERCEL' && <Analytics />}
+      <Analytics />
     </ApolloClientProvider>
   );
 }

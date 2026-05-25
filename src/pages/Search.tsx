@@ -8,7 +8,6 @@ import {
   fetchAdvancedSearch,
   SkeletonCard,
   type Anime,
-  useAuth,
 } from '../index';
 
 const Container = styled.div`
@@ -25,10 +24,6 @@ const Container = styled.div`
 
 const Search = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
-
   const sortParam = searchParams.get('sort');
   // Directly initialize state from URL parameters
   const initialQuery = searchParams.get('query') || '';

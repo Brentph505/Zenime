@@ -25,7 +25,6 @@ import {
   MangaReadPage,
   Episode,
   buildImageProxyUrl,
-  useAuth,
 } from '../index';
 
 type MangaChapter = Episode & { url?: string };
@@ -724,9 +723,6 @@ function Read() {
   const { animeId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
 
   const [mangaInfo, setMangaInfo] = useState<Manga | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<MangaChapter | null>(null);
