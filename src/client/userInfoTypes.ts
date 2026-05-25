@@ -1,42 +1,64 @@
-// Enums or types for sorting, assuming sorting options are known
+/**
+ * userInfoTypes.ts
+ *
+ * Type definitions for AniList user data.
+ * Extended to cover fields returned by the full Viewer query in authService.
+ */
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+/**
+ * Single source of truth for media list status values.
+ * authService.ts re-defines this type locally to avoid circular imports.
+ */
+export type MediaListStatus =
+  | 'CURRENT'
+  | 'PLANNING'
+  | 'COMPLETED'
+  | 'REPEATING'
+  | 'PAUSED'
+  | 'DROPPED';
+
+/** @deprecated Use the MediaListStatus string union instead. */
+export enum MediaListStatusEnum {
+  CURRENT   = 'CURRENT',
+  PLANNING  = 'PLANNING',
+  COMPLETED = 'COMPLETED',
+  REPEATING = 'REPEATING',
+  PAUSED    = 'PAUSED',
+  DROPPED   = 'DROPPED',
+}
+
 type UserStatisticsSort =
-  | 'COUNT_ASC'
-  | 'COUNT_DESC'
-  | 'SCORE_ASC'
-  | 'SCORE_DESC';
+  | 'COUNT_ASC'   | 'COUNT_DESC'
+  | 'SCORE_ASC'   | 'SCORE_DESC'
+  | 'MEAN_SCORE_ASC' | 'MEAN_SCORE_DESC'
+  | 'PROGRESS_ASC'   | 'PROGRESS_DESC';
+
+// ─── Core user data (returned by Viewer query) ────────────────────────────────
 
 export interface UserData {
   name: string;
   avatar: {
     large: string;
+    medium?: string;
   };
-  // AniList banner image (null when user hasn't set one)
   bannerImage: string | null;
   statistics: UserStatistics;
 }
 
-export enum MediaListStatus {
-  CURRENT = 'CURRENT',
-  PLANNING = 'PLANNING',
-  COMPLETED = 'COMPLETED',
-  REPEATING = 'REPEATING',
-  PAUSED = 'PAUSED',
-  DROPPED = 'DROPPED',
-}
+// ─── Statistics ───────────────────────────────────────────────────────────────
 
 export interface UserStatistics {
-  anime: AnimeMangaStatistics;
-  manga: AnimeMangaStatistics;
+  anime: AnimeStatistics;
+  manga: MangaStatistics;
 }
 
-export interface AnimeMangaStatistics {
+/** Fields shared by both anime and manga statistics */
+interface BaseStatistics {
   count: number;
   meanScore: number;
   standardDeviation: number;
-  minutesWatched: number; // For anime
-  episodesWatched: number; // For anime
-  chaptersRead: number; // For manga
-  volumesRead: number; // For manga
   formats: UserFormatStatistic[];
   statuses: UserStatusStatistic[];
   scores: UserScoreStatistic[];
@@ -46,10 +68,30 @@ export interface AnimeMangaStatistics {
   genres: UserGenreStatistic[];
   tags: UserTagStatistic[];
   countries: UserCountryStatistic[];
-  voiceActors: UserVoiceActorStatistic[];
   staff: UserStaffStatistic[];
   studios: UserStudioStatistic[];
 }
+
+export interface AnimeStatistics extends BaseStatistics {
+  minutesWatched: number;
+  episodesWatched: number;
+  chaptersRead?: never;
+  volumesRead?: never;
+  voiceActors: UserVoiceActorStatistic[];
+}
+
+export interface MangaStatistics extends BaseStatistics {
+  chaptersRead: number;
+  volumesRead: number;
+  minutesWatched?: never;
+  episodesWatched?: never;
+  voiceActors?: never;
+}
+
+/** Union type — use type guards to narrow when needed */
+export type AnimeMangaStatistics = AnimeStatistics | MangaStatistics;
+
+// ─── Statistic detail types ───────────────────────────────────────────────────
 
 export interface StatisticLimitSort {
   limit: number;
@@ -59,64 +101,110 @@ export interface StatisticLimitSort {
 export interface UserFormatStatistic {
   format: string;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserStatusStatistic {
-  status: string;
+  status: MediaListStatus;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserScoreStatistic {
   score: number;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserLengthStatistic {
   length: string;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserReleaseYearStatistic {
-  year: number;
+  releaseYear: number;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
+  /** @deprecated Use releaseYear */
+  year?: number;
 }
 
 export interface UserStartYearStatistic {
-  year: number;
+  startYear: number;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
+  /** @deprecated Use startYear */
+  year?: number;
 }
 
 export interface UserGenreStatistic {
   genre: string;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserTagStatistic {
-  tag: string;
+  tag: {
+    id: number;
+    name: string;
+  };
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserCountryStatistic {
   country: string;
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserVoiceActorStatistic {
-  voiceActorId: number;
-  name: string;
+  voiceActor: {
+    id: number;
+    name: { full: string; native?: string };
+    language: string;
+  };
   count: number;
-  language: string;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserStaffStatistic {
-  staffId: number;
-  name: string;
-  role: string;
+  staff: {
+    id: number;
+    name: { full: string; native?: string };
+  };
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
 }
 
 export interface UserStudioStatistic {
-  studioId: number;
-  name: string;
+  studio: {
+    id: number;
+    name: string;
+  };
   count: number;
+  meanScore?: number;
+  minutesWatched?: number;
+}
+
+// ─── Type guards ──────────────────────────────────────────────────────────────
+
+export function isAnimeStatistics(s: AnimeMangaStatistics): s is AnimeStatistics {
+  return 'minutesWatched' in s;
+}
+
+export function isMangaStatistics(s: AnimeMangaStatistics): s is MangaStatistics {
+  return 'chaptersRead' in s;
 }

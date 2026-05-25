@@ -2,9 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { IoLogOutOutline } from 'react-icons/io5';
 import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
+import { Settings } from '../components/Profile/Settings';
 import { SiAnilist } from 'react-icons/si';
 import { CgProfile } from 'react-icons/cg';
 import { FiClock, FiStar, FiTv, FiFilm, FiChevronDown, FiUser, FiLogOut, FiSettings } from 'react-icons/fi';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 /* ── Animations ── */
 const fadeUp = keyframes`
@@ -439,16 +441,45 @@ const ContentWrap = styled.div`
   @media (min-width: 900px) { padding: 0 0.75rem; }
 `;
 
+const SettingsOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(8px);
+`;
+
+const SettingsPanel = styled.div`
+  width: min(100%, 44rem);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  border-radius: var(--global-border-radius);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+  background: rgba(17, 24, 39, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+`;
+
 /* ─────────── Component ─────────── */
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  const location = useLocation();
+  const isSettingsPage = location.pathname.endsWith('/settings');
 
   useEffect(() => {
-    document.title =
-      isLoggedIn && userData ? `${userData.name} | Profile` : 'Profile';
-  }, [isLoggedIn, userData]);
+    document.title = isSettingsPage
+      ? 'Settings | Profile'
+      : isLoggedIn && userData
+      ? `${userData.name} | Profile`
+      : 'Profile';
+  }, [isLoggedIn, userData, isSettingsPage]);
 
   /* close dropdown on outside click */
   useEffect(() => {
@@ -508,7 +539,7 @@ export const Profile: React.FC = () => {
                         <DropdownItem onClick={() => setMenuOpen(false)}>
                           <FiUser size={13} /> Profile
                         </DropdownItem>
-                        <DropdownItem onClick={() => setMenuOpen(false)}>
+                        <DropdownItem onClick={() => { setMenuOpen(false); navigate('/profile/settings'); }}>
                           <FiSettings size={13} /> Settings
                         </DropdownItem>
                         <DropdownDivider />
@@ -584,6 +615,14 @@ export const Profile: React.FC = () => {
         <EpisodeCard />
         <WatchingAnilist />
       </ContentWrap>
+
+      {isSettingsPage && (
+        <SettingsOverlay>
+          <SettingsPanel>
+            <Settings onClose={() => navigate('/profile')} />
+          </SettingsPanel>
+        </SettingsOverlay>
+      )}
     </Page>
   );
 };
