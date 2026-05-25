@@ -398,8 +398,9 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
             >
               <ImageWrapper
                 onClick={() => {
+                  // Only trigger on mobile
                   if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
-                    navigate(`/info/${animeData.id}`);
+                    setShowInfoOverlay((prev) => !prev);
                   }
                 }}
                 style={{ touchAction: 'manipulation' }}
@@ -410,6 +411,7 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                   title="View Info"
                   $show={showInfoOverlay}
                   onClick={e => {
+                    // Only allow navigation if overlay is visible on mobile
                     if (window.matchMedia('(hover: none) and (pointer: coarse)').matches && !showInfoOverlay) {
                       e.preventDefault();
                       setShowInfoOverlay(true);

@@ -367,7 +367,7 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
       <StyledSwiperContainer
         spaceBetween={30}
         slidesPerView={1}
-        loop={validData.length >= 3}
+        loop={validData.length > 1}
         autoplay={{
           delay: 5000,
           disableOnInteraction: false,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import './PlayerStyles.css';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -21,8 +21,6 @@ import {
   fetchAnimeStreamingLinksProxied,
   useSettings,
 } from '../../../index';
-import { useAuth } from '../../../client/useAuth';
-import { saveWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
 import {
   DefaultAudioLayout,
   defaultLayoutIcons,
@@ -108,12 +106,14 @@ type PlayerProps = {
   sourceType?: string;
   embeddedUrl?: string;
   serverUrl?: string;
-  /** Set of server keys that should render as iframes (includes 'embedded' servers) */
+  /** Set of server keys that should render as iframes (includes 'embedded' + animekai iframe servers) */
   embeddedServerKeys?: Set<string>;
-  /** Direct M3U8 URL to use for HLS servers (bypasses API fetch) */
+  /** Direct M3U8 URL to use for animekai HLS servers (bypasses API fetch) */
   hlsDirectUrl?: string;
   /** Subtitles to inject when using hlsDirectUrl (animekai HLS playback) */
   externalSubtitles?: Array<{ url: string; lang: string }>;
+  /** Map of provider-specific episode IDs: { kickassanime: "ep-1", animepahe: "uuid/hash", animekai: "1" } */
+  providerEpisodeIds?: Record<string, string>;
 };
 
 type StreamingSource = {
@@ -160,6 +160,7 @@ export function Player({
   malId,
   animeId,
   updateDownloadLink,
+  providerEpisodeIds = {},
   onEpisodeEnd,
   onPrevEpisode,
   onNextEpisode,
@@ -171,7 +172,6 @@ export function Player({
   hlsDirectUrl,
   externalSubtitles,
 }: PlayerProps) {
-  const { isLoggedIn } = useAuth();
   const player = useRef<MediaPlayerInstance>(null);
   const [src, setSrc] = useState<PlayerSrc>('');
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
@@ -182,24 +182,13 @@ export function Player({
   const [vttGenerated, setVttGenerated] = useState<boolean>(false);
   const [canPlay, setCanPlay] = useState<boolean>(false);
   const [userInteracted, setUserInteracted] = useState<boolean>(false);
-  const [builtEmbeddedUrl, setBuiltEmbeddedUrl] = useState<string>('');
   const hlsUrlCandidatesRef = useRef<string[]>([]);
   const currentHlsUrlIndexRef = useRef<number>(0);
   const hlsRetryCountRef = useRef<number>(0);
   const retryTimerRef = useRef<number | null>(null);
-  const aniListProgressRef = useRef({ lastSavedProgress: 0, lastSavedTime: 0 });
-  const iframeProgressRef = useRef({ currentTime: 0, duration: 0, hasTriggeredEnd: false });
-  const saveAniListProgressRef = useRef<((episodeNumber: number) => Promise<void>) | null>(null);
   const episodeNumber = propEpisodeNumber
     ? String(propEpisodeNumber)
     : getEpisodeNumber(episodeId);
-
-  useEffect(() => {
-    aniListProgressRef.current = { lastSavedProgress: 0, lastSavedTime: 0 };
-    // Reset flixcloud/ReAnime autoNext trigger on new episode
-    iframeProgressRef.current = { currentTime: 0, duration: 0, hasTriggeredEnd: false };
-  }, [episodeNumber]);
-
   const animeVideoTitle = animeTitle;
 
   const { settings, setSettings } = useSettings();
@@ -217,52 +206,31 @@ export function Player({
   // Determine whether to show the iframe player or the HLS player.
   const isEmbedded = embeddedServerKeys
     ? embeddedServerKeys.has(sourceType)
-    : sourceType === 'embedded';
+    : sourceType === 'embedded' ||
+      (episodeProvider === 'animekai' && !!sourceType && sourceType !== '');
 
-  // Detect ReAnime's flixcloud.cc player specifically.
-  // We use the raw embeddedUrl (before query-string manipulation) so detection
-  // is stable even after we inject skip/autoplay params into builtEmbeddedUrl.
-  const isFlixcloudEmbed = isEmbedded && Boolean(embeddedUrl?.includes('flixcloud.cc'));
-
-  // A stable key for the iframe that changes only when the episode/server changes.
-  // This prevents autoplay/skip/autonext toggles from remounting the iframe.
-  const stableIframeKey = `${episodeId}-${sourceType}-${embeddedUrl || ''}`;
-
-  useEffect(() => {
-    if (!embeddedUrl) {
-      setBuiltEmbeddedUrl('');
-      return;
-    }
-
+  // Build the embedded URL, injecting autoplay=1 when the user has autoplay on
+  const builtEmbeddedUrl = React.useMemo(() => {
+    if (!embeddedUrl) return '';
     try {
       const u = new URL(embeddedUrl);
-      const isFlixcloud = u.hostname.includes('flixcloud.cc');
-
-      if (isFlixcloud) {
-        // ReAnime / flixcloud: inject native skip params on first load or when toggles change.
-        u.searchParams.set('autoPlay', autoPlay ? 'true' : 'false');
-        u.searchParams.set('skI', autoSkip ? 'true' : 'false');
-        u.searchParams.set('skO', autoSkip ? 'true' : 'false');
-      } else {
-        // Zen Sub and other providers: use autoplay=1 when enabled.
-        if (autoPlay) {
-          u.searchParams.set('autoplay', '1');
+      if (autoPlay) {
+        if (episodeProvider === 'animekai') {
+          u.searchParams.set('autostart', 'true');
         } else {
-          u.searchParams.delete('autoplay');
+          u.searchParams.set('autoplay', '1');
         }
       }
-      setBuiltEmbeddedUrl(u.toString());
-    } catch (err) {
-      console.warn('[Player] Failed to build embedded URL:', err, 'original:', embeddedUrl);
-      setBuiltEmbeddedUrl(embeddedUrl);
+      
+      return u.toString();
+    } catch {
+      return embeddedUrl;
     }
-  }, [embeddedUrl, autoPlay, autoSkip]);
+  }, [embeddedUrl, autoPlay, episodeProvider]);
 
   useEffect(() => {
-    if (isEmbedded && isFlixcloudEmbed) {
-      console.log('[Player] ReAnime/flixcloud not working');
-    }
-  }, [isEmbedded, isFlixcloudEmbed]);
+    console.log('[Player] sourceType changed:', sourceType, '| isEmbedded:', isEmbedded);
+  }, [sourceType]);
 
   // ─── iframe postMessage event bridge ────────────────────────────────────────
   useEffect(() => {
@@ -284,13 +252,6 @@ export function Player({
     const saveIframeProgress = (currentTime: number, duration: number) => {
       if (!episodeId || duration <= 0) return;
       const playbackPercentage = (currentTime / duration) * 100;
-      // Preserve hasTriggeredEnd flag when updating progress
-      iframeProgressRef.current = { 
-        currentTime, 
-        duration,
-        hasTriggeredEnd: iframeProgressRef.current.hasTriggeredEnd 
-      };
-
       try {
         const all = JSON.parse(
           localStorage.getItem('all_episode_times') || '{}',
@@ -299,41 +260,6 @@ export function Player({
         localStorage.setItem('all_episode_times', JSON.stringify(all));
       } catch {
         // localStorage unavailable — ignore
-      }
-
-      if (settings.aniListSync && isLoggedIn && malId && propEpisodeNumber) {
-        const now = Date.now();
-        const minProgress = Math.min(
-          aniListProgressRef.current.lastSavedProgress + 15,
-          99,
-        );
-        if (
-          playbackPercentage >= minProgress &&
-          now - aniListProgressRef.current.lastSavedTime >= 60_000
-        ) {
-          aniListProgressRef.current.lastSavedProgress = playbackPercentage;
-          aniListProgressRef.current.lastSavedTime = now;
-          void saveAniListProgressRef.current?.(propEpisodeNumber);
-        }
-      }
-
-      // ── ReAnime/flixcloud: time-based autoNext detection ──────────────────
-      // Some players don't send explicit 'ended' events, so detect via duration
-      if (isFlixcloudEmbed && duration > 0) {
-        const remainingTime = duration - currentTime;
-        const playbackPercentage = (currentTime / duration) * 100;
-        
-        if (!iframeProgressRef.current.hasTriggeredEnd && (remainingTime < 2 || playbackPercentage > 99)) {
-          iframeProgressRef.current.hasTriggeredEnd = true;
-          if (autoNextRef.current) handlePlaybackEndedRef.current();
-        }
-      }
-    };
-
-    const saveIframeProgressOnUnload = () => {
-      const { currentTime, duration } = iframeProgressRef.current;
-      if (duration > 0) {
-        saveIframeProgress(currentTime, duration);
       }
     };
 
@@ -348,150 +274,62 @@ export function Player({
       }
       if (!data || typeof data !== 'object') return;
 
-      const normalized = {
-        ...data,
-        source: String(data.source || '').toLowerCase(),
-        type: String(data.type || '').toLowerCase(),
-        event: String(data.event || '').toLowerCase(),
-        query: String(data.query || '').toLowerCase(),
-        action: String(data.action || '').toLowerCase(),
-        name: String(data.name || '').toLowerCase(),
-        currentTime:
-          typeof data.currentTime === 'number'
-            ? data.currentTime
-            : typeof data.currentTime === 'string' && data.currentTime.trim() !== ''
-            ? Number(data.currentTime)
-            : undefined,
-        duration:
-          typeof data.duration === 'number'
-            ? data.duration
-            : typeof data.duration === 'string' && data.duration.trim() !== ''
-            ? Number(data.duration)
-            : undefined,
-      } as typeof data & {
-        source: string;
-        type: string;
-        event: string;
-        query: string;
-        action: string;
-        name: string;
-        currentTime?: number;
-        duration?: number;
-      };
-
-
       // ── MegaCloud channel ──────────────────────────────────────────────────
-      if (normalized.channel === 'megacloud') {
-        switch (normalized.event) {
+      if (data.channel === 'megacloud') {
+        switch (data.event) {
           case 'complete':
+            console.log('[Player] MegaCloud: episode complete');
             if (autoNextRef.current) handlePlaybackEndedRef.current();
             break;
 
           case 'time':
             if (
-              typeof normalized.time === 'number' &&
-              typeof normalized.duration === 'number'
+              typeof data.time === 'number' &&
+              typeof data.duration === 'number'
             ) {
-              saveIframeProgress(normalized.time, normalized.duration);
+              saveIframeProgress(data.time, data.duration);
             }
             break;
 
           case 'error':
+            console.error('[Player] MegaCloud playback error:', data);
             break;
 
           default:
-            break;
+            console.log('[Player] MegaCloud event:', data);
         }
         return;
       }
 
       // ── watching-log (MegaPlay / HiAnime style) ───────────────────────────
-      if (normalized.type === 'watching-log') {
+      if (data.type === 'watching-log') {
         if (
-          typeof normalized.currentTime === 'number' &&
-          typeof normalized.duration === 'number'
+          typeof data.currentTime === 'number' &&
+          typeof data.duration === 'number'
         ) {
-          saveIframeProgress(normalized.currentTime, normalized.duration);
+          saveIframeProgress(data.currentTime, data.duration);
         }
         return;
-      }
-
-      // ── ArtPlayer (flixcloud / ReAnime) ───────────────────────────────────
-      // ArtPlayer in iframe mode sends { source: 'artplayer', query: '...' }
-      // or { source: 'artplayer', type: '...' } events to the parent window.
-      if (normalized.source === 'artplayer') {
-        const artEnded =
-          normalized.query === 'ended' ||
-          normalized.type === 'ended' ||
-          normalized.event === 'ended' ||
-          normalized.type === 'video:ended';
-        if (artEnded) {
-          console.log('[Player] ArtPlayer (flixcloud/ReAnime): video ended');
-          if (autoNextRef.current) handlePlaybackEndedRef.current();
-          return;
-        }
-        // Progress tracking from artplayer timeupdate
-        if (
-          typeof normalized.currentTime === 'number' &&
-          typeof normalized.duration === 'number'
-        ) {
-          saveIframeProgress(normalized.currentTime, normalized.duration);
-        }
-        return;
-      }
-
-      // ── Flixcloud direct channel ──────────────────────────────────────────
-      if (normalized.channel === 'flixcloud' || normalized.source === 'flixcloud') {
-        const fcEnded =
-          normalized.event === 'ended' ||
-          normalized.event === 'complete' ||
-          normalized.type === 'ended';
-        if (fcEnded) {
-          if (autoNextRef.current) handlePlaybackEndedRef.current();
-          return;
-        }
-        if (
-          typeof normalized.currentTime === 'number' &&
-          typeof normalized.duration === 'number'
-        ) {
-          saveIframeProgress(normalized.currentTime, normalized.duration);
-        }
-        return;
-      }
-
-      // ── Generic player progress fallback ───────────────────────────────────
-      if (
-        typeof normalized.currentTime === 'number' &&
-        typeof normalized.duration === 'number'
-      ) {
-        saveIframeProgress(normalized.currentTime, normalized.duration);
       }
 
       // ── Generic fallback ──────────────────────────────────────────────────
       const isEnded =
         data === 'ended' ||
-        normalized.event === 'ended' ||
-        normalized.type === 'ended' ||
-        normalized.type === 'video:ended' ||
-        normalized.query === 'ended' ||   // artplayer iframe query format
-        normalized.action === 'ended' ||
-        normalized.name === 'ended';
+        data?.event === 'ended' ||
+        data?.type === 'ended' ||
+        data?.type === 'video:ended' ||
+        data?.action === 'ended' ||
+        data?.name === 'ended';
 
       if (isEnded) {
+        console.log('[Player] iframe postMessage: video ended (generic)');
         if (autoNextRef.current) handlePlaybackEndedRef.current();
       }
     };
 
     window.addEventListener('message', handleMessage);
-    window.addEventListener('pagehide', saveIframeProgressOnUnload);
-    window.addEventListener('beforeunload', saveIframeProgressOnUnload);
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
-      window.removeEventListener('pagehide', saveIframeProgressOnUnload);
-      window.removeEventListener('beforeunload', saveIframeProgressOnUnload);
-    };
-  }, [isEmbedded, episodeId, settings, isLoggedIn, malId, propEpisodeNumber]);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isEmbedded, episodeId]);
 
   const prevIsEmbeddedRef = useRef<boolean>(isEmbedded);
 
@@ -687,22 +525,6 @@ export function Player({
         JSON.stringify(allPlaybackInfo),
       );
 
-      if (settings.aniListSync && isLoggedIn && malId && propEpisodeNumber) {
-        const now = Date.now();
-        const minProgress = Math.min(
-          aniListProgressRef.current.lastSavedProgress + 15,
-          99,
-        );
-        if (
-          playbackPercentage >= minProgress &&
-          now - aniListProgressRef.current.lastSavedTime >= 60_000
-        ) {
-          aniListProgressRef.current.lastSavedProgress = playbackPercentage;
-          aniListProgressRef.current.lastSavedTime = now;
-          void saveAniListProgressRef.current?.(propEpisodeNumber);
-        }
-      }
-
       if (autoSkip && skipTimes.length) {
         const skipInterval = skipTimes.find(
           ({ interval }) =>
@@ -861,25 +683,39 @@ export function Player({
     }
 
     try {
+      // Extract provider from server key if available (format: "provider:servername")
+      let provider = episodeProvider || 'kickassanime';
+      
+      if (sourceType && sourceType.includes(':')) {
+        const keyParts = sourceType.split(':');
+        provider = keyParts[0]; // e.g., "animepahe" from "animepahe:kwik__EM"
+      }
+      
+      // Use the provider-specific episode ID from providerEpisodeIds if available
+      const providerSpecificEpisodeId = providerEpisodeIds?.[provider] || episodeId;
+      
       const response: StreamingResponse =
         await fetchAnimeStreamingLinksProxied(
-          episodeId,
-          episodeProvider || 'kickassanime',
+          providerSpecificEpisodeId,
+          provider,
           serverParam,
           serverUrl,
         );
 
       if (response.sources && response.sources.length > 0) {
-        const isDubServer = sourceType?.toLowerCase().includes('dub')
-          ? true
-          : sourceType?.toLowerCase().includes('sub')
-          ? false
-          : undefined;
+        const isDubServer =
+          episodeProvider === 'animekai'
+            ? sourceType?.toLowerCase().includes('dub') ?? false
+            : undefined;
+
         const candidateSources = response.sources.filter(
-          (source: StreamingSource & { isDub?: boolean }) =>
+          (source: any) =>
             (source.isM3U8 || source.url?.endsWith('.m3u8')) &&
-            (isDubServer === undefined || source.isDub === isDubServer),
+            (isDubServer === undefined ||
+              (source as any).isDub === isDubServer),
         );
+
+        // Fall back to any M3U8 if the language-filtered list is empty.
         const m3u8Sources =
           candidateSources.length > 0
             ? candidateSources
@@ -917,35 +753,6 @@ export function Player({
     }
   } // ← closes fetchAndSetAnimeSource
 
-  const saveAniListProgress = async (episodeNumber: number) => {
-    const accessToken =
-      typeof window !== 'undefined'
-        ? localStorage.getItem('accessToken')
-        : null;
-
-    if (!isLoggedIn || !accessToken || !malId || !settings.aniListSync) return;
-
-    try {
-      const malIdNum = parseInt(malId);
-      if (isNaN(malIdNum)) return;
-
-      const aniListId = await getAniListIdFromMalId(malIdNum);
-      if (!aniListId) {
-        console.warn('⚠️ [AniList] Could not find AniList ID for MAL ID:', malId);
-        return;
-      }
-
-      await saveWatchProgress(accessToken, aniListId, episodeNumber);
-      console.log('✅ [AniList] Progress saved for episode', episodeNumber);
-    } catch (error) {
-      console.error('❌ [AniList] Failed to save progress:', error);
-    }
-  };
-
-  useEffect(() => {
-    saveAniListProgressRef.current = saveAniListProgress;
-  }, [saveAniListProgress]);
-
   const toggleAutoPlay = () =>
     setSettings({ ...settings, autoPlay: !autoPlay });
   const toggleAutoNext = () =>
@@ -958,12 +765,6 @@ export function Player({
     try {
       player.current?.pause();
       await new Promise((resolve) => setTimeout(resolve, 200));
-
-      // Save progress to AniList if user is logged in
-      if (propEpisodeNumber) {
-        await saveAniListProgress(propEpisodeNumber);
-      }
-
       await onEpisodeEndRef.current();
     } catch (error) {
       console.error('Error moving to the next episode:', error);
@@ -975,7 +776,7 @@ export function Player({
       {/* Embedded iframe player — key forces full remount when URL changes */}
       {isEmbedded && builtEmbeddedUrl && (
         <EmbeddedPlayerWrapper>
-          <EmbeddedIframeWrapper key={stableIframeKey}>
+          <EmbeddedIframeWrapper key={builtEmbeddedUrl}>
             <EmbeddedIframe
               src={builtEmbeddedUrl}
               allowFullScreen
@@ -993,15 +794,6 @@ export function Player({
             <Button onClick={toggleAutoPlay}>
               {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
             </Button>
-            {/* Auto Skip: only shown for flixcloud/ReAnime — we inject skI/skO
-                into the iframe URL so the player handles it natively.  The iframe
-                key is stable so toggling does NOT remount the iframe mid-episode;
-                skip preference takes effect on the NEXT episode load. */}
-            {isFlixcloudEmbed && (
-              <Button $autoskip onClick={toggleAutoSkip}>
-                {autoSkip ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Skip
-              </Button>
-            )}
             <Button onClick={onPrevEpisode}>
               <TbPlayerTrackPrev /> Prev
             </Button>
