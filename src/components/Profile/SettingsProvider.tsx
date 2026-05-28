@@ -14,6 +14,7 @@ interface SettingsContextType {
     autoNext: boolean;
     defaultLanguage: string;
     defaultServers: string;
+    aniListSync: boolean;
   };
   setSettings: (settings: Partial<SettingsContextType['settings']>) => void;
 }
@@ -44,6 +45,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
      autoNext: localStorage.getItem('autoNext') === 'true',
      defaultLanguage: localStorage.getItem('defaultLanguage') || 'sub',
      defaultServers: localStorage.getItem('defaultServers') || 'default',
+     aniListSync: localStorage.getItem('aniListSync') === 'true',
    });
 
   useEffect(() => {
@@ -54,6 +56,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
     localStorage.setItem('autoNext', settings.autoNext ? 'true' : 'false');
     localStorage.setItem('defaultLanguage', settings.defaultLanguage);
     localStorage.setItem('defaultServers', settings.defaultServers);
+    localStorage.setItem('aniListSync', settings.aniListSync ? 'true' : 'false');
   }, [settings]);
 
   const setSettings = (
