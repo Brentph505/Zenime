@@ -18,7 +18,7 @@
 
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
-import { UserData } from './userInfoTypes';
+import { UserData, type MediaListStatus } from './userInfoTypes';
 
 // ─── Env ──────────────────────────────────────────────────────────────────────
 
@@ -30,17 +30,7 @@ const ANILIST_GQL = 'https://graphql.anilist.co';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-/**
- * Defined here (not imported from userInfoTypes) so that string literals
- * assigned to variables of this type are always widened correctly by TS.
- */
-export type MediaListStatus =
-  | 'CURRENT'
-  | 'PLANNING'
-  | 'COMPLETED'
-  | 'REPEATING'
-  | 'PAUSED'
-  | 'DROPPED';
+export type { MediaListStatus } from './userInfoTypes';
 
 export interface SaveEntryInput {
   /** AniList media ID (not MAL ID) */

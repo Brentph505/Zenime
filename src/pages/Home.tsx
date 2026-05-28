@@ -19,6 +19,7 @@ import {
   Paging,
   Anime,
   Episode,
+  useAuth,
 } from '../index';
 import AnimeSchedule from '../components/Home/AnimeSchedule';
 
@@ -257,6 +258,9 @@ const buildInitialLoading = (activeTab: string) => ({
 });
 
 const Home = () => {
+  // User authentication data
+  useAuth();
+
   const [itemsCount, setItemsCount] = useState(
     window.innerWidth > 500 ? 24 : 15,
   );

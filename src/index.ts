@@ -51,6 +51,7 @@ export * from './hooks/useScroll';
 export * from './hooks/useTIme';
 export * from './hooks/useFilters';
 export * from './hooks/useCountdown';
+export { useUserAnimeList } from './hooks/useUserAnimeList';
 
 // * ==== Client ====
 export { ApolloClientProvider } from './client/ApolloClient';

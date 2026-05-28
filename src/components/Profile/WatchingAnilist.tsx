@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState } from 'react';
 import styled from 'styled-components';
 import { useAuth } from '../../client/useAuth';
-import { fetchUserAnimeList, type AnimeListEntry, type MediaListStatus } from '../../client/authService';
+import { type AnimeListEntry, type MediaListStatus } from '../../client/authService';
+import { useUserAnimeList } from '../../hooks/useUserAnimeList';
 import { CardGrid } from '../../index';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -78,29 +79,10 @@ export const WatchingAnilist = () => {
   const [selectedStatus, setSelectedStatus] = useState<MediaListStatus>(
     () => (localStorage.getItem('selectedStatus') as MediaListStatus) || 'CURRENT',
   );
-  const [entries, setEntries]   = useState<AnimeListEntry[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-
-  const fetchList = useCallback(async (username: string, status: MediaListStatus) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchUserAnimeList(username, status);
-      setEntries(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load anime list');
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isLoggedIn && userData?.name) {
-      fetchList(userData.name, selectedStatus);
-    }
-  }, [isLoggedIn, userData?.name, selectedStatus, fetchList]);
+  const { entries, loading, error } = useUserAnimeList(
+    isLoggedIn ? userData?.name : undefined,
+    selectedStatus,
+  );
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newStatus = e.target.value as MediaListStatus;
