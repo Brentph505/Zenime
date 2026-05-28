@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
@@ -53,7 +53,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe';
+type AnimeProvider = 'kickassanime' | 'animepahe' | 'animekai';
 type MangaProvider = 'mangahere' | 'mangapill';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -662,26 +662,7 @@ const CardThumbWrap = styled.div`
   }
 `;
 
-const imagePulse = keyframes`
-  0%, 100% { background-color: var(--global-primary-skeleton); }
-  50% { background-color: var(--global-secondary-skeleton); }
-`;
-
-const CardThumbSkeleton = styled.div`
-  position: absolute;
-  inset: 0;
-  background: var(--global-primary-skeleton);
-  animation: ${imagePulse} 1.6s ease-in-out infinite;
-`;
-
-const CardThumb = styled.img<{ $loaded: boolean }>`
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  opacity: ${({ $loaded }) => ($loaded ? 1 : 0)};
-  transition: opacity 0.2s ease-in-out;
-`;
+const CardThumb = styled.img`width: 100%; height: 100%; object-fit: cover; display: block;`;
 
 const CardEpBadge = styled.span`
   position: absolute; bottom: 3px; left: 3px;
@@ -696,19 +677,6 @@ const CardTitle = styled.span`
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   color: #1f2937;
   .dark-mode & { color: ${A.text}; }
-`;
-
-const CardDescription = styled.span`
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 0.72rem;
-  line-height: 1.35;
-  color: #4b5563;
-  margin-top: 0.25rem;
-  .dark-mode & { color: ${A.muted}; }
 `;
 
 const CardMeta = styled.div`display: flex; align-items: center; gap: 0.4rem; margin-top: 0.3rem; flex-wrap: wrap;`;
@@ -792,10 +760,10 @@ const FullWidthSection = styled.div`
   .dark-mode & { border-top: 1px solid ${A.border}; }
   @media (max-width: 860px) {
     margin-top: 1.75rem;
-    padding: 1.5rem 0 0;
-    width: 100%;
-    margin-left: 0;
-    margin-right: 0;
+    padding: 1.5rem 0.75rem 0;
+    width: calc(100% + 1rem);
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
   }
 `;
 
@@ -927,15 +895,10 @@ const Info: React.FC = () => {
   const [epView,   setEpView]   = useState<EpView>(() => queryType === 'MANGA' ? 'list' : 'card');
   const [epSearch, setEpSearch] = useState('');
   const [epRange,  setEpRange]  = useState(0);
-  const [loadedEpisodeImages, setLoadedEpisodeImages] = useState<Record<string, boolean>>({});
 
   // Scroll refs for horizontal carousels
   const recsRef    = useRef<HTMLDivElement>(null);
   const relatedRef = useRef<HTMLDivElement>(null);
-
-  const handleEpisodeImageLoad = useCallback((id: string) => {
-    setLoadedEpisodeImages((prev) => ({ ...prev, [id]: true }));
-  }, []);
 
   const scrollSection = (ref: React.RefObject<HTMLDivElement>, dir: 'left' | 'right') => {
     ref.current?.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
@@ -1014,9 +977,11 @@ const Info: React.FC = () => {
 
       } else {
         // ── Anime fetch ──────────────────────────────────────────────────────
-        const candidates: AnimeProvider[] = provider === 'animepahe'
-          ? ['animepahe', 'kickassanime']
-          : ['kickassanime', 'animepahe'];
+        const candidates: AnimeProvider[] = provider === 'animekai'
+          ? ['animekai', 'animepahe', 'kickassanime']
+          : provider === 'animepahe'
+            ? ['animepahe', 'kickassanime', 'animekai']
+            : ['kickassanime', 'animepahe', 'animekai'];
 
         let loaded = false;
         let bestData: any = null; // best data found (even without episodes)
@@ -1124,7 +1089,6 @@ const Info: React.FC = () => {
   useEffect(() => {
     setEpRange(0);
     setEpSearch('');
-    setLoadedEpisodeImages({});
   }, [animeId]);
 
   // Update document title
@@ -1548,23 +1512,11 @@ const Info: React.FC = () => {
                             {currentEps.map(ep => (
                               <EpisodeCardItem key={ep.id} onClick={() => navigateToEntry(ep)}>
                                 <CardThumbWrap>
-                                  {!loadedEpisodeImages[ep.id] && <CardThumbSkeleton />}
-                                  <CardThumb
-                                    src={ep.image || cover}
-                                    alt={ep.title || ''}
-                                    $loaded={!!loadedEpisodeImages[ep.id]}
-                                    onLoad={() => handleEpisodeImageLoad(ep.id)}
-                                    onError={() => handleEpisodeImageLoad(ep.id)}
-                                  />
+                                  <CardThumb src={ep.image || cover} alt={ep.title || ''} />
                                   <CardEpBadge>EP {ep.number}</CardEpBadge>
                                 </CardThumbWrap>
                                 <CardBody>
-                                  <div>
-                                    <CardTitle>{ep.title || `Episode ${ep.number}`}</CardTitle>
-                                    {ep.description ? (
-                                      <CardDescription>{ep.description}</CardDescription>
-                                    ) : null}
-                                  </div>
+                                  <CardTitle>{ep.title || `Episode ${ep.number}`}</CardTitle>
                                   <CardMeta>
                                     {ep.airDate && <CardDate>{ep.airDate}</CardDate>}
                                     <CardIcons>

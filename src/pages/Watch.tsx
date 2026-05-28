@@ -9,41 +9,19 @@ import {
   WatchAnimeData as AnimeData,
   AnimeDataList,
   MediaSource,
+  fetchAnimeEpisodes,
   fetchAnimeData,
   fetchAnimeInfo,
-  fetchEpisodesFromMultipleProviders,
-  fetchServersFromMultipleProviders,
-  type MergedEpisode,
+  fetchAnimeStreamingLinks,
   SkeletonPlayer,
   useCountdown,
-  useAuth,
 } from '../index';
 import { Episode } from '../index';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-/**
- * A WatchEpisode always carries the full `providers` map so that
- * fetchAvailableServers can look up each provider's own episode ID.
- */
-type ProviderEpisodeData = {
-  id: string;
-  provider: string;
-  title: string;
-  image: string;
-  description: string;
-  imageHash: string;
-  airDate: string;
-};
-
 type WatchEpisode = Episode & {
-  /** The primary provider key (first available). */
   provider?: string;
-  /** Full map of every provider that has this episode, keyed by provider name. */
-  providers: Record<string, ProviderEpisodeData>;
+  providerEpisodeIds?: Record<string, string>;
 };
-
-// ─── Styled Components ───────────────────────────────────────────────────────
 
 const WatchContainer = styled.div``;
 
@@ -65,8 +43,8 @@ const WatchWrapper = styled.div`
 const DataWrapper = styled.div`
   display: grid;
   gap: 1rem;
-  grid-template-columns: 1fr 1fr;
-  width: 100%;
+  grid-template-columns: 1fr 1fr; // TODO Aim for a 3:1 ratio
+  width: 100%; // TODO Make sure this container can expand enough
   @media (max-width: 1000px) {
     grid-template-columns: 1fr;
     max-width: 100%;
@@ -173,23 +151,55 @@ const IframeTrailer = styled.iframe`
   }
 `;
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-
 const LOCAL_STORAGE_KEYS = {
   LAST_WATCHED_EPISODE: 'last-watched-',
   WATCHED_EPISODES: 'watched-episodes-',
   LAST_ANIME_VISITED: 'last-anime-visited',
 };
 
-const PROVIDERS: string[] = ['kickassanime', 'animepahe', 'reanime'];
-
-/** Empty providers map used as the initial/fallback value. */
-const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
-
-// ─── Helper: build an empty WatchEpisode ─────────────────────────────────────
-
-function makeEmptyEpisode(): WatchEpisode {
-  return {
+// TODO Main Component
+const Watch: React.FC = () => {
+  const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
+  const [videoPlayerWidth, setVideoPlayerWidth] = useState('100%');
+  const getLanguageKey = (animeId: string | undefined) =>
+    `subOrDub-[${animeId}]`;
+  
+  // Per-episode server storage keys
+  const getEpisodeServerKey = (animeId: string | undefined, episodeId: string | undefined) =>
+    `episode-server-[${animeId}]-[${episodeId}]`;
+  
+  const getSavedServerForEpisode = (animeId: string | undefined, episodeId: string | undefined) => {
+    if (!animeId || !episodeId) return null;
+    return localStorage.getItem(getEpisodeServerKey(animeId, episodeId)) || null;
+  };
+  
+  const saveServerForEpisode = (animeId: string | undefined, episodeId: string | undefined, server: string) => {
+    if (!animeId || !episodeId) return;
+    localStorage.setItem(getEpisodeServerKey(animeId, episodeId), server);
+  };
+  
+  const updateVideoPlayerWidth = useCallback(() => {
+    if (videoPlayerContainerRef.current) {
+      const width = `${videoPlayerContainerRef.current.offsetWidth}px`;
+      setVideoPlayerWidth(width);
+    }
+  }, [setVideoPlayerWidth, videoPlayerContainerRef]);
+  const [maxEpisodeListHeight, setMaxEpisodeListHeight] =
+    useState<string>('100%');
+  const { animeId } = useParams<{
+    animeId?: string;
+  }>();
+  const [searchParams] = useSearchParams();
+  const episodeNumber = searchParams.get('ep') || undefined;
+  const STORAGE_KEYS = {
+    SOURCE_TYPE: `source-[${animeId}]`,
+    LANGUAGE: `subOrDub-[${animeId}]`,
+  };
+  const navigate = useNavigate();
+  const [selectedBackgroundImage, setSelectedBackgroundImage] =
+    useState<string>('');
+  const [episodes, setEpisodes] = useState<WatchEpisode[]>([]);
+  const [currentEpisode, setCurrentEpisode] = useState<WatchEpisode>({
     id: '0',
     number: 1,
     title: '',
@@ -198,92 +208,30 @@ function makeEmptyEpisode(): WatchEpisode {
     imageHash: '',
     airDate: '',
     provider: 'kickassanime',
-    providers: EMPTY_PROVIDERS,
-  };
-}
-
-// ─── Main Component ───────────────────────────────────────────────────────────
-
-const Watch: React.FC = () => {
-  useAuth();
-
-  // ── Refs ──────────────────────────────────────────────────────────────────
-  const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
-
-  // ── Router ────────────────────────────────────────────────────────────────
-  const { animeId } = useParams<{ animeId?: string }>();
-  const [searchParams] = useSearchParams();
-  const episodeNumber = searchParams.get('ep') || undefined;
-  const navigate = useNavigate();
-
-  // ── Storage helpers ───────────────────────────────────────────────────────
-  const getLanguageKey = (id: string | undefined) => `subOrDub-[${id}]`;
-  const getEpisodeServerKey = (id: string | undefined, epId: string | undefined) =>
-    `episode-server-[${id}]-[${epId}]`;
-
-  const getSavedServerForEpisode = (id?: string, epId?: string): string | null => {
-    if (!id || !epId) return null;
-    return localStorage.getItem(getEpisodeServerKey(id, epId)) || null;
-  };
-
-  const saveServerForEpisode = async (id: string, epId: string, server: string) => {
-    localStorage.setItem(getEpisodeServerKey(id, epId), server);
-    try {
-      const { redisClient } = await import('../lib/caching/redisClient');
-      await redisClient.set(`server-${id}-${epId}`, server, 30 * 24 * 60 * 60);
-    } catch (err) {
-      console.warn('[Watch] Failed to save server preference to Redis:', err);
-    }
-  };
-
-  const STORAGE_KEYS = {
-    SOURCE_TYPE: `source-[${animeId}]`,
-    LANGUAGE: `subOrDub-[${animeId}]`,
-  };
-
-  // ── UI state ──────────────────────────────────────────────────────────────
-  const [videoPlayerWidth, setVideoPlayerWidth] = useState('100%');
-  const [maxEpisodeListHeight, setMaxEpisodeListHeight] = useState<string>('100%');
-  const [selectedBackgroundImage, setSelectedBackgroundImage] = useState<string>('');
-  const [showNoEpisodesMessage, setShowNoEpisodesMessage] = useState(false);
-  const [lastKeypressTime, setLastKeypressTime] = useState(0);
-
-  // ── Data state ────────────────────────────────────────────────────────────
+  });
   const [animeInfo, setAnimeInfo] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [episodes, setEpisodes] = useState<WatchEpisode[]>([]);
-  const hasFetchedEpisodesRef = useRef(false);
-  const previousAnimeIdRef = useRef<string | undefined>(undefined);
-
-  /**
-   * currentEpisode always carries the full `providers` map so that
-   * the server-fetching effect can look up each provider's own episode ID.
-   */
-  const [currentEpisode, setCurrentEpisode] = useState<WatchEpisode>(makeEmptyEpisode());
-
-  // ── Language / sub-dub ────────────────────────────────────────────────────
+  const [showNoEpisodesMessage, setShowNoEpisodesMessage] = useState(false);
+  const [lastKeypressTime, setLastKeypressTime] = useState(0);
+  const [sourceType, setSourceType] = useState<string>('');
   const [language, setLanguage] = useState(
     () => localStorage.getItem(STORAGE_KEYS.LANGUAGE) || 'sub',
   );
-  const [languageChanged, setLanguageChanged] = useState(false);
-
-  // ── Server / player state ─────────────────────────────────────────────────
-  const [sourceType, setSourceType] = useState<string>('');
   const [downloadLink, setDownloadLink] = useState('');
   const [availableServers, setAvailableServers] = useState<string[]>([]);
   const [hasFetchedServers, setHasFetchedServers] = useState<boolean>(false);
   const [serverEntries, setServerEntries] = useState<
-    Array<{ name: string; url: string; type: string; provider?: string }>
+    Array<{ key: string; provider: string; name: string; url: string; type: string }>
   >([]);
   const [embeddedUrl, setEmbeddedUrl] = useState<string>('');
   const [serverUrl, setServerUrl] = useState<string>('');
   const [embeddedServerName, setEmbeddedServerName] = useState<string>('');
+  // Tracks which server keys render as iframes vs HLS
   const [embeddedServerKeys, setEmbeddedServerKeys] = useState<Set<string>>(
     new Set(['embedded']),
   );
   const [hlsDirectUrl, setHlsDirectUrl] = useState<string>('');
-
-  // ── Embedded player config ────────────────────────────────────────────────
+  const animekaiSubtitles: Array<{ url: string; lang: string }> = [];
   const EMBEDDED_PLAYER_1 = (import.meta.env.VITE_EMBEDDED_PLAYER_1 as string) || '';
   const hasEmbeddedPlayer = Boolean(EMBEDDED_PLAYER_1?.trim());
 
@@ -291,374 +239,488 @@ const Watch: React.FC = () => {
     lang === 'dub' ? 'Zen Dub' : 'Zen Sub';
 
   const buildEmbeddedPlayerUrl = (
-    id?: string,
-    epNumber?: string,
+    animeId?: string,
+    episodeNumber?: string,
     lang?: string,
   ) => {
-    if (!hasEmbeddedPlayer || !id || !epNumber) return '';
+    if (!hasEmbeddedPlayer || !animeId || !episodeNumber) return '';
     const cleanBase = EMBEDDED_PLAYER_1.replace(/\/+$/, '');
     const type = lang === 'dub' ? 'dub' : 'sub';
-    const originalUrl = `${cleanBase}/stream/ani/${id}/${epNumber}/${type}`;
+    const originalUrl = `${cleanBase}/stream/ani/${animeId}/${episodeNumber}/${type}`;
     const proxyUrl = import.meta.env.VITE_PROXY_URL;
-    return proxyUrl ? `${proxyUrl}?url=${encodeURIComponent(originalUrl)}` : originalUrl;
+    if (proxyUrl) {
+      return `${proxyUrl}?url=${encodeURIComponent(originalUrl)}`;
+    } else {
+      return originalUrl;
+    }
   };
 
-  // ── Countdown / airing ────────────────────────────────────────────────────
+  /**
+   * Build a proxied iframe URL for kickassanime servers.
+   * Converts a raw kickassanime server URL to use the kickassanime-specific proxy
+   * with the /url?= format.
+   */
+  const buildKickassanimeIframeUrl = (serverUrl: string) => {
+    if (!serverUrl) return '';
+    const proxyUrl = (import.meta.env.VITE_EMBEDDED_PROXY_KICKASSANIME as string) || '';
+    if (proxyUrl) {
+      return `${proxyUrl}/url?=${encodeURIComponent(serverUrl)}`;
+    } else {
+      return serverUrl;
+    }
+  };
+
+  const normalizeEpisodeNumber = (
+    ep: any,
+    _provider: string,
+    index: number,
+  ): string => {
+    if (ep == null) return String(index + 1);
+    if (typeof ep.number === 'number') return String(ep.number);
+    if (typeof ep.number === 'string' && /^[0-9]+$/.test(ep.number)) {
+      return ep.number;
+    }
+
+    const id = String(ep.id || '');
+    const patterns = [
+      /episode\/ep-(\d+)/i,
+      /-episode-ep-(\d+)/i,
+      /episode-(\d+)/i,
+      /ep-(\d+)/i,
+      /episode\s+(\d+)/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = id.match(pattern) || String(ep.title || '').match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+
+    return String(index + 1);
+  };
+
+  const buildServerKey = (
+    provider: string,
+    serverName: string,
+    isEmbedded = false,
+  ) => {
+    const suffix = isEmbedded ? '__EM' : '';
+    return `${provider}:${serverName}${suffix}`;
+  };
+
   const nextEpisodeAiringTime =
-    animeInfo?.nextAiringEpisode ? animeInfo.nextAiringEpisode.airingTime * 1000 : null;
+    animeInfo && animeInfo.nextAiringEpisode
+      ? animeInfo.nextAiringEpisode.airingTime * 1000
+      : null;
   const nextEpisodenumber = animeInfo?.nextAiringEpisode?.episode;
   const countdown = useCountdown(nextEpisodeAiringTime);
-
-  // ── Derived indices ───────────────────────────────────────────────────────
   const currentEpisodeIndex = episodes.findIndex(
     (ep) => String(ep.id) === String(currentEpisode.id),
   );
+  const [languageChanged, setLanguageChanged] = useState(false);
 
-  // ── Update video player width ─────────────────────────────────────────────
-  const updateVideoPlayerWidth = useCallback(() => {
-    if (videoPlayerContainerRef.current) {
-      setVideoPlayerWidth(`${videoPlayerContainerRef.current.offsetWidth}px`);
-    }
-  }, []);
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Internal navigation helpers
-  // ─────────────────────────────────────────────────────────────────────────
-
+  //----------------------------------------------MORE VARIABLES----------------------------------------------
   const GoToHomePageButton = () => {
-    const nav = useNavigate();
+    const navigate = useNavigate();
+
+    const handleClick = () => {
+      navigate('/home');
+    };
+
     return (
-      <StyledHomeButton onClick={() => nav('/home')}>Go back Home</StyledHomeButton>
+      <StyledHomeButton onClick={handleClick}>Go back Home</StyledHomeButton>
     );
   };
-
-  const updateWatchedEpisodes = useCallback(
-    (episode: Episode) => {
-      if (!animeId) return;
-
-      const globalKey = 'watched-episodes';
-      const allWatchedEpisodes: Record<string, Episode[]> = JSON.parse(
-        localStorage.getItem(globalKey) || '{}',
+  // TODO SAVE TO LOCAL STORAGE NAVIGATED/CLICKED EPISODES
+  const updateWatchedEpisodes = (episode: Episode) => {
+    const watchedEpisodesJson = localStorage.getItem(
+      LOCAL_STORAGE_KEYS.WATCHED_EPISODES + animeId,
+    );
+    const watchedEpisodes: Episode[] = watchedEpisodesJson
+      ? JSON.parse(watchedEpisodesJson)
+      : [];
+    if (!watchedEpisodes.some((ep) => ep.id === episode.id)) {
+      watchedEpisodes.push(episode);
+      localStorage.setItem(
+        LOCAL_STORAGE_KEYS.WATCHED_EPISODES + animeId,
+        JSON.stringify(watchedEpisodes),
       );
-      const animeWatchList = allWatchedEpisodes[animeId] || [];
-
-      if (!animeWatchList.some((ep) => ep.id === episode.id)) {
-        const updatedAnimeWatchList = [...animeWatchList, episode];
-        allWatchedEpisodes[animeId] = updatedAnimeWatchList;
-        localStorage.setItem(globalKey, JSON.stringify(allWatchedEpisodes));
-        localStorage.setItem(
-          `${LOCAL_STORAGE_KEYS.WATCHED_EPISODES}${animeId}`,
-          JSON.stringify(updatedAnimeWatchList),
-        );
-      }
-    },
-    [animeId],
-  );
-
-  useEffect(() => {
-    if (currentEpisode?.id && currentEpisode.id !== '0') {
-      updateWatchedEpisodes(currentEpisode);
     }
-  }, [currentEpisode, updateWatchedEpisodes]);
+  };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // handleEpisodeSelect
-  //
-  // KEY FIX: carry `providers` forward from the episodes list so that the
-  // server-fetching effect always has every provider's episode ID.
-  // ─────────────────────────────────────────────────────────────────────────
+  // TODO UPDATES CURRENT EPISODE INFORMATION, UPDATES WATCHED EPISODES AND NAVIGATES TO NEW URL
   const handleEpisodeSelect = useCallback(
-    async (selected: WatchEpisode | (Episode & { provider?: string; providers?: Record<string, ProviderEpisodeData> })) => {
-      // Resolve the full providers map — prefer the one attached to the episode
-      // object, but fall back to looking it up in the episodes list by number.
-      let resolvedProviders: Record<string, ProviderEpisodeData> =
-        (selected as WatchEpisode).providers || EMPTY_PROVIDERS;
-
-      if (!resolvedProviders || Object.keys(resolvedProviders).length === 0) {
-        const found = episodes.find(
-          (ep) =>
-            String(ep.number) === String((selected as any).number) ||
-            String(ep.id) === String(selected.id),
-        );
-        resolvedProviders = found?.providers || EMPTY_PROVIDERS;
-      }
-
-      // Determine the primary provider (first key in the map)
-      const primaryProvider =
-        (selected as WatchEpisode).provider ||
-        Object.keys(resolvedProviders)[0] ||
-        'kickassanime';
-
-      // The primary episode ID comes from the primary provider's data.
-      // This is the ID we store for display / last-watched purposes.
-      const primaryId =
-        resolvedProviders[primaryProvider]?.id || selected.id;
-
-      const nextEpisode: WatchEpisode = {
-        id: primaryId,
-        number:
-          typeof selected.number === 'string'
-            ? parseInt(selected.number, 10)
-            : selected.number,
-        image: selected.image,
-        title: selected.title,
-        description: selected.description,
-        imageHash: selected.imageHash,
-        airDate: selected.airDate,
-        provider: primaryProvider,
-        providers: resolvedProviders, // ← full map, always
-      };
-
-      setCurrentEpisode(nextEpisode);
+    async (selectedEpisode: Episode & { provider?: string }) => {
+      setCurrentEpisode({
+        id: selectedEpisode.id,
+        number: selectedEpisode.number,
+        image: selectedEpisode.image,
+        title: selectedEpisode.title,
+        description: selectedEpisode.description,
+        imageHash: selectedEpisode.imageHash,
+        airDate: selectedEpisode.airDate,
+        provider: selectedEpisode.provider || 'kickassanime',
+      });
 
       localStorage.setItem(
         LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId,
-        JSON.stringify({ id: primaryId, title: nextEpisode.title, number: nextEpisode.number }),
+        JSON.stringify({
+          id: selectedEpisode.id,
+          title: selectedEpisode.title,
+          number: selectedEpisode.number,
+        }),
       );
-      updateWatchedEpisodes(nextEpisode);
+      updateWatchedEpisodes(selectedEpisode);
 
-      navigate(`/watch/${animeId}?ep=${nextEpisode.number}`, { replace: true });
+      navigate(
+        `/watch/${animeId}?ep=${selectedEpisode.number}`,
+        {
+          replace: true,
+        },
+      );
       await new Promise((resolve) => setTimeout(resolve, 100));
     },
-    [animeId, navigate, episodes],
+    [animeId, navigate],
   );
 
+  // TODO UPDATE DOWNLOAD LINK WHEN EPISODE ID CHANGES
   const updateDownloadLink = useCallback((link: string) => {
     setDownloadLink(link);
   }, []);
 
+  // TODO AUTOPLAY BUTTON TOGGLE PROPS
   const handleEpisodeEnd = async () => {
-    const next = currentEpisodeIndex + 1;
-    if (next >= episodes.length) return;
-    handleEpisodeSelect(episodes[next]);
+    const nextEpisodeIndex = currentEpisodeIndex + 1;
+    if (nextEpisodeIndex >= episodes.length) {
+      console.log('No more episodes.');
+      return;
+    }
+    handleEpisodeSelect(episodes[nextEpisodeIndex]);
   };
 
+  // TODO NAVIGATE TO NEXT AND PREVIOUS EPISODES WITH SHIFT+N/P KEYBOARD COMBINATIONS (500MS DELAY)
   const onPrevEpisode = () => {
-    const prev = currentEpisodeIndex - 1;
-    if (prev >= 0) handleEpisodeSelect(episodes[prev]);
+    const prevIndex = currentEpisodeIndex - 1;
+    if (prevIndex >= 0) {
+      handleEpisodeSelect(episodes[prevIndex]);
+    }
   };
-
   const onNextEpisode = () => {
-    const next = currentEpisodeIndex + 1;
-    if (next < episodes.length) handleEpisodeSelect(episodes[next]);
+    const nextIndex = currentEpisodeIndex + 1;
+    if (nextIndex < episodes.length) {
+      handleEpisodeSelect(episodes[nextIndex]);
+    }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Effects
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // Persist / restore language preference
+  //----------------------------------------------USEFFECTS----------------------------------------------
   useEffect(() => {
-    setLanguage(localStorage.getItem(getLanguageKey(animeId || '')) || 'sub');
+    const defaultLanguage = 'sub';
+    setLanguage(
+      localStorage.getItem(getLanguageKey(animeId || '')) || defaultLanguage,
+    );
   }, [animeId]);
 
   useEffect(() => {
     localStorage.setItem(getLanguageKey(animeId), language);
   }, [language, animeId]);
 
-  // Keep embedded URL in sync with language / episode number
   useEffect(() => {
     if (!hasEmbeddedPlayer || !animeId || !currentEpisode.number) return;
-    setEmbeddedUrl(buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language));
+    setEmbeddedUrl(
+      buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
+    );
     setEmbeddedServerName(getEmbeddedServerName(language));
   }, [animeId, currentEpisode.number, language, hasEmbeddedPlayer]);
 
-  // Document title
   useEffect(() => {
-    if (animeInfo?.title) {
-      document.title =
-        'Watch ' +
-        (animeInfo.title.english || animeInfo.title.romaji || '') +
-        ' | Zenime';
-    }
-  }, [animeInfo]);
-
-  // Resize observer
-  useEffect(() => {
-    updateVideoPlayerWidth();
-    window.addEventListener('resize', updateVideoPlayerWidth);
-    return () => window.removeEventListener('resize', updateVideoPlayerWidth);
-  }, [updateVideoPlayerWidth]);
-
-  useEffect(() => {
-    const update = () => {
-      if (videoPlayerContainerRef.current) {
-        setMaxEpisodeListHeight(`${videoPlayerContainerRef.current.offsetHeight}px`);
+    let isMounted = true;
+    const fetchInfo = async () => {
+      if (!animeId) {
+        console.error('Anime ID is null.');
+        setLoading(false);
+        return;
       }
-    };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-
-  // ── Fetch anime info ──────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
-    if (!animeId) return;
-    (async () => {
-      try {
-        const info = await fetchAnimeData(animeId);
-        if (mounted) setAnimeInfo(info);
-      } catch {
-        try {
-          const fallback = await fetchAnimeInfo(animeId);
-          if (mounted) setAnimeInfo(fallback);
-        } catch (err) {
-          console.error('Failed to fetch anime info:', err);
-        }
-      }
-    })();
-    return () => { mounted = false; };
-  }, [animeId]);
-
-  // ── Fetch + merge episodes from all providers ─────────────────────────────
-  //
-  // KEY FIX: episodes are fetched per provider individually and merged by
-  // episode number. Each WatchEpisode stores the full `providers` map so that
-  // when a user selects an episode we know every provider's own episode ID.
-  // ─────────────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    let mounted = true;
-    if (!animeId) return;
-
-    // If the anime changes, allow the next fetch to run.
-    if (previousAnimeIdRef.current !== animeId) {
-      previousAnimeIdRef.current = animeId;
-      hasFetchedEpisodesRef.current = false;
-    }
-
-    if (hasFetchedEpisodesRef.current && !languageChanged) return;
-
-    const fetchData = async () => {
       setLoading(true);
       try {
-        const isDub = language === 'dub';
-
-        // Fetch from all providers in parallel; each may return a different
-        // episode ID for the same episode number.
-        const mergedEpisodes: MergedEpisode[] = await fetchEpisodesFromMultipleProviders(
-          animeId,
-          isDub,
-          PROVIDERS,
+        const info = await fetchAnimeData(animeId);
+        if (isMounted) {
+          setAnimeInfo(info);
+        }
+      } catch (error) {
+        console.error(
+          'Failed to fetch anime data, trying fetchAnimeInfo as a fallback:',
+          error,
         );
-
-        if (!mounted || mergedEpisodes.length === 0) return;
-
-        // Transform into WatchEpisodes, preserving every provider's data
-        const transformed: WatchEpisode[] = mergedEpisodes.map((mergedEp) => {
-          let title = mergedEp.title || '';
-          if (title) title = title.replace(/^\d+-\d+\.\s+/, '');
-
-          const epNumber = parseInt(mergedEp.number, 10) || 1;
-
-          // Primary provider is the first key in the providers map
-          const primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'kickassanime';
-          const primaryProviderData = mergedEp.providers[primaryProviderKey];
-
-          return {
-            // Use the primary provider's episode ID as the canonical ID
-            id: primaryProviderData?.id || String(epNumber),
-            number: epNumber,
-            title: title || `Episode ${mergedEp.number}`,
-            image: mergedEp.image,
-            description: mergedEp.description,
-            imageHash: mergedEp.imageHash,
-            airDate: mergedEp.airDate,
-            provider: primaryProviderKey,
-            // Full providers map — this is what makes multi-provider servers work
-            providers: mergedEp.providers as Record<string, ProviderEpisodeData>,
-          };
-        });
-
-        setEpisodes(transformed);
-
-        // Update last-visited
-        if (animeInfo && animeId) {
-          const lv = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
-          const lvData = lv ? JSON.parse(lv) : {};
-          lvData[animeId] = {
-            timestamp: Date.now(),
-            titleEnglish: animeInfo.title?.english,
-            titleRomaji: animeInfo.title?.romaji,
-          };
-          localStorage.setItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED, JSON.stringify(lvData));
+        try {
+          const fallbackInfo = await fetchAnimeInfo(animeId);
+          if (isMounted) {
+            setAnimeInfo(fallbackInfo);
+          }
+        } catch (fallbackError) {
+          console.error(
+            'Also failed to fetch anime info as a fallback:',
+            fallbackError,
+          );
+        } finally {
+          if (isMounted) setLoading(false);
         }
-
-        // Determine which episode to navigate to
-        const targetEp = (() => {
-          if (languageChanged) {
-            const num = episodeNumber || String(currentEpisode.number);
-            return (
-              transformed.find((ep) => String(ep.number) === num) ||
-              transformed[transformed.length - 1]
-            );
-          }
-          if (episodeNumber) {
-            return transformed.find((ep) => String(ep.number) === episodeNumber) || transformed[0];
-          }
-          const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId);
-          const savedEp = saved ? JSON.parse(saved) : null;
-          return savedEp
-            ? transformed.find((ep) => String(ep.number) === String(savedEp.number)) || transformed[0]
-            : transformed[0];
-        })();
-
-        if (targetEp) {
-          if (String(targetEp.number) !== episodeNumber) {
-            navigate(`/watch/${animeId}?ep=${targetEp.number}`, { replace: true });
-          }
-          setCurrentEpisode(targetEp);
-          setLanguageChanged(false);
-        }
-        hasFetchedEpisodesRef.current = true;
-      } catch (err) {
-        console.error('Failed to fetch episodes from multiple providers:', err);
-      } finally {
-        if (mounted) setLoading(false);
       }
     };
 
-    fetchData();
-    return () => { mounted = false; };
-  }, [animeId, navigate, language, languageChanged]);
+    fetchInfo();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [animeId]);
 
   useEffect(() => {
-    if (!episodeNumber || episodes.length === 0) return;
-    const selected = episodes.find((ep) => String(ep.number) === episodeNumber);
-    if (selected && selected.id !== currentEpisode.id) {
-      setCurrentEpisode(selected);
+    let isMounted = true;
+    const fetchData = async () => {
+      setLoading(true);
+      if (!animeId) return;
+      try {
+        const isDub = language === 'dub';
+        const providers = ['kickassanime', 'animepahe', 'animekai'];
+
+        const episodeResults = await Promise.allSettled(
+          providers.map((provider) =>
+            fetchAnimeEpisodes(animeId, provider, isDub, false),
+          ),
+        );
+
+        const episodesByNumber = new Map<string, WatchEpisode>();
+
+        episodeResults.forEach((result, index) => {
+          const provider = providers[index];
+          if (result.status !== 'fulfilled' || !Array.isArray(result.value)) {
+            console.warn(`No episode list for ${provider}`);
+            return;
+          }
+
+          result.value.forEach((ep: any, episodeIndex: number) => {
+            if (!ep || !ep.id) return;
+
+            const episodeNumber = normalizeEpisodeNumber(ep, provider, episodeIndex);
+            const title = ep.title ? String(ep.title).replace(/^\d+-\d+\.\s+/, '') : `Episode ${episodeNumber}`;
+            const normalizedId = String(episodeNumber);
+
+            const existing = episodesByNumber.get(episodeNumber) || {
+              id: normalizedId,
+              provider: 'kickassanime',
+              number: Number(episodeNumber),
+              title,
+              description: ep.description || null,
+              image: ep.image || '',
+              imageHash: ep.imageHash || '',
+              airDate: ep.airDate || null,
+              providerEpisodeIds: {},
+            } as WatchEpisode;
+
+            existing.title = existing.title || title;
+            existing.description = existing.description || ep.description || null;
+            existing.image = existing.image || ep.image || '';
+            existing.imageHash = existing.imageHash || ep.imageHash || '';
+            existing.airDate = existing.airDate || ep.airDate || null;
+            existing.providerEpisodeIds = {
+              ...(existing.providerEpisodeIds || {}),
+              [provider]: ep.id,
+            };
+
+            if (!existing.provider) {
+              existing.provider = provider;
+            }
+
+            episodesByNumber.set(episodeNumber, existing);
+          });
+        });
+
+        const transformedEpisodes = Array.from(episodesByNumber.values())
+          .sort((a, b) => Number(a.number) - Number(b.number));
+
+        setEpisodes(transformedEpisodes);
+
+        const navigateToEpisode = (() => {
+          if (languageChanged) {
+            const currentEpisodeNumber =
+              episodeNumber || String(currentEpisode.number);
+            return (
+              transformedEpisodes.find(
+                (ep) => String(ep.number) === currentEpisodeNumber,
+              ) || transformedEpisodes[transformedEpisodes.length - 1]
+            );
+          } else if (episodeNumber) {
+            return (
+              transformedEpisodes.find((ep) => String(ep.number) === episodeNumber) ||
+              transformedEpisodes[0]
+            );
+          } else {
+            const savedEpisodeData = localStorage.getItem(
+              LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId,
+            );
+            const savedEpisode = savedEpisodeData
+              ? JSON.parse(savedEpisodeData)
+              : null;
+            return savedEpisode
+              ? transformedEpisodes.find(
+                  (ep) => String(ep.number) === String(savedEpisode.number),
+                ) || transformedEpisodes[0]
+              : transformedEpisodes[0];
+          }
+        })();
+
+        if (navigateToEpisode && String(navigateToEpisode.number) !== episodeNumber) {
+          setCurrentEpisode({
+            id: navigateToEpisode.id,
+            number: navigateToEpisode.number,
+            image: navigateToEpisode.image,
+            title: navigateToEpisode.title,
+            description: navigateToEpisode.description,
+            imageHash: navigateToEpisode.imageHash,
+            airDate: navigateToEpisode.airDate,
+            provider: navigateToEpisode.provider,
+            providerEpisodeIds: navigateToEpisode.providerEpisodeIds,
+          });
+
+          navigate(
+            `/watch/${animeId}?ep=${navigateToEpisode.number}`,
+            { replace: true },
+          );
+          setLanguageChanged(false);
+        } else if (navigateToEpisode) {
+          setCurrentEpisode({
+            id: navigateToEpisode.id,
+            number: navigateToEpisode.number,
+            image: navigateToEpisode.image,
+            title: navigateToEpisode.title,
+            description: navigateToEpisode.description,
+            imageHash: navigateToEpisode.imageHash,
+            airDate: navigateToEpisode.airDate,
+            provider: navigateToEpisode.provider,
+            providerEpisodeIds: navigateToEpisode.providerEpisodeIds,
+          });
+          setLanguageChanged(false);
+        }
+      } catch (error) {
+        console.error('Failed to fetch episodes:', error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    const updateLastVisited = () => {
+      if (!animeInfo || !animeId) return;
+
+      const lastVisited = localStorage.getItem(
+        LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED,
+      );
+      const lastVisitedData = lastVisited ? JSON.parse(lastVisited) : {};
+      lastVisitedData[animeId] = {
+        timestamp: Date.now(),
+        titleEnglish: animeInfo.title.english,
+        titleRomaji: animeInfo.title.romaji,
+      };
+
+      localStorage.setItem(
+        LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED,
+        JSON.stringify(lastVisitedData),
+      );
+    };
+
+    if (animeId) {
+      updateLastVisited();
     }
-  }, [episodeNumber, episodes, currentEpisode.id]);
 
-  // ── Background image ──────────────────────────────────────────────────────
+    fetchData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [animeId, episodeNumber, navigate, language, languageChanged]);
+
   useEffect(() => {
-    if (!animeInfo || currentEpisode.id === '0') return;
-    const episodeImage = currentEpisode.image;
-    const bannerImage = animeInfo?.cover || animeInfo?.artwork?.[3]?.img;
-    if (episodeImage && episodeImage !== animeInfo.image) {
-      const img = new Image();
-      img.onload = () =>
-        setSelectedBackgroundImage(img.width > 500 ? episodeImage : bannerImage);
-      img.onerror = () => setSelectedBackgroundImage(bannerImage);
-      img.src = episodeImage;
-    } else {
-      setSelectedBackgroundImage(bannerImage);
+    const updateBackgroundImage = () => {
+      const episodeImage = currentEpisode.image;
+      const bannerImage = animeInfo?.cover || animeInfo?.artwork[3].img;
+      if (episodeImage && episodeImage !== animeInfo.image) {
+        const img = new Image();
+        img.onload = () => {
+          if (img.width > 500) {
+            setSelectedBackgroundImage(episodeImage);
+          } else {
+            setSelectedBackgroundImage(bannerImage);
+          }
+        };
+        img.onerror = () => {
+          setSelectedBackgroundImage(bannerImage);
+        };
+        img.src = episodeImage;
+      } else {
+        setSelectedBackgroundImage(bannerImage);
+      }
+    };
+    if (animeInfo && currentEpisode.id !== '0') {
+      updateBackgroundImage();
     }
   }, [animeInfo, currentEpisode]);
 
-  // ── No-episodes timeout ───────────────────────────────────────────────────
   useEffect(() => {
-    const t = setTimeout(() => {
-      if (!episodes || episodes.length === 0) setShowNoEpisodesMessage(true);
-    }, 10000);
-    return () => clearTimeout(t);
-  }, [loading, episodes]);
+    updateVideoPlayerWidth();
+    const handleResize = () => {
+      updateVideoPlayerWidth();
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [updateVideoPlayerWidth]);
 
   useEffect(() => {
-    setShowNoEpisodesMessage(!loading && episodes.length === 0);
-  }, [loading, episodes]);
+    const updateMaxHeight = () => {
+      if (videoPlayerContainerRef.current) {
+        const height = videoPlayerContainerRef.current.offsetHeight;
+        setMaxEpisodeListHeight(`${height}px`);
+      }
+    };
+    updateMaxHeight();
+    window.addEventListener('resize', updateMaxHeight);
+    return () => window.removeEventListener('resize', updateMaxHeight);
+  }, []);
 
-  // ── Reset player state when episode changes ───────────────────────────────
+  // Save server selection per episode (skip empty/loading state)
+  useEffect(() => {
+    if (animeId && currentEpisode.id && currentEpisode.id !== '0' && sourceType) {
+      saveServerForEpisode(animeId, currentEpisode.id, sourceType);
+      console.log('Saved server:', sourceType, 'for episode:', currentEpisode.id);
+    }
+  }, [sourceType, animeId, currentEpisode.id]);
+
+  // When available servers are fetched, auto-select: restore saved server or pick first available
+  useEffect(() => {
+    if (!hasFetchedServers) return;
+
+    const savedServer = getSavedServerForEpisode(animeId, currentEpisode.id);
+    if (
+      savedServer &&
+      (availableServers.includes(savedServer) || savedServer === 'embedded')
+    ) {
+      console.log('Restoring saved server:', savedServer);
+      setSourceType(savedServer);
+    } else if (availableServers.length > 0) {
+      console.log('Auto-selecting first available server:', availableServers[0]);
+      setSourceType(availableServers[0]);
+    } else if (hasEmbeddedPlayer) {
+      console.log('Auto-selecting embedded player');
+      setSourceType('embedded');
+    }
+  }, [availableServers, hasEmbeddedPlayer, hasFetchedServers]);
+
+  // Reset everything when the episode changes so stale values never flash.
+  // NOTE: embeddedServerName is intentionally NOT reset here — it is derived
+  // purely from `language` ("Zen Sub" / "Zen Dub") and must stay visible
+  // in the server selector while the new episode's servers are being fetched.
+  // Clearing it here would override the effect above (which runs first, being
+  // declared earlier) and cause Zen Sub/Dub to vanish until the async fetch
+  // completes.
   useEffect(() => {
     if (currentEpisode.id && currentEpisode.id !== '0') {
       setSourceType('');
@@ -672,203 +734,20 @@ const Watch: React.FC = () => {
     }
   }, [currentEpisode.id]);
 
-  // ── Fetch available servers from ALL providers for the current episode ────
-  //
-  // KEY FIX: We build `episodesByProvider` from `currentEpisode.providers`
-  // so each provider gets its OWN episode ID (they differ across providers).
-  // ─────────────────────────────────────────────────────────────────────────
+  // Resolve the correct player URL/source whenever the selected server changes.
+  // For animekai:
+  //   - 'embedded'         → Zen Sub/Dub iframe (restore EMBEDDED_PLAYER_1 URL)
+  //   - server key         → set embeddedUrl or hlsDirectUrl based on entry type
+  // For other providers:
+  //   - server key         → selected entry is resolved by key and type
   useEffect(() => {
-    if (!currentEpisode.id || currentEpisode.id === '0') return;
-
-    const fetchAvailableServers = async () => {
-      setHasFetchedServers(false);
-
-      // Build provider -> episodeId map from the stored providers data
-      const episodesByProvider: Record<string, string> = {};
-      if (currentEpisode.providers && Object.keys(currentEpisode.providers).length > 0) {
-        Object.entries(currentEpisode.providers).forEach(([provider, data]) => {
-          if (provider === 'animekai') return;
-          if (data?.id) {
-            episodesByProvider[provider] = data.id;
-          }
-        });
-      } else {
-        // Fallback: only the primary provider
-        const provider =
-          currentEpisode.provider && currentEpisode.provider !== 'animekai'
-            ? currentEpisode.provider
-            : 'kickassanime';
-        episodesByProvider[provider] = currentEpisode.id;
-      }
-
-      const providerList = Object.keys(episodesByProvider);
-
-      console.log('[Watch] Fetching servers for providers:', episodesByProvider);
-
-      if (providerList.length === 0) {
-        console.warn('[Watch] No providers available for this episode');
-        setAvailableServers([]);
-        setHasFetchedServers(true);
-        return;
-      }
-
-      try {
-        // Each provider fetches with ITS OWN episode ID in parallel
-        const serverResults = await fetchServersFromMultipleProviders(
-          episodesByProvider,
-          providerList,
-          language,
-        );
-
-        const aggregatedServers: {
-          name: string;
-          provider: string;
-          url: string;
-          type: string;
-          isEmbedded?: boolean;
-        }[] = [];
-        const urlSet = new Set<string>(); // Track URLs to avoid exact duplicates
-        let hasEmbeddedPlayer_ = false;
-        const newEmbeddedServerKeys = new Set<string>(['embedded']);
-
-        // Helper: Detect if a server is embedded based on URL patterns
-        const isEmbeddedServer = (url: string, type?: string): boolean => {
-          return (
-            url.includes('iframe') ||
-            url.includes('kwik.cx') ||
-            url.includes('flixcloud') ||
-            type === 'iframe' ||
-            // ReAnime returns type:"sub" | "dub" for flixcloud servers.
-            // If the URL is flixcloud the check above already fires, but guard
-            // here too so any future provider using the same convention works.
-            ((type === 'sub' || type === 'dub') && url.includes('flixcloud'))
-          );
-        };
-
-        // Helper: Add a server to aggregated list if not already present
-        const addServer = (
-          name: string,
-          url: string,
-          provider: string,
-          type: string,
-          isEmbedded: boolean,
-        ) => {
-          if (!url || urlSet.has(url)) return; // Skip if URL already added
-          urlSet.add(url);
-          if (isEmbedded) hasEmbeddedPlayer_ = true;
-          aggregatedServers.push({ name, provider, url, type, isEmbedded });
-        };
-
-        // Process each provider's results
-        serverResults.forEach(({ provider, servers, response }) => {
-          // ── Standard server list (kickassanime, animepahe, …) ───────────────
-          // These entries may or may not carry a `.url` field.  We only keep
-          // entries that have a URL; the ones without are handled below.
-          servers.forEach((server: any) => {
-            const serverName = server?.name || '';
-            const serverUrl = server?.url || '';
-            if (!serverName || !serverUrl) return;
-            const embedded = isEmbeddedServer(serverUrl, server.type);
-            addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded);
-          });
-
-          // ── ReAnime-format: response.servers with type "sub" | "dub" ────────
-          //
-          // ReAnime (and providers that embed flixcloud.cc) return full server
-          // objects directly in response.servers:
-          //   { name: "HD-1", url: "https://flixcloud.cc/e/…", type: "sub" }
-          //
-          // fetchServersFromMultipleProviders may surface these as `servers`
-          // above (in which case addServer's urlSet dedup makes this a no-op),
-          // OR it may only return availableServers (string names) and leave the
-          // full objects only in `response.servers`.  We always read from
-          // response.servers here so both cases are covered.
-          //
-          // Key behaviours:
-          //   1. Filter by current `language` — only keep the sub OR dub variant
-          //      that matches what the user selected.
-          //   2. Per-name dedup within this provider — avoids duplicating a
-          //      server whose URL was already added by the `servers` loop above.
-          if (response?.servers && Array.isArray(response.servers) && response.servers.length > 0) {
-            const seenProviderName = new Set<string>();
-
-            response.servers.forEach((srv: any) => {
-              const sName   = (srv?.name || '').trim();
-              const sUrl    = (srv?.url  || '').trim();
-              const sLang   = (srv?.type || '').toLowerCase(); // 'sub' | 'dub' | ''
-
-              if (!sName || !sUrl) return;
-
-              // Language filter: if the server declares sub/dub affinity,
-              // only keep the one that matches the current language setting.
-              const hasSublabel = sLang === 'sub' || sLang === 'dub';
-              if (hasSublabel && sLang !== language) return;
-
-              // Per-provider-name dedup (URL-level dedup is inside addServer).
-              const nameKey = `${provider}:${sName}`;
-              if (seenProviderName.has(nameKey)) return;
-              seenProviderName.add(nameKey);
-
-              const isEmb = isEmbeddedServer(sUrl, sLang);
-              addServer(sName, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb);
-            });
-          }
-
-          // ── HLS sources (direct .m3u8 streams) ──────────────────────────────
-          if (response?.sources && Array.isArray(response.sources)) {
-            let subCount = 0;
-            let dubCount = 0;
-
-            response.sources.forEach((source: any) => {
-              const sourceUrl = source?.url || '';
-              if (!sourceUrl || !sourceUrl.includes('.m3u8')) return;
-
-              const isDub = source.isDub === true;
-              const sourceName = isDub ? `Dub ${++dubCount}` : `Sub ${++subCount}`;
-              addServer(sourceName, sourceUrl, provider, 'hls', false);
-            });
-          }
-        });
-
-        // Build server entries with display names
-        const entries = aggregatedServers.map((server) => {
-          const displayName = server.isEmbedded ? `${server.name}__EM` : server.name;
-          if (server.isEmbedded) newEmbeddedServerKeys.add(displayName);
-          return {
-            name: displayName,
-            url: server.url,
-            type: server.type,
-            provider: server.provider,
-          };
-        });
-
-        setServerEntries(entries);
-        setEmbeddedServerKeys(newEmbeddedServerKeys);
-
-        if (hasEmbeddedPlayer && hasEmbeddedPlayer_) {
-          setEmbeddedUrl(
-            buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
-          );
-          setEmbeddedServerName(getEmbeddedServerName(language));
-        }
-
-        const serverNames = entries.map((s) => s.name);
-        console.log('[Watch] Aggregated available servers:', serverNames);
-        setAvailableServers(serverNames);
-      } catch (err) {
-        console.error('[Watch] Error fetching servers from multiple providers:', err);
-        setAvailableServers([]);
-      } finally {
-        setHasFetchedServers(true);
-      }
-    };
-
-    fetchAvailableServers();
-  }, [currentEpisode.id, currentEpisode.providers, animeId, language]);
-
-  // ── Resolve player URL when selected server changes ───────────────────────
-  useEffect(() => {
-    if (!currentEpisode.id || currentEpisode.id === '0' || !sourceType) return;
+    if (
+      !currentEpisode.id ||
+      currentEpisode.id === '0' ||
+      !sourceType
+    ) {
+      return;
+    }
 
     if (sourceType === 'embedded') {
       if (hasEmbeddedPlayer) {
@@ -880,46 +759,32 @@ const Watch: React.FC = () => {
       return;
     }
 
-    // Check if this is an embedded server (with __EM suffix)
-    const isEmbeddedServer = sourceType.endsWith('__EM');
-    const baseName = sourceType.replace(/__EM$/, '');
+    if (serverEntries.length === 0) return;
 
-    if (isEmbeddedServer) {
-      // Handle embedded/iframe server
-      const entry = serverEntries.find(
-        (s) => s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase(),
-      );
-      if (entry?.url) {
-        setEmbeddedUrl(entry.url);
-        setServerUrl(entry.url);
-        setHlsDirectUrl('');
-      }
-    } else {
-      // Handle HLS/non-embedded source
-      const entry = serverEntries.find((s) => {
-        const nameMatch = s.name.toLowerCase() === baseName.toLowerCase();
-        const typeMatch = s.type === 'hls' || s.url?.includes('.m3u8');
-        return nameMatch && typeMatch;
-      });
-
-      if (entry?.url) {
-        const isDirectM3u8 = /\.m3u8$/i.test(entry.url) || /\/manifest\//i.test(entry.url);
-        setEmbeddedUrl('');
-        setServerUrl(entry.url);
-        setHlsDirectUrl(isDirectM3u8 ? entry.url : '');
-      } else if (serverEntries.length > 0) {
-        // Fallback: try to find by partial match
-        const fallbackEntry = serverEntries.find((e) => 
-          e.name.toLowerCase().includes(baseName.toLowerCase()) && !e.name.includes('__EM')
-        );
-        if (fallbackEntry?.url) {
-          const isDirectM3u8 = /\.m3u8$/i.test(fallbackEntry.url);
-          setEmbeddedUrl('');
-          setServerUrl(fallbackEntry.url);
-          setHlsDirectUrl(isDirectM3u8 ? fallbackEntry.url : '');
-        }
-      }
+    const selectedEntry = serverEntries.find((entry) => entry.key === sourceType);
+    if (!selectedEntry) {
+      return;
     }
+
+    if (selectedEntry.type === 'iframe') {
+      setEmbeddedUrl(selectedEntry.url);
+      setServerUrl(selectedEntry.url);
+      setHlsDirectUrl('');
+      return;
+    }
+
+    if (selectedEntry.type === 'hls') {
+      setEmbeddedUrl('');
+      setServerUrl(selectedEntry.url);
+      const isDirectHlsUrl = /\.m3u8$/i.test(selectedEntry.url) || /\/manifest\//i.test(selectedEntry.url);
+      setHlsDirectUrl(isDirectHlsUrl ? selectedEntry.url : '');
+      return;
+    }
+
+    // Fallback: if the selected entry is unknown type, treat it as iframe.
+    setEmbeddedUrl(selectedEntry.url);
+    setServerUrl(selectedEntry.url);
+    setHlsDirectUrl('');
   }, [
     currentEpisode.id,
     currentEpisode.provider,
@@ -930,60 +795,248 @@ const Watch: React.FC = () => {
     animeId,
   ]);
 
-  // ── Auto-select server once servers are fetched ───────────────────────────
+  // Fetch available servers for this episode.
+  // For animekai: servers are treated as embedded iframes (no M3U8 loading).
+  // For other providers: M3U8 verification (existing behavior).
   useEffect(() => {
-    if (!hasFetchedServers) return;
-    const saved = getSavedServerForEpisode(animeId, currentEpisode.id);
-    if (saved && (availableServers.includes(saved) || saved === 'embedded')) {
-      console.log('[Watch] Restoring saved server:', saved);
-      setSourceType(saved);
-    } else if (availableServers.length > 0) {
-      console.log('[Watch] Auto-selecting first server:', availableServers[0]);
-      setSourceType(availableServers[0]);
-    } else if (hasEmbeddedPlayer) {
-      console.log('[Watch] Falling back to embedded player');
-      setSourceType('embedded');
-    }
-  }, [availableServers, hasEmbeddedPlayer, hasFetchedServers]);
+    if (!currentEpisode.id || currentEpisode.id === '0') return;
 
-  // ── Persist server selection per episode ──────────────────────────────────
-  useEffect(() => {
-    if (animeId && currentEpisode.id && currentEpisode.id !== '0' && sourceType) {
-      saveServerForEpisode(animeId, currentEpisode.id, sourceType);
-    }
-  }, [sourceType, animeId, currentEpisode.id]);
+    const fetchAvailableServers = async () => {
+      setHasFetchedServers(false);
+      console.log('Fetching available servers for episode:', currentEpisode.number);
+      try {
+        const providerEpisodeIds = currentEpisode.providerEpisodeIds || {
+          [currentEpisode.provider || 'kickassanime']: currentEpisode.id,
+        };
 
-  // ── Keyboard shortcuts (Shift+N / Shift+P) ───────────────────────────────
+        const providerEntries = Object.entries(providerEpisodeIds).filter(
+          ([, episodeId]) => Boolean(episodeId),
+        );
+
+        const aggregatedEntries: Array<{
+          key: string;
+          provider: string;
+          name: string;
+          url: string;
+          type: string;
+        }> = [];
+
+        await Promise.all(
+          providerEntries.map(async ([provider, episodeId]) => {
+            try {
+              const response = await fetchAnimeStreamingLinks(
+                episodeId,
+                provider,
+                undefined,
+                false,
+              );
+
+              const isAnimekai = provider === 'animekai';
+              const isKickassanime = provider === 'kickassanime';
+              const isAnimepahe = provider === 'animepahe';
+
+              if (Array.isArray(response?.servers)) {
+                const filtered = response.servers.filter((server: any) => {
+                  if (isAnimekai) {
+                    return server.type === language;
+                  }
+                  return true;
+                });
+
+                const providerEntries = filtered.flatMap((server: any, index: number) => {
+                  const serverName = server?.name || '';
+                  const serverUrl = server?.url || '';
+                  if (!serverName || !serverUrl) return [];
+
+                  if (isKickassanime) {
+                    return [
+                      {
+                        key: buildServerKey(provider, serverName, false),
+                        provider,
+                        name: serverName,
+                        url: serverUrl,
+                        type: 'hls',
+                      },
+                      {
+                        key: buildServerKey(provider, serverName, true),
+                        provider,
+                        name: serverName,
+                        url: buildKickassanimeIframeUrl(serverUrl),
+                        type: 'iframe',
+                      },
+                    ];
+                  }
+
+                  if (isAnimepahe) {
+                    return [
+                      {
+                        key: buildServerKey(provider, serverName, true),
+                        provider,
+                        name: serverName,
+                        url: serverUrl,
+                        type: 'iframe',
+                      },
+                    ];
+                  }
+
+                  if (isAnimekai) {
+                    const animekaiServerName = `Megaup ${serverName}`;
+                    const uniqueServerKey = `${buildServerKey(provider, animekaiServerName, false)}__${index}`;
+                    return [
+                      {
+                        key: uniqueServerKey,
+                        provider,
+                        name: animekaiServerName,
+                        url: serverUrl,
+                        type: 'hls',
+                      },
+                    ];
+                  }
+
+                  return [
+                    {
+                      key: buildServerKey(provider, serverName, isAnimekai),
+                      provider,
+                      name: serverName,
+                      url: serverUrl,
+                      type: server?.type || 'iframe',
+                    },
+                  ];
+                });
+
+                aggregatedEntries.push(...providerEntries);
+              }
+            } catch (error) {
+              console.warn(`⚠️ Failed to fetch servers from ${provider}:`, error);
+            }
+          }),
+        );
+
+        setServerEntries(aggregatedEntries);
+
+        if (hasEmbeddedPlayer) {
+          setEmbeddedUrl(
+            buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
+          );
+          setEmbeddedServerName(getEmbeddedServerName(language));
+        }
+
+        const availableServerKeys = aggregatedEntries.map((entry) => entry.key);
+        const embeddedKeys = aggregatedEntries
+          .filter((entry) => entry.type === 'iframe')
+          .map((entry) => entry.key);
+
+        setEmbeddedServerKeys(new Set(['embedded', ...embeddedKeys]));
+
+        const servers = availableServerKeys.length > 0 ? availableServerKeys : ['direct'];
+        console.log('Available servers:', servers);
+        setAvailableServers(servers);
+      } catch (error) {
+        console.error('Error fetching available servers:', error);
+        setAvailableServers([]);
+      } finally {
+        setHasFetchedServers(true);
+      }
+    };
+
+    fetchAvailableServers();
+  }, [currentEpisode.id, animeId, currentEpisode.providerEpisodeIds, language]);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const tag = (event.target as HTMLElement).tagName.toLowerCase();
-      if (tag === 'input' || tag === 'textarea') return;
-      if (!event.shiftKey || !['N', 'P'].includes(event.key.toUpperCase())) return;
+      const targetTagName = (event.target as HTMLElement).tagName.toLowerCase();
+      if (targetTagName === 'input' || targetTagName === 'textarea') {
+        return;
+      }
+      if (!event.shiftKey || !['N', 'P'].includes(event.key.toUpperCase()))
+        return;
       const now = Date.now();
       if (now - lastKeypressTime < 200) return;
       setLastKeypressTime(now);
-      const idx = episodes.findIndex((ep) => String(ep.id) === String(currentEpisode.id));
-      if (event.key.toUpperCase() === 'N' && idx < episodes.length - 1) {
-        handleEpisodeSelect(episodes[idx + 1]);
-      } else if (event.key.toUpperCase() === 'P' && idx > 0) {
-        handleEpisodeSelect(episodes[idx - 1]);
+      const currentIndex = episodes.findIndex(
+        (ep) => String(ep.id) === String(currentEpisode.id),
+      );
+      if (
+        event.key.toUpperCase() === 'N' &&
+        currentIndex < episodes.length - 1
+      ) {
+        const nextEpisode = episodes[currentIndex + 1];
+        handleEpisodeSelect(nextEpisode);
+      } else if (event.key.toUpperCase() === 'P' && currentIndex > 0) {
+        const prevEpisode = episodes[currentIndex - 1];
+        handleEpisodeSelect(prevEpisode);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [episodes, currentEpisode, handleEpisodeSelect, lastKeypressTime]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render
-  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (animeInfo && animeInfo.title) {
+      document.title =
+        'Watch ' +
+        (animeInfo.title.english ||
+          animeInfo.title.romaji ||
+          animeInfo.title.romaji ||
+          '') +
+        ' | Zenime';
+    }
+  }, [animeInfo]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchInfo = async () => {
+      if (!animeId) {
+        console.error('Anime ID is undefined.');
+        return;
+      }
+      try {
+        const info = await fetchAnimeData(animeId);
+        if (isMounted) {
+          setAnimeInfo(info);
+        }
+      } catch (error) {
+        console.error('Failed to fetch anime info:', error);
+      }
+    };
+    fetchInfo();
+    return () => {
+      isMounted = false;
+    };
+  }, [animeId]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (!episodes || episodes.length === 0) {
+        setShowNoEpisodesMessage(true);
+      }
+    }, 10000);
+    return () => clearTimeout(timeoutId);
+  }, [loading, episodes]);
+
+  useEffect(() => {
+    if (!loading && episodes.length === 0) {
+      setShowNoEpisodesMessage(true);
+    } else {
+      setShowNoEpisodesMessage(false);
+    }
+  }, [loading, episodes]);
 
   return (
     <WatchContainer>
-      {animeInfo && animeInfo.status === 'Not yet aired' && animeInfo.trailer ? (
+      {animeInfo &&
+      animeInfo.status === 'Not yet aired' &&
+      animeInfo.trailer ? (
         <div style={{ textAlign: 'center' }}>
-          <strong><h2>Time Remaining:</h2></strong>
-          {animeInfo.nextAiringEpisode && countdown !== 'Airing now or aired' ? (
-            <p><FaBell /> {countdown}</p>
+          <strong>
+            <h2>Time Remaining:</h2>
+          </strong>
+          {animeInfo &&
+          animeInfo.nextAiringEpisode &&
+          countdown !== 'Airing now or aired' ? (
+            <p>
+              <FaBell /> {countdown}
+            </p>
           ) : (
             <p>Unknown</p>
           )}
@@ -999,7 +1052,7 @@ const Watch: React.FC = () => {
         <NoEpsFoundDiv>
           <h2>No episodes found {':('}</h2>
           <NoEpsImage>
-            <img src={Image404URL} alt='404 Error' />
+            <img src={Image404URL} alt='404 Error'></img>
           </NoEpsImage>
           <GoToHomePageButton />
         </NoEpsFoundDiv>
@@ -1022,16 +1075,23 @@ const Watch: React.FC = () => {
                     onEpisodeEnd={handleEpisodeEnd}
                     onPrevEpisode={onPrevEpisode}
                     onNextEpisode={onNextEpisode}
-                    animeTitle={animeInfo?.title?.english || animeInfo?.title?.romaji}
+                    animeTitle={
+                      animeInfo?.title?.english || animeInfo?.title?.romaji
+                    }
                     sourceType={sourceType}
                     embeddedUrl={embeddedUrl}
                     serverUrl={serverUrl}
                     embeddedServerKeys={embeddedServerKeys}
                     hlsDirectUrl={hlsDirectUrl}
+                    externalSubtitles={
+                      currentEpisode.provider === 'animekai'
+                        ? animekaiSubtitles
+                        : undefined
+                    }
+                    providerEpisodeIds={currentEpisode.providerEpisodeIds}
                   />
                 )}
               </VideoPlayerContainer>
-
               <EpisodeListContainer style={{ maxHeight: maxEpisodeListHeight }}>
                 {loading ? (
                   <SkeletonPlayer />
@@ -1041,8 +1101,10 @@ const Watch: React.FC = () => {
                     episodes={episodes}
                     selectedEpisodeId={currentEpisode.id}
                     onEpisodeSelect={(episodeId: string) => {
-                      const ep = episodes.find((e) => e.id === episodeId);
-                      if (ep) handleEpisodeSelect(ep);
+                      const episode = episodes.find((e) => e.id === episodeId);
+                      if (episode) {
+                        handleEpisodeSelect(episode);
+                      }
                     }}
                     maxListHeight={maxEpisodeListHeight}
                   />
@@ -1052,7 +1114,6 @@ const Watch: React.FC = () => {
           )}
         </WatchWrapper>
       )}
-
       <DataWrapper>
         <SourceAndData $videoPlayerWidth={videoPlayerWidth}>
           {animeInfo && animeInfo.status !== 'Not yet aired' && (
@@ -1061,7 +1122,11 @@ const Watch: React.FC = () => {
               setSourceType={setSourceType}
               downloadLink={downloadLink}
               episodeId={currentEpisode.number.toString()}
-              airingTime={animeInfo?.status === 'Ongoing' ? countdown : undefined}
+              airingTime={
+                animeInfo && animeInfo.status === 'Ongoing'
+                  ? countdown
+                  : undefined
+              }
               nextEpisodenumber={nextEpisodenumber}
               availableServers={availableServers}
               embeddedServerName={embeddedServerName}
