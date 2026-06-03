@@ -1023,6 +1023,7 @@ export async function fetchAnimeStreamingLinks(
   episodeId: string,
   provider: string = 'kickassanime',
   server?: string,
+  requestTimeout?: number,
 ) {
   const finalProvider = provider || 'kickassanime';
   const canTryAnimePahe = finalProvider !== 'animepahe';
@@ -1035,9 +1036,10 @@ export async function fetchAnimeStreamingLinks(
     finalProvider,
     server || '',
   );
+  const timeoutToUse = requestTimeout ?? (finalProvider === 'anikoto' ? 30000 : undefined);
   
   try {
-    const links = await fetchFromProxy(url, 'Video Sources', cacheKey);
+    const links = await fetchFromProxy(url, 'Video Sources', cacheKey, timeoutToUse);
     
     if (!links || (typeof links === 'object' && Object.keys(links).length === 0)) {
       if (canTryAnimePahe) {
@@ -1045,7 +1047,7 @@ export async function fetchAnimeStreamingLinks(
         const paheParams = new URLSearchParams({ episodeId, provider: 'animepahe' });
         const paheUrl = `${BASE_URL}meta/anilist/watch?${paheParams.toString()}`;
         const paheCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animepahe', server || '');
-        const paheLinks = await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey);
+        const paheLinks = await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey, timeoutToUse);
         if (paheLinks && !(typeof paheLinks === 'object' && Object.keys(paheLinks).length === 0)) {
           return paheLinks;
         }
@@ -1055,7 +1057,7 @@ export async function fetchAnimeStreamingLinks(
         const reanimeParams = new URLSearchParams({ episodeId, provider: 'reanime' });
         const reanimeUrl = `${BASE_URL}meta/anilist/watch?${reanimeParams.toString()}`;
         const reanimeCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'reanime', server || '');
-        const reanimeLinks = await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey);
+        const reanimeLinks = await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse);
         if (reanimeLinks && !(typeof reanimeLinks === 'object' && Object.keys(reanimeLinks).length === 0)) {
           return reanimeLinks;
         }
@@ -1070,7 +1072,7 @@ export async function fetchAnimeStreamingLinks(
       const paheUrl = `${BASE_URL}meta/anilist/watch?${paheParams.toString()}`;
       const paheCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animepahe', server || '');
       try {
-        return await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey);
+        return await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey, timeoutToUse);
       } catch (paheError) {
         if (canTryReanime) {
           console.log(`⚠️ Error from animepahe, trying reanime...`, paheError);
@@ -1078,7 +1080,7 @@ export async function fetchAnimeStreamingLinks(
           const reanimeUrl = `${BASE_URL}meta/anilist/watch?${reanimeParams.toString()}`;
           const reanimeCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'reanime', server || '');
           try {
-            return await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey);
+            return await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse);
           } catch (reanimeError) {
             throw reanimeError;
           }
@@ -1092,7 +1094,7 @@ export async function fetchAnimeStreamingLinks(
       const reanimeUrl = `${BASE_URL}meta/anilist/watch?${reanimeParams.toString()}`;
       const reanimeCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'reanime', server || '');
       try {
-        return await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey);
+        return await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse);
       } catch (reanimeError) {
         throw reanimeError;
       }
@@ -1108,7 +1110,8 @@ export async function fetchAnimeStreamingLinksProxied(
   referer?: string,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server);
+  const requestTimeout = finalProvider === 'anikoto' ? 30000 : undefined;
+  const data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
 
   const proxyUrl = finalProvider === 'reanime'
     ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
