@@ -1190,7 +1190,7 @@ export async function fetchSkipTimes({
 export async function fetchRecentEpisodes(
   page: number = 1,
   perPage: number = 24,
-  provider: string = 'kickassanime',
+  provider: string = 'anikoto',
 ) {
   const params = new URLSearchParams({
     page: page.toString(),
@@ -1212,10 +1212,20 @@ export async function fetchRecentEpisodesWithFallback(
   perPage: number = 24,
 ) {
   try {
-    return await fetchRecentEpisodes(page, perPage, 'kickassanime');
+    return await fetchRecentEpisodes(page, perPage, 'anikoto');
   } catch (error) {
-    console.warn('kickassanime failed for recent episodes, trying animepahe');
-    return await fetchRecentEpisodes(page, perPage, 'animepahe');
+    console.warn('anikoto failed for recent episodes, trying kickassanime');
+    try {
+      return await fetchRecentEpisodes(page, perPage, 'kickassanime');
+    } catch (fallbackError) {
+      console.warn('kickassanime failed for recent episodes, trying animepahe');
+      try {
+        return await fetchRecentEpisodes(page, perPage, 'animepahe');
+      } catch (finalError) {
+        console.error('All recent episodes providers failed:', finalError);
+        return [];
+      }
+    }
   }
 }
 
@@ -1348,7 +1358,7 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
   dub: boolean = false,
-  providers: string[] = ['kickassanime', 'animepahe', 'reanime'],
+  providers: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'],
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
@@ -1388,11 +1398,15 @@ export async function fetchEpisodesFromMultipleProviders(
           });
         }
 
-        // Store provider-specific data
+        // Determine the actual provider from the episode data
+        // (it may differ from the requested provider if a fallback was used)
+        const actualProvider = ep.provider || provider;
+
+        // Store provider-specific data using the actual provider
         const merged = episodeMap.get(episodeKey)!;
-        merged.providers[provider] = {
+        merged.providers[actualProvider] = {
           id: ep.id,
-          provider: provider,
+          provider: actualProvider,
           title: ep.title || `Episode ${episodeNumber}`,
           image: ep.image || '',
           description: ep.description || '',
@@ -1435,7 +1449,7 @@ export async function fetchEpisodesFromMultipleProviders(
  */
 export async function fetchServersFromMultipleProviders(
   episodesByProvider: Record<string, string>, // Map of provider -> episodeId
-  providers: string[] = ['kickassanime', 'animepahe', 'reanime'],
+  providers: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'],
 ): Promise<
   Array<{
     provider: string;
