@@ -251,16 +251,6 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
       };
     });
 
-    // Append Zen Sub / Zen Dub when the embedded player is configured.
-    // This makes it a last-resort option instead of the primary source.
-    if (embeddedServerName) {
-      buttons.push({
-        key: 'embedded',
-        label: embeddedServerName,
-        isEmbedded: true,
-      });
-    }
-
     return buttons;
   };
 
