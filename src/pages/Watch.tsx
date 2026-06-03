@@ -181,7 +181,7 @@ const LOCAL_STORAGE_KEYS = {
   LAST_ANIME_VISITED: 'last-anime-visited',
 };
 
-const PROVIDERS: string[] = ['kickassanime', 'animepahe', 'reanime'];
+const PROVIDERS: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'];
 
 /** Empty providers map used as the initial/fallback value. */
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
@@ -564,8 +564,17 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          // Primary provider is the first key in the providers map
-          const primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'kickassanime';
+          // Prioritize providers: kickassanime > animepahe > anikoto > reanime > others
+          const providerPriority = ['kickassanime', 'animepahe', 'anikoto', 'reanime'];
+          let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'kickassanime';
+          
+          for (const priorityProvider of providerPriority) {
+            if (mergedEp.providers[priorityProvider]) {
+              primaryProviderKey = priorityProvider;
+              break;
+            }
+          }
+          
           const primaryProviderData = mergedEp.providers[primaryProviderKey];
 
           return {
@@ -742,18 +751,39 @@ const Watch: React.FC = () => {
         const urlSet = new Set<string>(); // Track URLs to avoid exact duplicates
         let hasEmbeddedPlayer_ = false;
         const newEmbeddedServerKeys = new Set<string>(['embedded']);
+        const providerNameCounters = new Map<string, number>();
+
+        const normalizeAnikotoLabel = (
+          name: string,
+          type: string,
+          quality?: string,
+        ) => {
+          const normalizedType = type?.toLowerCase();
+          const normalizedQuality = (quality || name || '').toLowerCase();
+
+          const label = normalizedQuality.includes('hsub') || normalizedType === 'hsub'
+            ? 'Zen HSUB'
+            : normalizedQuality.includes('dub') || normalizedType === 'dub'
+              ? 'Zen Dub'
+              : 'Zen Sub';
+
+          const count = providerNameCounters.get(label) || 0;
+          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
+          providerNameCounters.set(label, count + 1);
+          return uniqueLabel;
+        };
 
         // Helper: Detect if a server is embedded based on URL patterns
         const isEmbeddedServer = (url: string, type?: string): boolean => {
+          const normalizedType = type?.toLowerCase();
           return (
             url.includes('iframe') ||
             url.includes('kwik.cx') ||
             url.includes('flixcloud') ||
-            type === 'iframe' ||
-            // ReAnime returns type:"sub" | "dub" for flixcloud servers.
-            // If the URL is flixcloud the check above already fires, but guard
-            // here too so any future provider using the same convention works.
-            ((type === 'sub' || type === 'dub') && url.includes('flixcloud'))
+            normalizedType === 'iframe' ||
+            normalizedType === 'sub' ||
+            normalizedType === 'dub' ||
+            normalizedType === 'hsub'
           );
         };
 
@@ -764,13 +794,18 @@ const Watch: React.FC = () => {
           provider: string,
           type: string,
           isEmbedded: boolean,
+          quality?: string,
         ) => {
           const proxiedUrl = proxyHentaiMamaUrl(url, provider, type);
           if (!proxiedUrl || urlSet.has(proxiedUrl)) return; // Skip if URL already added
 
+          const finalName = provider === 'anikoto'
+            ? normalizeAnikotoLabel(name, type, quality)
+            : name;
+
           urlSet.add(proxiedUrl);
           if (isEmbedded) hasEmbeddedPlayer_ = true;
-          aggregatedServers.push({ name, provider, url: proxiedUrl, type, isEmbedded });
+          aggregatedServers.push({ name: finalName, provider, url: proxiedUrl, type, isEmbedded });
         };
 
         // Process each provider's results
@@ -782,8 +817,10 @@ const Watch: React.FC = () => {
             const serverName = server?.name || '';
             const serverUrl = server?.url || '';
             if (!serverName || !serverUrl) return;
-            const embedded = isEmbeddedServer(serverUrl, server.type);
-            addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded);
+            if (provider === 'anikoto' && serverUrl.includes('.m3u8')) return;
+            const type = server?.type || '';
+            const embedded = isEmbeddedServer(serverUrl, type);
+            addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded, server?.quality || '');
           });
 
           // ── ReAnime-format: response.servers with type "sub" | "dub" ────────
@@ -812,8 +849,9 @@ const Watch: React.FC = () => {
               if (seenProviderName.has(nameKey)) return;
               seenProviderName.add(nameKey);
 
-              const isEmb = isEmbeddedServer(sUrl, sLang);
-              addServer(sName, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb);
+              const type = sLang || '';
+              const isEmb = isEmbeddedServer(sUrl, type);
+              addServer(sName, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb, sLang);
             });
           }
 
@@ -825,11 +863,17 @@ const Watch: React.FC = () => {
             response.sources.forEach((source: any) => {
               const sourceUrl = source?.url || '';
               if (!sourceUrl || (!sourceUrl.includes('.m3u8') && !sourceUrl.includes('.mp4'))) return;
+              if (provider === 'anikoto' && sourceUrl.includes('.m3u8')) return;
 
               const isDub = source.isDub === true;
-              const sourceName = isDub ? `Dub${++dubCount}` : `Sub${++subCount}`;
               const type = sourceUrl.includes('.mp4') ? 'mp4' : 'hls';
-              addServer(sourceName, sourceUrl, provider, type, false);
+              const qualityLabel = source?.quality || '';
+              const sourceName = provider === 'anikoto'
+                ? 'Zen Sub'
+                : isDub
+                  ? `Dub${++dubCount}`
+                  : `Sub${++subCount}`;
+              addServer(sourceName, sourceUrl, provider, type, false, qualityLabel);
             });
           }
         });
@@ -938,17 +982,26 @@ const Watch: React.FC = () => {
   useEffect(() => {
     if (!hasFetchedServers) return;
     const saved = getSavedServerForEpisode(animeId, currentEpisode.id);
-    if (saved && (availableServers.includes(saved) || saved === 'embedded')) {
+    if (saved && availableServers.includes(saved)) {
       console.log('[Watch] Restoring saved server:', saved);
       setSourceType(saved);
-    } else if (availableServers.length > 0) {
+      return;
+    }
+
+    const embeddedServerCandidate = availableServers.find((server) =>
+      embeddedServerKeys.has(server),
+    );
+    if (embeddedServerCandidate) {
+      console.log('[Watch] Auto-selecting embedded server:', embeddedServerCandidate);
+      setSourceType(embeddedServerCandidate);
+      return;
+    }
+
+    if (availableServers.length > 0) {
       console.log('[Watch] Auto-selecting first server:', availableServers[0]);
       setSourceType(availableServers[0]);
-    } else if (hasEmbeddedPlayer) {
-      console.log('[Watch] Falling back to embedded player');
-      setSourceType('embedded');
     }
-  }, [availableServers, hasEmbeddedPlayer, hasFetchedServers]);
+  }, [availableServers, embeddedServerName, embeddedServerKeys, hasEmbeddedPlayer, hasFetchedServers, animeId, currentEpisode.id]);
 
   // ── Persist server selection per episode ──────────────────────────────────
   useEffect(() => {

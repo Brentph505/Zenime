@@ -53,7 +53,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe';
+type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto';
 type MangaProvider = 'mangahere' | 'mangapill';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -1015,8 +1015,10 @@ const Info: React.FC = () => {
       } else {
         // ── Anime fetch ──────────────────────────────────────────────────────
         const candidates: AnimeProvider[] = provider === 'animepahe'
-          ? ['animepahe', 'kickassanime']
-          : ['kickassanime', 'animepahe'];
+          ? ['animepahe', 'kickassanime', 'anikoto']
+          : provider === 'anikoto'
+            ? ['anikoto', 'kickassanime', 'animepahe']
+            : ['kickassanime', 'animepahe', 'anikoto'];
 
         let loaded = false;
         let bestData: any = null; // best data found (even without episodes)
