@@ -11,8 +11,8 @@ import {
   MediaSource,
   fetchAnimeData,
   fetchAnimeInfo,
+  fetchAnimeStreamingLinksProxied,
   fetchEpisodesFromMultipleProviders,
-  fetchServersFromMultipleProviders,
   type MergedEpisode,
   SkeletonPlayer,
   useCountdown,
@@ -734,13 +734,9 @@ const Watch: React.FC = () => {
         return;
       }
 
-      try {
-        // Each provider fetches with ITS OWN episode ID in parallel
-        const serverResults = await fetchServersFromMultipleProviders(
-          episodesByProvider,
-          providerList,
-        );
+      const partialProviderResults: Array<{ provider: string; servers: any[]; response: any }> = [];
 
+      const rebuildServerEntries = (serverResults: typeof partialProviderResults) => {
         const aggregatedServers: {
           name: string;
           provider: string;
@@ -808,7 +804,6 @@ const Watch: React.FC = () => {
           aggregatedServers.push({ name: finalName, provider, url: proxiedUrl, type, isEmbedded });
         };
 
-        // Process each provider's results
         serverResults.forEach(({ provider, servers, response }) => {
           // ── Standard server list (kickassanime, animepahe, …) ───────────────
           // These entries may or may not carry a `.url` field.  We only keep
@@ -878,7 +873,6 @@ const Watch: React.FC = () => {
           }
         });
 
-        // Build server entries with display names
         const entries = aggregatedServers.map((server) => {
           const displayName = server.isEmbedded ? `${server.name}__EM` : server.name;
           if (server.isEmbedded) newEmbeddedServerKeys.add(displayName);
@@ -903,9 +897,26 @@ const Watch: React.FC = () => {
         const serverNames = entries.map((s) => s.name);
         console.log('[Watch] Aggregated available servers:', serverNames);
         setAvailableServers(serverNames);
+      };
+
+      try {
+        const providerFetches = providerList.map(async (provider) => {
+          const episodeId = episodesByProvider[provider];
+          if (!episodeId) return;
+
+          try {
+            const response = await fetchAnimeStreamingLinksProxied(episodeId, provider);
+            const servers = response?.servers || [];
+            partialProviderResults.push({ provider, servers, response });
+            rebuildServerEntries(partialProviderResults);
+          } catch (err) {
+            console.error(`[Watch] Failed to fetch servers for provider ${provider}:`, err);
+          }
+        });
+
+        await Promise.all(providerFetches);
       } catch (err) {
         console.error('[Watch] Error fetching servers from multiple providers:', err);
-        setAvailableServers([]);
       } finally {
         setHasFetchedServers(true);
       }
@@ -978,9 +989,12 @@ const Watch: React.FC = () => {
     animeId,
   ]);
 
-  // ── Auto-select server once servers are fetched ───────────────────────────
+  // ── Auto-select server as soon as any provider returns a result ──────────
   useEffect(() => {
-    if (!hasFetchedServers) return;
+    if (!currentEpisode.id || currentEpisode.id === '0') return;
+    if (sourceType) return;
+    if (availableServers.length === 0) return;
+
     const saved = getSavedServerForEpisode(animeId, currentEpisode.id);
     if (saved && availableServers.includes(saved)) {
       console.log('[Watch] Restoring saved server:', saved);
@@ -997,11 +1011,9 @@ const Watch: React.FC = () => {
       return;
     }
 
-    if (availableServers.length > 0) {
-      console.log('[Watch] Auto-selecting first server:', availableServers[0]);
-      setSourceType(availableServers[0]);
-    }
-  }, [availableServers, embeddedServerName, embeddedServerKeys, hasEmbeddedPlayer, hasFetchedServers, animeId, currentEpisode.id]);
+    console.log('[Watch] Auto-selecting first available server:', availableServers[0]);
+    setSourceType(availableServers[0]);
+  }, [availableServers, embeddedServerKeys, sourceType, animeId, currentEpisode.id]);
 
   // ── Persist server selection per episode ──────────────────────────────────
   useEffect(() => {
