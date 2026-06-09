@@ -766,13 +766,13 @@ export function Player({
 
     const isValidHlsDirectUrl =
       hlsDirectUrl &&
-      (/\.m3u8$/i.test(hlsDirectUrl) || /\/manifest\//i.test(hlsDirectUrl) || /\.mp4$/i.test(hlsDirectUrl));
+      (/\.m3u8$/i.test(hlsDirectUrl) || /\/manifest\//i.test(hlsDirectUrl) || /\.mp4/i.test(hlsDirectUrl));
 
     if (isValidHlsDirectUrl) {
       if (fetchToken !== fetchAbortRef.current) return;
       resetHlsRetryState();
       hlsUrlCandidatesRef.current = [hlsDirectUrl];
-      const type = /\.mp4$/i.test(hlsDirectUrl) ? 'video/mp4' : 'application/vnd.apple.mpegurl';
+      const type = /\.mp4/i.test(hlsDirectUrl) ? 'video/mp4' : 'application/vnd.apple.mpegurl';
       setSrc({ src: hlsDirectUrl, type });
       console.log('[Player] Using direct media url:', hlsDirectUrl);
       if (externalSubtitles && externalSubtitles.length > 0) {
