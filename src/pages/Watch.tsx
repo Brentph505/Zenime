@@ -291,8 +291,8 @@ const Watch: React.FC = () => {
   const getEmbeddedServerName = (lang: string) =>
     lang === 'dub' ? 'Zen Dub' : 'Zen Sub';
 
-  const proxyHentaiMamaUrl = (url: string, provider: string, type?: string) => {
-    if (!url || provider !== 'hentaimama' || !HENTAIMAMA_PROXY_URL) return url;
+  const proxyHentaiUrl = (url: string, provider: string, type?: string) => {
+    if (!url || (provider !== 'hentaimama' && provider !== 'watchhentai') || !HENTAIMAMA_PROXY_URL) return url;
 
     const isMp4 = /\.mp4$/i.test(url) || type === 'mp4';
     if (!isMp4) return url;
@@ -545,7 +545,7 @@ const Watch: React.FC = () => {
         const isDub = language === 'dub';
 
         const isHentai = animeInfo?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
-        const providersToUse = isHentai ? ['hentaimama'] : PROVIDERS;
+        const providersToUse = isHentai ? ['watchhentai', 'hentaimama'] : PROVIDERS;
 
         // Fetch from all providers in parallel; each may return a different
         // episode ID for the same episode number.
@@ -792,7 +792,7 @@ const Watch: React.FC = () => {
           isEmbedded: boolean,
           quality?: string,
         ) => {
-          const proxiedUrl = proxyHentaiMamaUrl(url, provider, type);
+          const proxiedUrl = proxyHentaiUrl(url, provider, type);
           if (!proxiedUrl || urlSet.has(proxiedUrl)) return; // Skip if URL already added
 
           const finalName = provider === 'anikoto'
@@ -805,26 +805,26 @@ const Watch: React.FC = () => {
         };
 
         serverResults.forEach(({ provider, servers, response }) => {
+          const isHentaiProvider = provider === 'hentaimama' || provider === 'watchhentai';
+
           // ── Standard server list (kickassanime, animepahe, …) ───────────────
-          // These entries may or may not carry a `.url` field.  We only keep
-          // entries that have a URL; the ones without are handled below.
-          servers.forEach((server: any) => {
-            const serverName = server?.name || '';
-            const serverUrl = server?.url || '';
-            if (!serverName || !serverUrl) return;
-            if (provider === 'anikoto' && serverUrl.includes('.m3u8')) return;
-            const type = server?.type || '';
-            const embedded = isEmbeddedServer(serverUrl, type);
-            addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded, server?.quality || '');
-          });
+          // hentaimama and watchhentai expose iframe/JWPlayer wrappers in `servers[]`,
+          // NOT direct playable URLs — so we skip the servers loop for them entirely.
+          // Their real MP4 streams come from `sources[]` below.
+          if (!isHentaiProvider) {
+            servers.forEach((server: any) => {
+              const serverName = server?.name || '';
+              const serverUrl = server?.url || '';
+              if (!serverName || !serverUrl) return;
+              if (provider === 'anikoto' && serverUrl.includes('.m3u8')) return;
+              const type = server?.type || '';
+              const embedded = isEmbeddedServer(serverUrl, type);
+              addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded, server?.quality || '');
+            });
+          }
 
           // ── ReAnime-format: response.servers with type "sub" | "dub" ────────
-          //
-          // HentaImaMa exposes its playable links through `response.sources`, so
-          // we intentionally skip the generic `response.servers` branch here to
-          // avoid showing the extra non-MP4 variant alongside the real direct
-          // MP4 stream entry.
-          if (provider !== 'hentaimama' && response?.servers && Array.isArray(response.servers) && response.servers.length > 0) {
+          if (!isHentaiProvider && response?.servers && Array.isArray(response.servers) && response.servers.length > 0) {
             const seenProviderName = new Set<string>();
 
             response.servers.forEach((srv: any) => {
@@ -855,6 +855,10 @@ const Watch: React.FC = () => {
             let subCount = 0;
             let dubCount = 0;
 
+            // Prefix hentai provider source names to avoid duplicate "Sub1" keys
+            // when both watchhentai and hentaimama are active simultaneously.
+            const providerPrefix = provider === 'watchhentai' ? 'WH ' : provider === 'hentaimama' ? 'HM ' : '';
+
             response.sources.forEach((source: any) => {
               const sourceUrl = source?.url || '';
               if (!sourceUrl || (!sourceUrl.includes('.m3u8') && !sourceUrl.includes('.mp4'))) return;
@@ -866,8 +870,8 @@ const Watch: React.FC = () => {
               const sourceName = provider === 'anikoto'
                 ? 'Zen Sub'
                 : isDub
-                  ? `Dub${++dubCount}`
-                  : `Sub${++subCount}`;
+                  ? `${providerPrefix}Dub${++dubCount}`
+                  : `${providerPrefix}Sub${++subCount}`;
               addServer(sourceName, sourceUrl, provider, type, false, qualityLabel);
             });
           }
@@ -962,7 +966,7 @@ const Watch: React.FC = () => {
       });
 
       if (entry?.url) {
-        const isDirectMedia = /\.m3u8$/i.test(entry.url) || /\/manifest\//i.test(entry.url) || /\.mp4$/i.test(entry.url);
+        const isDirectMedia = /\.m3u8$/i.test(entry.url) || /\/manifest\//i.test(entry.url) || /\.mp4/i.test(entry.url) || entry.type === 'mp4';
         setEmbeddedUrl('');
         setServerUrl(entry.url);
         setHlsDirectUrl(isDirectMedia ? entry.url : '');
@@ -972,7 +976,7 @@ const Watch: React.FC = () => {
           e.name.toLowerCase().includes(baseName.toLowerCase()) && !e.name.includes('__EM')
         );
         if (fallbackEntry?.url) {
-          const isDirectMedia = /\.m3u8$/i.test(fallbackEntry.url) || /\.mp4$/i.test(fallbackEntry.url);
+          const isDirectMedia = /\.m3u8$/i.test(fallbackEntry.url) || /\.mp4/i.test(fallbackEntry.url) || fallbackEntry.type === 'mp4';
           setEmbeddedUrl('');
           setServerUrl(fallbackEntry.url);
           setHlsDirectUrl(isDirectMedia ? fallbackEntry.url : '');
