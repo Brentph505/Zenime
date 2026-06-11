@@ -352,6 +352,62 @@ export async function fetchAniListGenres(): Promise<string[]> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AniList GraphQL — Basic Media Info
+// ─────────────────────────────────────────────────────────────────────────────
+
+const BASIC_MEDIA_QUERY = `
+  query ($id: Int) {
+    Media(id: $id) {
+      id
+      genres
+      isAdult
+    }
+  }
+`;
+
+export async function fetchAniListMediaBase(animeId: string): Promise<any> {
+  const cacheKey = generateCacheKey('aniListMediaBase', animeId);
+
+  const cached = await cacheManager.get<any>('AniListMediaBase', cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const response = await fetch(ANILIST_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        query: BASIC_MEDIA_QUERY,
+        variables: { id: parseInt(animeId, 10) },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AniList GraphQL error: HTTP ${response.status}`);
+    }
+
+    const json = await response.json();
+
+    if (json.errors) {
+      throw new Error(json.errors[0]?.message ?? 'AniList GraphQL error');
+    }
+
+    const media = json?.data?.Media;
+    if (media) {
+      await cacheManager.set('AniListMediaBase', cacheKey, media);
+    }
+    return media;
+  } catch (error) {
+    console.error(`❌ Failed to fetch AniList Media Base for ${animeId}:`, error);
+    return null;
+  }
+}
+
 async function fetchFromProxy(
   url: string,
   cacheKeyName: string,
@@ -742,81 +798,102 @@ export async function fetchAnimeData(
   };
 
   let finalProvider = provider || 'kickassanime';
-  let isHentai = false;
 
-  const handleData = async (data: any, currentProv: string) => {
-    if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
-      return null;
-    }
-    isHentai = data?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
-    if (isHentai && currentProv !== 'watchhentai' && currentProv !== 'hentaimama') {
-      console.log(`⚠️ Anime is Hentai, switching provider to watchhentai...`);
-      return await attemptFetch('watchhentai');
-    }
-    if (!isHentai && (currentProv === 'watchhentai' || currentProv === 'hentaimama')) {
-      console.log(`⚠️ Anime is NOT Hentai, switching provider to kickassanime...`);
-      return await attemptFetch('kickassanime');
-    }
-    return data;
+  // ─── Step 1: initial fetch to detect content type ────────────────────────
+  // Always query AniList directly for genres/isAdult to avoid providers stripping adult tags.
+  let firstData: any = null;
+  try {
+    firstData = await fetchAniListMediaBase(animeId);
+  } catch (error) {
+    console.log(`⚠️ Error fetching base AniList data...`, error);
+  }
+
+  const isEmpty = (d: any) =>
+    !d || (typeof d === 'object' && Object.keys(d).length === 0);
+
+  // Detect hentai ONCE from the initial probe — this flag is never overwritten.
+  const detectedHentai: boolean =
+    (!isEmpty(firstData) && firstData.isAdult === true) ||
+    (!isEmpty(firstData) && Array.isArray(firstData?.genres) &&
+     firstData.genres.some((g: string) => g.toLowerCase() === 'hentai'));
+
+  // If we just fetched base metadata, we still need to fetch actual data from a provider
+  // if it's not hentai (hentai might just bypass provider data entirely or try hentaimama).
+  // Let's perform a probe fetch if needed.
+  let providerData: any = null;
+  
+  // Helper to merge AniList base data into provider data
+  const mergeBaseData = (data: any) => {
+    if (isEmpty(data)) return firstData ?? {};
+    return {
+      ...data,
+      genres: firstData?.genres || data?.genres,
+      isAdult: firstData?.isAdult !== undefined ? firstData.isAdult : data?.isAdult,
+    };
   };
 
-  let lastError: any;
+  // ─── Step 2: route to the right provider chain ────────────────────────────
+  if (detectedHentai) {
+    // Hentai path: hentaimama → watchhentai. Never fall through to regular providers.
+    console.log(`🔞 Hentai detected — using hentaimama as primary provider.`);
 
-  try {
-    let data = await attemptFetch(finalProvider);
-    data = await handleData(data, finalProvider);
-    if (data) return data;
-  } catch (error) {
-    console.log(`⚠️ Error from ${finalProvider}...`, error);
-    lastError = error;
-  }
+    // If the initial fetch was already from a hentai provider, return it directly.
+    if (!isEmpty(providerData) && (finalProvider === 'hentaimama' || finalProvider === 'watchhentai')) {
+      return mergeBaseData(providerData);
+    }
 
-  if (isHentai) {
-    const canTryHentaimama = finalProvider !== 'hentaimama';
-    if (canTryHentaimama) {
+    const hentaiProviders = ['hentaimama', 'watchhentai'];
+    for (const prov of hentaiProviders) {
+      if (prov === finalProvider) continue; // already tried
       try {
-        console.log(`⚠️ No data from watchhentai, trying hentaimama...`);
-        let hData = await attemptFetch('hentaimama');
-        hData = await handleData(hData, 'hentaimama');
-        if (hData) return hData;
+        console.log(`⚠️ Trying hentai provider: ${prov}...`);
+        const data = await attemptFetch(prov);
+        if (!isEmpty(data)) return mergeBaseData(data);
       } catch (error) {
-        console.log(`⚠️ Error from hentaimama...`, error);
-        lastError = error;
+        console.log(`⚠️ Error from ${prov}...`, error);
       }
     }
-    if (lastError) throw lastError;
-    return {};
+
+    // Both hentai providers failed — return whatever the initial fetch gave us
+    // (even if empty) so callers can handle it gracefully.
+    return mergeBaseData(providerData);
   }
 
-  const canTryAnimePahe = finalProvider !== 'animepahe' && finalProvider !== 'hentaimama';
-  const canTryReanime = finalProvider !== 'reanime' && finalProvider !== 'hentaimama';
+  // ─── Step 3: non-hentai path ─────────────────────────────────────────────
+  try {
+    providerData = await attemptFetch(finalProvider);
+  } catch (error) {
+    console.log(`⚠️ Error from ${finalProvider}...`, error);
+  }
+
+  // If the initial fetch returned valid non-hentai data, return it now.
+  if (!isEmpty(providerData)) return mergeBaseData(providerData);
+
+  // Otherwise try the standard fallback chain.
+  const canTryAnimePahe = finalProvider !== 'animepahe';
+  const canTryReanime   = finalProvider !== 'reanime';
 
   if (canTryAnimePahe) {
     try {
       console.log(`⚠️ No data from ${finalProvider}, trying animepahe...`);
-      let paheData = await attemptFetch('animepahe');
-      paheData = await handleData(paheData, 'animepahe');
-      if (paheData) return paheData;
+      const paheData = await attemptFetch('animepahe');
+      if (!isEmpty(paheData)) return mergeBaseData(paheData);
     } catch (error) {
       console.log(`⚠️ Error from animepahe...`, error);
-      lastError = error;
     }
   }
 
   if (canTryReanime) {
     try {
       console.log(`⚠️ No data from animepahe, trying reanime...`);
-      let reanimeData = await attemptFetch('reanime');
-      reanimeData = await handleData(reanimeData, 'reanime');
-      if (reanimeData) return reanimeData;
+      const reanimeData = await attemptFetch('reanime');
+      if (!isEmpty(reanimeData)) return mergeBaseData(reanimeData);
     } catch (error) {
       console.log(`⚠️ Error from reanime...`, error);
-      lastError = error;
     }
   }
 
-  if (lastError) throw lastError;
-  return {};
+  return mergeBaseData({});
 }
 
 export async function fetchAnimeInfo(
@@ -966,8 +1043,9 @@ export async function fetchAnimeEpisodes(
   dub: boolean = false,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const canTryAnimePahe = finalProvider !== 'animepahe';
-  const canTryReanime = finalProvider !== 'reanime';
+  const isHentaiProvider = finalProvider === 'hentaimama' || finalProvider === 'watchhentai';
+  const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
+  const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
   const params = new URLSearchParams({
     provider: finalProvider,
     dub: dub ? 'true' : 'false',
@@ -1134,8 +1212,9 @@ export async function fetchAnimeStreamingLinks(
   requestTimeout?: number,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const canTryAnimePahe = finalProvider !== 'animepahe';
-  const canTryReanime = finalProvider !== 'reanime';
+  const isHentaiProvider = finalProvider === 'hentaimama' || finalProvider === 'watchhentai';
+  const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
+  const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
   const cacheKey = generateCacheKey(
