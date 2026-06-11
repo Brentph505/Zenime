@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { year, getCurrentSeason, getNextSeason } from '../index';
 import { cacheManager } from '../lib/caching';
 
 // Utility function to ensure URL ends with a slash
@@ -37,6 +36,68 @@ const GENRE_QUERY = `
     genres: GenreCollection
   }
 `;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🧠 Intelligent Season & Year Engine
+// Automatically computes the correct AniList season and year at call-time,
+// so it's always accurate regardless of when the app was last deployed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type AniListSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
+
+/**
+ * Maps a calendar month (1–12) to an AniList season.
+ * WINTER  = Jan–Mar  (1,2,3)
+ * SPRING  = Apr–Jun  (4,5,6)
+ * SUMMER  = Jul–Sep  (7,8,9)
+ * FALL    = Oct–Dec  (10,11,12)
+ */
+function monthToSeason(month: number): AniListSeason {
+  if (month <= 3) return 'WINTER';
+  if (month <= 6) return 'SPRING';
+  if (month <= 9) return 'SUMMER';
+  return 'FALL';
+}
+
+/**
+ * Returns the current AniList season and year based on today's date.
+ * Called fresh every time so it always reflects the real current date.
+ */
+export function getCurrentSeasonInfo(): { season: AniListSeason; year: number } {
+  const now = new Date();
+  return {
+    season: monthToSeason(now.getMonth() + 1),
+    year: now.getFullYear(),
+  };
+}
+
+/**
+ * Returns the NEXT AniList season and year.
+ * Handles year roll-over automatically (FALL → WINTER of next year).
+ */
+export function getNextSeasonInfo(): { season: AniListSeason; year: number } {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  if (month <= 3) return { season: 'SPRING', year };
+  if (month <= 6) return { season: 'SUMMER', year };
+  if (month <= 9) return { season: 'FALL', year };
+  return { season: 'WINTER', year: year + 1 }; // FALL → next WINTER
+}
+
+/**
+ * String helpers kept for backward-compat with Home.tsx / index exports.
+ */
+export function getCurrentSeason(): AniListSeason {
+  return getCurrentSeasonInfo().season;
+}
+export function getNextSeason(): AniListSeason {
+  return getNextSeasonInfo().season;
+}
+export const year = new Date().getFullYear(); // kept for compat
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 // Axios instance
 const axiosInstance = axios.create({
@@ -278,7 +339,6 @@ export async function fetchAniListGenres(): Promise<string[]> {
     const genres = json?.data?.genres ?? [];
     console.log(`✅ AniList genres: ${genres.length} genres fetched`);
 
-    // Only cache if we have valid genres
     if (genres.length > 0) {
       await cacheManager.set('AniListGenres', cacheKey, genres);
     } else {
@@ -299,7 +359,6 @@ async function fetchFromProxy(
   requestTimeout?: number,
 ) {
   try {
-    // Use fetchWithCache for automatic deduplication of concurrent requests
     const { data } = await cacheManager.fetchWithCache(
       cacheKeyName,
       cacheKey,
@@ -324,7 +383,6 @@ async function fetchFromProxy(
           );
         }
 
-        // Only cache valid, non-empty responses
         if (!response.data || Object.keys(response.data).length === 0) {
           throw new Error('Empty or invalid response data');
         }
@@ -521,11 +579,9 @@ export async function fetchAiringSchedule(
 
   console.log(`✅ AniList airing: ${allItems.length} items for offset ${dayOffset}`);
 
-  // Only cache if we have valid items
   if (allItems.length > 0) {
     await cacheManager.set('Airing Schedule', cacheKey, allItems);
 
-    // Set up auto-refresh for airing schedule
     const refreshFn = () => fetchAiringSchedule(dayOffset);
     cacheManager.setupAutoRefresh('Airing Schedule', cacheKey, refreshFn);
   } else {
@@ -536,7 +592,7 @@ export async function fetchAiringSchedule(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// All existing API functions
+// Advanced Search
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchAdvancedSearch(
@@ -565,6 +621,114 @@ export async function fetchAdvancedSearch(
   const cacheKey = generateCacheKey('advancedSearch', queryParams.toString());
   return fetchFromProxy(url, 'Advanced Search', cacheKey);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 🧠 fetchList — Intelligent URL builder
+// Uses URLSearchParams throughout so there is never a double-? or trailing-&
+// bug. Season and year are computed fresh at call-time via the season engine.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fetchList(
+  type: string,
+  page: number = 1,
+  perPage: number = 16,
+) {
+  const cacheKey = generateCacheKey(
+    `${type}Anime`,
+    page.toString(),
+    perPage.toString(),
+  );
+
+  let url: string;
+
+  switch (type) {
+    case 'TopAiring': {
+      // 🧠 Dynamically resolved at call-time — always the correct season/year
+      const { season, year: currentYear } = getCurrentSeasonInfo();
+      console.log(`🧠 TopAiring → season: ${season}, year: ${currentYear}`);
+
+      const params = new URLSearchParams({
+        type: 'ANIME',
+        status: 'RELEASING',
+        sort: '["POPULARITY_DESC"]',
+        season,
+        year: currentYear.toString(),
+        page: page.toString(),
+        perPage: perPage.toString(),
+      });
+      url = `${BASE_URL}meta/anilist/advanced-search?${params.toString()}`;
+      break;
+    }
+
+    case 'Upcoming': {
+      // 🧠 Dynamically resolved at call-time — handles year roll-over
+      const { season: nextSeason, year: nextYear } = getNextSeasonInfo();
+      console.log(`🧠 Upcoming → season: ${nextSeason}, year: ${nextYear}`);
+
+      const params = new URLSearchParams({
+        type: 'ANIME',
+        status: 'NOT_YET_RELEASED',
+        sort: '["POPULARITY_DESC"]',
+        season: nextSeason,
+        year: nextYear.toString(),
+        page: page.toString(),
+        perPage: perPage.toString(),
+      });
+      url = `${BASE_URL}meta/anilist/advanced-search?${params.toString()}`;
+      break;
+    }
+
+    case 'TopRated': {
+      const params = new URLSearchParams({
+        type: 'ANIME',
+        sort: '["SCORE_DESC"]',
+        page: page.toString(),
+        perPage: perPage.toString(),
+      });
+      url = `${BASE_URL}meta/anilist/advanced-search?${params.toString()}`;
+      break;
+    }
+
+    case 'Popular': {
+      const params = new URLSearchParams({
+        type: 'ANIME',
+        sort: '["POPULARITY_DESC"]',
+        page: page.toString(),
+        perPage: perPage.toString(),
+      });
+      url = `${BASE_URL}meta/anilist/advanced-search?${params.toString()}`;
+      break;
+    }
+
+    // Trending and anything else uses the simple /anilist/<type> endpoint
+    default: {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        perPage: perPage.toString(),
+      });
+      url = `${BASE_URL}meta/anilist/${type.toLowerCase()}?${params.toString()}`;
+      break;
+    }
+  }
+
+  console.log(`🌐 fetchList [${type}] → ${url}`);
+  return fetchFromProxy(url, type, cacheKey);
+}
+
+export const fetchTopAnime = (page: number, perPage: number) =>
+  fetchList('TopRated', page, perPage);
+export const fetchTrendingAnime = (page: number, perPage: number) =>
+  fetchList('Trending', page, perPage);
+export const fetchPopularAnime = (page: number, perPage: number) =>
+  fetchList('Popular', page, perPage);
+export const fetchTopAiringAnime = (page: number, perPage: number) =>
+  fetchList('TopAiring', page, perPage);
+export const fetchUpcomingSeasons = (page: number, perPage: number) =>
+  fetchList('Upcoming', page, perPage);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Anime Data / Info
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchAnimeData(
   animeId: string,
@@ -746,14 +910,6 @@ export async function fetchAnimeInfo(
 
 /**
  * Fetches manga info for a SPECIFIC provider without any internal fallback.
- *
- * This is intentionally strict — callers (e.g. Info.tsx) are responsible for
- * probing multiple providers and deciding which to use. Silent internal
- * fallbacks would cause the caller to believe provider A returned data when
- * it was actually provider B, leading to wrong chapter URLs.
- *
- * Throws if the provider returns no data or an error, so the caller can
- * handle it via Promise.allSettled / try-catch.
  */
 export async function fetchMangaInfo(
   mangaId: string,
@@ -766,8 +922,6 @@ export async function fetchMangaInfo(
 
   const info = await fetchFromProxy(url, 'Info', cacheKey);
 
-  // Throw so the caller (Info.tsx parallel probe) can detect this provider
-  // has no data, rather than silently returning empty-or-wrong data.
   if (!info || (typeof info === 'object' && Object.keys(info).length === 0)) {
     throw new Error(`No manga info returned from provider: ${finalProvider}`);
   }
@@ -802,79 +956,9 @@ export async function fetchMangaRead(
   return data as MangaReadPage[];
 }
 
-async function fetchList(
-  type: string,
-  page: number = 1,
-  perPage: number = 16,
-  options: FetchOptions = {},
-) {
-  let cacheKey: string;
-  let url: string;
-  const params = new URLSearchParams({
-    page: page.toString(),
-    perPage: perPage.toString(),
-  });
-
-  if (
-    ['TopRated', 'Trending', 'Popular', 'TopAiring', 'Upcoming'].includes(type)
-  ) {
-    cacheKey = generateCacheKey(
-      `${type}Anime`,
-      page.toString(),
-      perPage.toString(),
-    );
-    url = `${BASE_URL}meta/anilist/${type.toLowerCase()}`;
-
-    if (type === 'TopRated') {
-      options = { type: 'ANIME', sort: ['["SCORE_DESC"]'] };
-      url = `${BASE_URL}meta/anilist/advanced-search?type=${options.type}&sort=${options.sort}&`;
-    } else if (type === 'Popular') {
-      options = { type: 'ANIME', sort: ['["POPULARITY_DESC"]'] };
-      url = `${BASE_URL}meta/anilist/advanced-search?type=${options.type}&sort=${options.sort}&`;
-    } else if (type === 'Upcoming') {
-      const season = getNextSeason();
-      options = {
-        type: 'ANIME',
-        season,
-        year: year.toString(),
-        status: 'NOT_YET_RELEASED',
-        sort: ['["POPULARITY_DESC"]'],
-      };
-      url = `${BASE_URL}meta/anilist/advanced-search?type=${options.type}&status=${options.status}&sort=${options.sort}&season=${options.season}&year=${options.year}&`;
-    } else if (type === 'TopAiring') {
-      const season = getCurrentSeason();
-      options = {
-        type: 'ANIME',
-        season,
-        year: year.toString(),
-        status: 'RELEASING',
-        sort: ['["POPULARITY_DESC"]'],
-      };
-      url = `${BASE_URL}meta/anilist/advanced-search?type=${options.type}&status=${options.status}&sort=${options.sort}&season=${options.season}&year=${options.year}&`;
-    }
-  } else {
-    cacheKey = generateCacheKey(
-      `${type}Anime`,
-      page.toString(),
-      perPage.toString(),
-    );
-    url = `${BASE_URL}meta/anilist/${type.toLowerCase()}`;
-  }
-
-  const specificCache = type;
-  return fetchFromProxy(`${url}?${params.toString()}`, specificCache, cacheKey);
-}
-
-export const fetchTopAnime = (page: number, perPage: number) =>
-  fetchList('TopRated', page, perPage);
-export const fetchTrendingAnime = (page: number, perPage: number) =>
-  fetchList('Trending', page, perPage);
-export const fetchPopularAnime = (page: number, perPage: number) =>
-  fetchList('Popular', page, perPage);
-export const fetchTopAiringAnime = (page: number, perPage: number) =>
-  fetchList('TopAiring', page, perPage);
-export const fetchUpcomingSeasons = (page: number, perPage: number) =>
-  fetchList('Upcoming', page, perPage);
+// ─────────────────────────────────────────────────────────────────────────────
+// Episodes
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchAnimeEpisodes(
   animeId: string,
@@ -910,8 +994,8 @@ export async function fetchAnimeEpisodes(
     );
 
     if (!episodes ||
-        (Array.isArray(episodes) && episodes.length === 0) ||
-        (typeof episodes === 'object' && Object.keys(episodes).length === 0)) {
+      (Array.isArray(episodes) && episodes.length === 0) ||
+      (typeof episodes === 'object' && Object.keys(episodes).length === 0)) {
       if (canTryAnimePahe) {
         console.log(`⚠️ No episodes from ${finalProvider}, trying animepahe...`);
         const paheParams = new URLSearchParams({
@@ -1061,10 +1145,10 @@ export async function fetchAnimeStreamingLinks(
     server || '',
   );
   const timeoutToUse = requestTimeout ?? (finalProvider === 'anikoto' ? 30000 : undefined);
-  
+
   try {
     const links = await fetchFromProxy(url, 'Video Sources', cacheKey, timeoutToUse);
-    
+
     if (!links || (typeof links === 'object' && Object.keys(links).length === 0)) {
       if (canTryAnimePahe) {
         console.log(`⚠️ No streaming links from ${finalProvider}, trying animepahe...`);
@@ -1087,7 +1171,7 @@ export async function fetchAnimeStreamingLinks(
         }
       }
     }
-    
+
     return links;
   } catch (error) {
     if (canTryAnimePahe) {
@@ -1141,7 +1225,6 @@ export async function fetchAnimeStreamingLinksProxied(
     ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
     : M3U8_PROXY_URL;
 
-  // watchhentai uses direct MP4 sources — no M3U8 proxy needed; CORS is handled by the hentai proxy in Watch.tsx
   if (finalProvider === 'watchhentai') {
     return data;
   }
@@ -1194,6 +1277,10 @@ export async function fetchAnimeStreamingLinksProxied(
 
   return data;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Skip Times / Recent Episodes / Studio
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface FetchSkipTimesParams {
   malId: string;
@@ -1322,7 +1409,6 @@ export async function fetchStudioJikan(studioId: string): Promise<JikanProducer 
     if (response.status === 200 && response.data?.data) {
       const producerData = response.data.data as JikanProducer;
 
-      // Only cache if we have valid producer data
       if (producerData && Object.keys(producerData).length > 0) {
         await cacheManager.set('Studio', cacheKey, producerData);
       } else {
@@ -1348,7 +1434,6 @@ export interface MergedEpisode {
   description: string;
   imageHash: string;
   airDate: string;
-  // Map of provider -> original episode data
   providers: Record<
     string,
     {
@@ -1363,10 +1448,6 @@ export interface MergedEpisode {
   >;
 }
 
-/**
- * Extract episode number from episode ID.
- * Handles various ID formats from different providers.
- */
 function extractEpisodeNumber(episodeId: string, index: number): string {
   if (!episodeId) return String(index + 1);
 
@@ -1383,10 +1464,6 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
   return String(index + 1);
 }
 
-/**
- * Fetch episodes from multiple providers in parallel and merge by episode number.
- * This allows episodes to have servers from multiple providers.
- */
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
   dub: boolean = false,
@@ -1394,7 +1471,6 @@ export async function fetchEpisodesFromMultipleProviders(
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
-  // Fetch from all providers in parallel
   const providerResults = await Promise.allSettled(
     providers.map((provider) =>
       fetchAnimeEpisodes(animeId, provider, dub).then((episodes) => ({
@@ -1406,7 +1482,6 @@ export async function fetchEpisodesFromMultipleProviders(
 
   const episodeMap = new Map<string, MergedEpisode>();
 
-  // Process results from each provider
   providerResults.forEach((result, index) => {
     if (result.status === 'fulfilled') {
       const { provider, episodes } = result.value;
@@ -1430,11 +1505,8 @@ export async function fetchEpisodesFromMultipleProviders(
           });
         }
 
-        // Determine the actual provider from the episode data
-        // (it may differ from the requested provider if a fallback was used)
         const actualProvider = ep.provider || provider;
 
-        // Store provider-specific data using the actual provider
         const merged = episodeMap.get(episodeKey)!;
         merged.providers[actualProvider] = {
           id: ep.id,
@@ -1446,7 +1518,6 @@ export async function fetchEpisodesFromMultipleProviders(
           airDate: ep.airDate || '',
         };
 
-        // Use first available image/description for main display
         if (!merged.image && ep.image) {
           merged.image = ep.image;
         }
@@ -1464,23 +1535,18 @@ export async function fetchEpisodesFromMultipleProviders(
     .sort((a, b) => parseInt(a.number) - parseInt(b.number));
 
   console.log(
-    `✅ Merged episodes: ${mergedEpisodes.length} total, providers per episode: ${
-      mergedEpisodes
-        .map((e) => Object.keys(e.providers).length)
-        .reduce((a, b) => a + b, 0) /
-      Math.max(mergedEpisodes.length, 1)
+    `✅ Merged episodes: ${mergedEpisodes.length} total, providers per episode: ${mergedEpisodes
+      .map((e) => Object.keys(e.providers).length)
+      .reduce((a, b) => a + b, 0) /
+    Math.max(mergedEpisodes.length, 1)
     } avg`,
   );
 
   return mergedEpisodes;
 }
 
-/**
- * Fetch servers from all providers for a specific episode number.
- * Each provider may have different episode IDs for the same episode number.
- */
 export async function fetchServersFromMultipleProviders(
-  episodesByProvider: Record<string, string>, // Map of provider -> episodeId
+  episodesByProvider: Record<string, string>,
   providers: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'],
 ): Promise<
   Array<{
@@ -1495,7 +1561,6 @@ export async function fetchServersFromMultipleProviders(
     )}`,
   );
 
-  // Fetch servers from all available providers for this episode in parallel
   const serverResults = await Promise.allSettled(
     providers.map((provider) => {
       const episodeId = episodesByProvider[provider];
@@ -1511,17 +1576,14 @@ export async function fetchServersFromMultipleProviders(
           const hasDirectSources =
             Array.isArray(response?.sources) && response.sources.length > 0;
 
-          // HentaImaMa exposes the real playable media in `response.sources`.
-          // Ignore the iframe/JWPlayer wrapper entries here so the UI only
-          // surfaces the direct MP4/HLS source entry for this provider.
           const servers =
             provider === 'hentaimama' && hasDirectSources
               ? []
               : rawServers.map((s: any) => ({
-                  name: s.name,
-                  url: s.url,
-                  type: s.type,
-                }));
+                name: s.name,
+                url: s.url,
+                type: s.type,
+              }));
 
           console.log(`✅ Fetched ${servers.length} servers from ${provider}`);
 
