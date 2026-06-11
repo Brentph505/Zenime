@@ -544,8 +544,12 @@ const Watch: React.FC = () => {
       try {
         const isDub = language === 'dub';
 
-        const isHentai = animeInfo?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
-        const providersToUse = isHentai ? ['watchhentai', 'hentaimama'] : PROVIDERS;
+        const isHentai =
+          animeInfo?.genres?.some((g: string) => g.toLowerCase() === 'hentai') ||
+          animeInfo?.isAdult === true;
+        // hentaimama is the default provider; watchhentai is the extra alternative
+        const providersToUse = isHentai ? ['hentaimama', 'watchhentai'] : PROVIDERS;
+        console.log(`[Watch] isHentai=${isHentai}, providers:`, providersToUse);
 
         // Fetch from all providers in parallel; each may return a different
         // episode ID for the same episode number.
@@ -564,8 +568,8 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          // Prioritize providers: kickassanime > animepahe > anikoto > reanime > others
-          const providerPriority = ['kickassanime', 'animepahe', 'anikoto', 'reanime'];
+          // Prioritize providers: hentaimama > watchhentai > kickassanime > animepahe > anikoto > reanime > others
+          const providerPriority = ['hentaimama', 'watchhentai', 'kickassanime', 'animepahe', 'anikoto', 'reanime'];
           let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'kickassanime';
           
           for (const priorityProvider of providerPriority) {

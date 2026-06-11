@@ -53,10 +53,15 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto';
+type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto' | 'hentaimama' | 'watchhentai';
 type MangaProvider = 'mangahere' | 'mangapill';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
+
+/** Checks if a genres array contains 'hentai'. */
+function isHentaiGenres(genres?: string[]): boolean {
+  return Array.isArray(genres) && genres.some((g) => g.toLowerCase() === 'hentai');
+}
 
 const RANGE = 100;
 
@@ -895,18 +900,25 @@ const Info: React.FC = () => {
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
 
+  // Track which hentai providers are available (hentaimama is default, watchhentai is extra)
+  const [availableHentaiProviders, setAvailableHentaiProviders] = useState<Set<AnimeProvider>>(new Set());
+
   const [provider, setProvider] = useState<Provider>(() => {
     if (queryType === 'MANGA') {
       return (queryProvider === 'mangapill' ? 'mangapill'
         : (localStorage.getItem('manga-provider-preference') as MangaProvider)) || 'mangahere';
     }
-    return (localStorage.getItem('provider-preference') as AnimeProvider) || 'kickassanime';
+    // Hentai preference is stored separately
+    const savedHentai = localStorage.getItem('hentai-provider-preference') as AnimeProvider | null;
+    const savedAnime  = localStorage.getItem('provider-preference') as AnimeProvider | null;
+    return savedAnime || savedHentai || 'kickassanime';
   });
 
   // ── Sync state when URL params change ────────────────────────────────────────
   useEffect(() => {
     const newType: MediaType = queryType === 'MANGA' ? 'MANGA' : 'ANIME';
     setAvailableMangaProviders(new Set());
+    setAvailableHentaiProviders(new Set());
     setEpRange(0);
     setEpSearch('');
 
@@ -917,6 +929,7 @@ const Info: React.FC = () => {
           : (localStorage.getItem('manga-provider-preference') as MangaProvider) || 'mangahere',
       );
     } else {
+      // Will be overridden by the fetch effect once genres are known
       setProvider(
         (localStorage.getItem('provider-preference') as AnimeProvider) || 'kickassanime',
       );
@@ -1014,14 +1027,38 @@ const Info: React.FC = () => {
 
       } else {
         // ── Anime fetch ──────────────────────────────────────────────────────
-        const candidates: AnimeProvider[] = provider === 'animepahe'
-          ? ['animepahe', 'kickassanime', 'anikoto']
-          : provider === 'anikoto'
-            ? ['anikoto', 'kickassanime', 'animepahe']
-            : ['kickassanime', 'animepahe', 'anikoto'];
+        //
+        // First, do a quick genre probe with fetchAnimeData to detect hentai
+        // so we can pick the right provider order before hitting fetchAnimeInfo.
+        // ─────────────────────────────────────────────────────────────────────
+        let probeData: any = null;
+        try {
+          probeData = await fetchAnimeData(animeId);
+        } catch {
+          // probe failure is non-fatal
+        }
+
+        const detectedHentai = isHentaiGenres(probeData?.genres);
+
+        let candidates: AnimeProvider[];
+        if (detectedHentai) {
+          // Hentai: prefer hentaimama, allow watchhentai as fallback
+          const savedHentai = localStorage.getItem('hentai-provider-preference') as AnimeProvider | null;
+          const preferredHentai: AnimeProvider =
+            savedHentai === 'watchhentai' ? 'watchhentai' : 'hentaimama';
+          candidates = preferredHentai === 'watchhentai'
+            ? ['watchhentai', 'hentaimama']
+            : ['hentaimama', 'watchhentai'];
+        } else if (provider === 'animepahe') {
+          candidates = ['animepahe', 'kickassanime', 'anikoto'];
+        } else if (provider === 'anikoto') {
+          candidates = ['anikoto', 'kickassanime', 'animepahe'];
+        } else {
+          candidates = ['kickassanime', 'animepahe', 'anikoto'];
+        }
 
         let loaded = false;
-        let bestData: any = null; // best data found (even without episodes)
+        let bestData: any = probeData ?? null;
 
         // Pass 1: look for a provider with episodes
         for (const candidate of candidates) {
@@ -1030,21 +1067,20 @@ const Info: React.FC = () => {
             if (!bestData && data) bestData = data;
 
             if (hasEntries(data)) {
-              // Verify this is actually anime before committing
-              // Only switch to MANGA if the data is definitively manga-type
-              // AND no explicit ANIME url param was set
               const detectedType = resolveMediaType(queryType, data.type, data.format);
 
               if (detectedType === 'MANGA' && queryType !== 'ANIME') {
-                // This ID is actually manga — redirect to manga fetch
-                // Update URL so the page reloads cleanly as manga
                 navigate(`/info/${animeId}?type=MANGA`, { replace: true });
                 return;
               }
 
               setAnimeInfo(data);
               setProvider(candidate);
-              localStorage.setItem('provider-preference', candidate);
+              if (detectedHentai) {
+                localStorage.setItem('hentai-provider-preference', candidate);
+              } else {
+                localStorage.setItem('provider-preference', candidate);
+              }
               loaded = true;
               break;
             }
@@ -1070,7 +1106,11 @@ const Info: React.FC = () => {
 
                 setAnimeInfo(data);
                 setProvider(candidate);
-                localStorage.setItem('provider-preference', candidate);
+                if (detectedHentai) {
+                  localStorage.setItem('hentai-provider-preference', candidate);
+                } else {
+                  localStorage.setItem('provider-preference', candidate);
+                }
                 loaded = true;
                 break;
               }
@@ -1081,8 +1121,6 @@ const Info: React.FC = () => {
         }
 
         // Pass 3: no provider had episodes — show the page anyway with what we have.
-        // This handles: newly airing shows, region-locked titles, temporary outages.
-        // We do NOT error out just because episodes are unavailable.
         if (!loaded && bestData) {
           const detectedType = resolveMediaType(queryType, bestData.type, bestData.format);
 
@@ -1093,9 +1131,14 @@ const Info: React.FC = () => {
 
           setAnimeInfo(bestData);
           setProvider(candidates[0]);
-          // Keep mediaType as ANIME — no episodes ≠ wrong media type
         } else if (!loaded) {
           setError('Failed to load anime information.');
+        }
+
+        // Expose which hentai providers are available for the UI switcher
+        if (detectedHentai) {
+          const available = new Set<AnimeProvider>(candidates as AnimeProvider[]);
+          setAvailableHentaiProviders(available);
         }
       }
 
@@ -1119,6 +1162,19 @@ const Info: React.FC = () => {
       setEpSearch('');
     } catch (err) {
       console.warn(`⚠️ Provider switch to ${newProvider} failed:`, err);
+    }
+  };
+
+  // ── Manual hentai provider switch ─────────────────────────────────────────
+  const handleHentaiProviderSwitch = async (newProvider: AnimeProvider) => {
+    if (!animeId || newProvider === provider) return;
+    setProvider(newProvider);
+    localStorage.setItem('hentai-provider-preference', newProvider);
+    try {
+      const data = await fetchAnimeInfo(animeId, newProvider);
+      if (data) setAnimeInfo(data as any);
+    } catch (err) {
+      console.warn(`⚠️ Hentai provider switch to ${newProvider} failed:`, err);
     }
   };
 
@@ -1522,6 +1578,19 @@ const Info: React.FC = () => {
                             <SegmentOption $active={epView === 'list'} onClick={() => setEpView('list')} title="List view"><MdViewList size={16} /></SegmentOption>
                             <SegmentOption $active={epView === 'number'} onClick={() => setEpView('number')} title="Number view"><MdGridOn size={15} /></SegmentOption>
                           </SegmentedControl>
+                        )}
+
+                        {/* Hentai provider switcher — only shown for hentai content */}
+                        {!isManga && availableHentaiProviders.size > 1 && (
+                          <ProviderSwitcher>
+                            {(['hentaimama', 'watchhentai'] as AnimeProvider[])
+                              .filter(p => availableHentaiProviders.has(p))
+                              .map(p => (
+                                <ProviderButton key={p} $active={provider === p} onClick={() => handleHentaiProviderSwitch(p)}>
+                                  {p === 'hentaimama' ? 'HentaiMama' : 'WatchHentai'}
+                                </ProviderButton>
+                              ))}
+                          </ProviderSwitcher>
                         )}
 
                         {isManga && availableMangaProviders.size > 1 && (
