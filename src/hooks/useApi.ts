@@ -89,13 +89,7 @@ export function getNextSeasonInfo(): { season: AniListSeason; year: number } {
 /**
  * String helpers kept for backward-compat with Home.tsx / index exports.
  */
-export function getCurrentSeason(): AniListSeason {
-  return getCurrentSeasonInfo().season;
-}
-export function getNextSeason(): AniListSeason {
-  return getNextSeasonInfo().season;
-}
-export const year = new Date().getFullYear(); // kept for compat
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 
