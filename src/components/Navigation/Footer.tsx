@@ -1,7 +1,7 @@
 import styled from 'styled-components';
 import { FaReddit, FaDiscord, FaTwitter, FaGithub } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
-import { year } from '../../hooks/useTIme';
+import { year } from '../../hooks/useApi';
 
 const PageWrapper = styled.div`
   margin-top: 2rem;
