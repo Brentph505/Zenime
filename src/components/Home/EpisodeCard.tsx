@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { FaPlay } from 'react-icons/fa';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import 'swiper/swiper-bundle.css';
@@ -135,6 +135,12 @@ const ContinueWatchingTitle = styled.h2`
   color: var(--global-text);
   font-size: 1.25rem;
   margin-bottom: 0.25rem;
+  cursor: pointer;
+  transition: opacity 0.2s ease-in-out;
+  
+  &:hover {
+    opacity: 0.8;
+  }
 `;
 
 const CloseButton = styled.button`
@@ -178,6 +184,7 @@ const calculateSlidesPerView = (windowWidth: number): number => {
 };
 
 export const EpisodeCard: React.FC = () => {
+  const navigate = useNavigate();
   const [watchedEpisodesData, setWatchedEpisodesData] = useState(
     localStorage.getItem('watched-episodes'),
   );
@@ -320,7 +327,10 @@ export const EpisodeCard: React.FC = () => {
   return (
     <Section aria-labelledby='continueWatchingTitle'>
       {episodesToRender.length > 0 && (
-        <ContinueWatchingTitle id='continueWatchingTitle'>
+        <ContinueWatchingTitle 
+          id='continueWatchingTitle'
+          onClick={() => navigate('/history')}
+        >
           CONTINUE WATCHING
         </ContinueWatchingTitle>
       )}
