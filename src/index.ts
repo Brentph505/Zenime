@@ -55,7 +55,27 @@ export { useUserAnimeList } from './hooks/useUserAnimeList';
 
 // * ==== Client ====
 export { ApolloClientProvider } from './client/ApolloClient';
-export * from './client/userInfoTypes';
+export type {
+  UserData,
+  UserStatistics,
+  AnimeStatistics,
+  MangaStatistics,
+  AnimeMangaStatistics,
+  StatisticLimitSort,
+  UserFormatStatistic,
+  UserStatusStatistic,
+  UserScoreStatistic,
+  UserLengthStatistic,
+  UserReleaseYearStatistic,
+  UserStartYearStatistic,
+  UserGenreStatistic,
+  UserTagStatistic,
+  UserCountryStatistic,
+  UserVoiceActorStatistic,
+  UserStaffStatistic,
+  UserStudioStatistic,
+} from './client/userInfoTypes';
+export { isAnimeStatistics, isMangaStatistics, MediaListStatusEnum } from './client/userInfoTypes';
 export * from './client/authService';
 export * from './client/useAuth';
 
@@ -72,3 +92,4 @@ export { default as Callback } from './pages/Callback';
 export { default as Read } from './pages/Read';
 export { default as Info } from './pages/Info';
 export { default as Studio } from './pages/Studio';
+export { default as History } from './pages/History';

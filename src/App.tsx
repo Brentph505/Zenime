@@ -26,6 +26,7 @@ import {
   SettingsProvider,
   Info,
   Studio,
+  History,
 } from './index';
 import { register } from 'swiper/element/bundle';
 import { Analytics } from '@vercel/analytics/react';
@@ -68,6 +69,7 @@ function App() {
                   <Route path='/info/:animeId' element={<Info />} />
                   <Route path='/read/:animeId' element={<Read />} />
                   <Route path='/studio/:studioId' element={<Studio />} />
+                  <Route path='/history' element={<History />} />
                   <Route path='/profile' element={<Profile />} />
                   <Route path='/profile/settings' element={<Profile />} />
                   <Route path='/about' element={<About />} />
