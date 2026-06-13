@@ -1289,6 +1289,44 @@ const Info: React.FC = () => {
 
   const navigateToEntry = (ep: Episode) => {
     if (isManga) {
+      // Track manga reading history
+      const lastVisited = JSON.parse(
+        localStorage.getItem('last-manga-visited') || '{}',
+      );
+      lastVisited[animeInfo.id] = {
+        timestamp: Date.now(),
+        titleEnglish: animeInfo.title?.english || animeInfo.title?.userPreferred || '',
+        titleRomaji: animeInfo.title?.romaji || '',
+      };
+      localStorage.setItem('last-manga-visited', JSON.stringify(lastVisited));
+
+      // Add to read-chapters if not already there
+      const readChapters = JSON.parse(
+        localStorage.getItem('read-chapters') || '{}',
+      );
+      if (!readChapters[animeInfo.id]) {
+        readChapters[animeInfo.id] = [];
+      }
+
+      const chapterEntry = {
+        id: ep.id,
+        number: ep.number,
+        title: ep.title || '',
+        image: ep.image || '',
+        description: ep.description || '',
+        imageHash: ep.imageHash || '',
+        airDate: new Date().toISOString(),
+      };
+
+      if (!readChapters[animeInfo.id].some((ch: any) => ch.id === ep.id)) {
+        readChapters[animeInfo.id].push(chapterEntry);
+      }
+
+      localStorage.setItem(
+        'read-chapters',
+        JSON.stringify(readChapters),
+      );
+
       navigate(`/read/${animeInfo.id}?chapterId=${ep.id}&provider=${provider}`);
     } else {
       navigate(`/watch/${animeInfo.id}?ep=${ep.number}`);
@@ -1298,6 +1336,44 @@ const Info: React.FC = () => {
   const navigateToFirst = () => {
     if (!firstEntry) return;
     if (isManga) {
+      // Track manga reading history
+      const lastVisited = JSON.parse(
+        localStorage.getItem('last-manga-visited') || '{}',
+      );
+      lastVisited[animeInfo.id] = {
+        timestamp: Date.now(),
+        titleEnglish: animeInfo.title?.english || animeInfo.title?.userPreferred || '',
+        titleRomaji: animeInfo.title?.romaji || '',
+      };
+      localStorage.setItem('last-manga-visited', JSON.stringify(lastVisited));
+
+      // Add to read-chapters if not already there
+      const readChapters = JSON.parse(
+        localStorage.getItem('read-chapters') || '{}',
+      );
+      if (!readChapters[animeInfo.id]) {
+        readChapters[animeInfo.id] = [];
+      }
+
+      const chapterEntry = {
+        id: firstEntry.id,
+        number: firstEntry.number,
+        title: firstEntry.title || '',
+        image: firstEntry.image || '',
+        description: firstEntry.description || '',
+        imageHash: firstEntry.imageHash || '',
+        airDate: new Date().toISOString(),
+      };
+
+      if (!readChapters[animeInfo.id].some((ch: any) => ch.id === firstEntry.id)) {
+        readChapters[animeInfo.id].push(chapterEntry);
+      }
+
+      localStorage.setItem(
+        'read-chapters',
+        JSON.stringify(readChapters),
+      );
+
       navigate(`/read/${animeInfo.id}?chapterId=${firstEntry.id}&provider=${provider}`);
     } else {
       navigate(`/watch/${animeInfo.id}?ep=${firstNumber}`);
