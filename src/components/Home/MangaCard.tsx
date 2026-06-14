@@ -99,7 +99,7 @@ const ProgressBar = styled.div`
 
 // ── Main card ─────────────────────────────────────────────────────────────────
 
-const MangaCardLink = styled(Link)`
+const MangaCardLink = styled(Link)<{ $fullWidth?: boolean }>`
   position: relative;
   display: block;
   border-radius: var(--global-border-radius);
@@ -107,41 +107,54 @@ const MangaCardLink = styled(Link)`
   text-decoration: none;
   transition: box-shadow 0.2s ease-in-out;
   width: 100%;
-  max-width: 7.5rem;
+  /* When $fullWidth is true (e.g. History page), the card fills its grid
+     column instead of being constrained to the Home-rail max-width. */
+  max-width: ${({ $fullWidth }) => ($fullWidth ? '100%' : '7.5rem')};
   margin: 0 auto;
 
   @media (max-width: 1000px) {
-    max-width: 7rem;
+    max-width: ${({ $fullWidth }) => ($fullWidth ? '100%' : '7rem')};
   }
 
   @media (max-width: 800px) {
-    max-width: 6.5rem;
+    max-width: ${({ $fullWidth }) => ($fullWidth ? '100%' : '6.5rem')};
   }
 
   @media (max-width: 450px) {
-    max-width: 5.5rem;
+    max-width: ${({ $fullWidth }) => ($fullWidth ? '100%' : '5.5rem')};
   }
 
-  /* ── hover state ── */
-  &:hover,
+  /* ── hover state ──
+     Scoped to pointer/hover-capable devices only.
+     Without this guard, tapping on a touch screen triggers :hover,
+     sets brightness(0.5) on the cover image, and the state never clears
+     — making the image look "not loaded" until the user taps elsewhere. */
+  @media (hover: hover) {
+    &:hover,
+    &:focus-visible {
+      box-shadow: 2px 2px 10px var(--global-card-hover-shadow);
+
+      img {
+        filter: brightness(0.5);
+      }
+
+      ${ReadIcon} {
+        opacity: 1;
+      }
+
+      ${CloseButton} {
+        display: block;
+      }
+
+      ${BookmarkBadge} {
+        opacity: 1;
+      }
+    }
+  }
+
+  /* Keyboard focus ring still shows on all devices */
   &:focus-visible {
     box-shadow: 2px 2px 10px var(--global-card-hover-shadow);
-
-    img {
-      filter: brightness(0.5);
-    }
-
-    ${ReadIcon} {
-      opacity: 1;
-    }
-
-    ${CloseButton} {
-      display: block;
-    }
-
-    ${BookmarkBadge} {
-      opacity: 1;
-    }
   }
 
   /* ── cover image ── */
@@ -201,6 +214,10 @@ interface MangaCardProps {
   lastChapterTitle?: string;
   playbackPercentage?: number;
   onDelete?: (animeId: string, e: React.MouseEvent) => void;
+  /** Set to true when rendering inside a grid that should control the card
+   *  width (e.g. the History page). Removes the fixed max-width so the card
+   *  fills its grid column naturally. Defaults to false. */
+  fullWidth?: boolean;
 }
 
 export const MangaCard: React.FC<MangaCardProps> = ({
@@ -212,6 +229,7 @@ export const MangaCard: React.FC<MangaCardProps> = ({
   lastChapterTitle,
   playbackPercentage = 0,
   onDelete,
+  fullWidth = false,
 }) => {
   const [isBookmarked, setIsBookmarked] = useState(false);
 
@@ -323,6 +341,7 @@ export const MangaCard: React.FC<MangaCardProps> = ({
 
   return (
     <MangaCardLink
+      $fullWidth={fullWidth}
       to={`/read/${animeId}`}
       title={`Continue reading ${mangaTitle}`}
       onClick={trackMangaRead}
