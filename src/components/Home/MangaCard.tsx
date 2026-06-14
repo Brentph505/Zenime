@@ -212,6 +212,7 @@ interface MangaCardProps {
   coverImage?: string;
   lastChapterNumber?: string | number;
   lastChapterTitle?: string;
+  lastChapterId?: string;
   playbackPercentage?: number;
   onDelete?: (animeId: string, e: React.MouseEvent) => void;
   /** Set to true when rendering inside a grid that should control the card
@@ -227,6 +228,7 @@ export const MangaCard: React.FC<MangaCardProps> = ({
   coverImage,
   lastChapterNumber,
   lastChapterTitle,
+  lastChapterId,
   playbackPercentage = 0,
   onDelete,
   fullWidth = false,
@@ -294,11 +296,17 @@ export const MangaCard: React.FC<MangaCardProps> = ({
   };
 
   const trackMangaRead = () => {
-    // Stamp last-visited
+    // Stamp last-visited timestamp while preserving any existing AniList cover image.
     const lastVisited = JSON.parse(
       localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_MANGA_VISITED) || '{}',
     );
-    lastVisited[animeId] = { timestamp: Date.now(), titleEnglish, titleRomaji };
+    const existing = lastVisited[animeId];
+    lastVisited[animeId] = {
+      timestamp: Date.now(),
+      titleEnglish,
+      titleRomaji,
+      coverImage: existing?.coverImage || coverImage || undefined,
+    };
     localStorage.setItem(
       LOCAL_STORAGE_KEYS.LAST_MANGA_VISITED,
       JSON.stringify(lastVisited),
@@ -342,7 +350,11 @@ export const MangaCard: React.FC<MangaCardProps> = ({
   return (
     <MangaCardLink
       $fullWidth={fullWidth}
-      to={`/read/${animeId}`}
+      to={
+        lastChapterId
+          ? `/read/${animeId}?chapterId=${encodeURIComponent(lastChapterId)}`
+          : `/read/${animeId}`
+      }
       title={`Continue reading ${mangaTitle}`}
       onClick={trackMangaRead}
     >
@@ -351,8 +363,11 @@ export const MangaCard: React.FC<MangaCardProps> = ({
         src={coverImage}
         alt={`Cover for ${mangaTitle}`}
         onError={(e) => {
-          e.currentTarget.src =
-            'https://via.placeholder.com/320x480?text=No+Image';
+          // Use a placeholder if no image is available
+          if (!e.currentTarget.src.includes('placeholder')) {
+            e.currentTarget.src =
+              'https://via.placeholder.com/150x220?text=No+Image';
+          }
         }}
       />
 
