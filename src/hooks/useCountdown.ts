@@ -6,16 +6,16 @@ export const useCountdown = (targetDate: number | null): string => {
 
   useEffect(() => {
     if (!targetDate) {
-      return; // Early exit if targetDate is null or undefined
+      setTimeLeft('');
+      return;
     }
 
-    const timer = setInterval(() => {
+    const updateTimer = () => {
       const now = Date.now();
       const distance = targetDate - now;
       if (distance < 0) {
-        clearInterval(timer);
         setTimeLeft('Airing now or aired');
-        return;
+        return true;
       }
 
       const days = Math.floor(distance / (1000 * 60 * 60 * 24));
@@ -28,6 +28,17 @@ export const useCountdown = (targetDate: number | null): string => {
       setTimeLeft(
         `${days} days, ${hours} hours, ${minutes} minutes, ${seconds} seconds`,
       );
+      return false;
+    };
+
+    const shouldStop = updateTimer();
+    if (shouldStop) return;
+
+    const timer = setInterval(() => {
+      const stop = updateTimer();
+      if (stop) {
+        clearInterval(timer);
+      }
     }, 1000);
 
     return () => clearInterval(timer);

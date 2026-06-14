@@ -782,7 +782,7 @@ export const fetchUpcomingSeasons = (page: number, perPage: number) =>
 
 export async function fetchAnimeData(
   animeId: string,
-  provider: string = 'kickassanime',
+  provider: string = 'anikoto',
 ) {
   const attemptFetch = async (prov: string) => {
     const params = new URLSearchParams({ provider: prov });
@@ -791,7 +791,7 @@ export async function fetchAnimeData(
     return await fetchFromProxy(url, 'Data', cacheKey);
   };
 
-  let finalProvider = provider || 'kickassanime';
+  let finalProvider = provider || 'anikoto';
 
   // ─── Step 1: initial fetch to detect content type ────────────────────────
   // Always query AniList directly for genres/isAdult to avoid providers stripping adult tags.
@@ -864,8 +864,29 @@ export async function fetchAnimeData(
   if (!isEmpty(providerData)) return mergeBaseData(providerData);
 
   // Otherwise try the standard fallback chain.
+  const canTryKickassanime = finalProvider !== 'kickassanime';
   const canTryAnimePahe = finalProvider !== 'animepahe';
   const canTryReanime   = finalProvider !== 'reanime';
+
+  if (canTryReanime) {
+    try {
+      console.log(`⚠️ No data from ${finalProvider}, trying reanime...`);
+      const reanimeData = await attemptFetch('reanime');
+      if (!isEmpty(reanimeData)) return mergeBaseData(reanimeData);
+    } catch (error) {
+      console.log(`⚠️ Error from reanime...`, error);
+    }
+  }
+
+  if (canTryKickassanime) {
+    try {
+      console.log(`⚠️ No data from ${finalProvider}, trying kickassanime...`);
+      const kickassData = await attemptFetch('kickassanime');
+      if (!isEmpty(kickassData)) return mergeBaseData(kickassData);
+    } catch (error) {
+      console.log(`⚠️ Error from kickassanime...`, error);
+    }
+  }
 
   if (canTryAnimePahe) {
     try {
@@ -877,22 +898,12 @@ export async function fetchAnimeData(
     }
   }
 
-  if (canTryReanime) {
-    try {
-      console.log(`⚠️ No data from animepahe, trying reanime...`);
-      const reanimeData = await attemptFetch('reanime');
-      if (!isEmpty(reanimeData)) return mergeBaseData(reanimeData);
-    } catch (error) {
-      console.log(`⚠️ Error from reanime...`, error);
-    }
-  }
-
   return mergeBaseData({});
 }
 
 export async function fetchAnimeInfo(
   animeId: string,
-  provider: string = 'kickassanime',
+  provider: string = 'anikoto',
 ) {
   const attemptFetch = async (prov: string) => {
     const params = new URLSearchParams({ provider: prov });
@@ -901,7 +912,7 @@ export async function fetchAnimeInfo(
     return await fetchFromProxy(url, 'Info', cacheKey);
   };
 
-  let finalProvider = provider || 'kickassanime';
+  let finalProvider = provider || 'anikoto';
   let isHentai = false;
 
   const handleData = async (data: any, currentProv: string) => {
@@ -948,8 +959,33 @@ export async function fetchAnimeInfo(
     return {};
   }
 
+  const canTryKickassanime = finalProvider !== 'kickassanime' && finalProvider !== 'hentaimama';
   const canTryAnimePahe = finalProvider !== 'animepahe' && finalProvider !== 'hentaimama';
   const canTryReanime = finalProvider !== 'reanime' && finalProvider !== 'hentaimama';
+
+  if (canTryReanime) {
+    try {
+      console.log(`⚠️ No info from ${finalProvider}, trying reanime...`);
+      let reanimeInfo = await attemptFetch('reanime');
+      reanimeInfo = await handleData(reanimeInfo, 'reanime');
+      if (reanimeInfo) return reanimeInfo;
+    } catch (error) {
+      console.log(`⚠️ Error from reanime...`, error);
+      lastError = error;
+    }
+  }
+
+  if (canTryKickassanime) {
+    try {
+      console.log(`⚠️ No info from ${finalProvider}, trying kickassanime...`);
+      let kickassInfo = await attemptFetch('kickassanime');
+      kickassInfo = await handleData(kickassInfo, 'kickassanime');
+      if (kickassInfo) return kickassInfo;
+    } catch (error) {
+      console.log(`⚠️ Error from kickassanime...`, error);
+      lastError = error;
+    }
+  }
 
   if (canTryAnimePahe) {
     try {
@@ -959,18 +995,6 @@ export async function fetchAnimeInfo(
       if (paheInfo) return paheInfo;
     } catch (error) {
       console.log(`⚠️ Error from animepahe...`, error);
-      lastError = error;
-    }
-  }
-
-  if (canTryReanime) {
-    try {
-      console.log(`⚠️ No info from animepahe, trying reanime...`);
-      let reanimeInfo = await attemptFetch('reanime');
-      reanimeInfo = await handleData(reanimeInfo, 'reanime');
-      if (reanimeInfo) return reanimeInfo;
-    } catch (error) {
-      console.log(`⚠️ Error from reanime...`, error);
       lastError = error;
     }
   }
@@ -1033,11 +1057,12 @@ export async function fetchMangaRead(
 
 export async function fetchAnimeEpisodes(
   animeId: string,
-  provider: string = 'kickassanime',
+  provider: string = 'anikoto',
   dub: boolean = false,
 ) {
-  const finalProvider = provider || 'kickassanime';
+  const finalProvider = provider || 'anikoto';
   const isHentaiProvider = finalProvider === 'hentaimama' || finalProvider === 'watchhentai';
+  const canTryKickassanime = !isHentaiProvider && finalProvider !== 'kickassanime';
   const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
   const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
   const params = new URLSearchParams({
@@ -1068,27 +1093,6 @@ export async function fetchAnimeEpisodes(
     if (!episodes ||
       (Array.isArray(episodes) && episodes.length === 0) ||
       (typeof episodes === 'object' && Object.keys(episodes).length === 0)) {
-      if (canTryAnimePahe) {
-        console.log(`⚠️ No episodes from ${finalProvider}, trying animepahe...`);
-        const paheParams = new URLSearchParams({
-          provider: 'animepahe',
-          dub: dub ? 'true' : 'false',
-        });
-        const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
-        const paheCacheKey = generateCacheKey(
-          'animeEpisodes',
-          animeId,
-          'animepahe',
-          dub ? 'dub' : 'sub',
-        );
-        const paheEpisodes = attachProvider(
-          await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
-          'animepahe',
-        );
-        if (paheEpisodes && !(Array.isArray(paheEpisodes) && paheEpisodes.length === 0) && !(typeof paheEpisodes === 'object' && Object.keys(paheEpisodes).length === 0)) {
-          return paheEpisodes;
-        }
-      }
       if (canTryReanime) {
         console.log(`⚠️ No episodes from ${finalProvider}, trying reanime...`);
         const reanimeParams = new URLSearchParams({
@@ -1110,54 +1114,52 @@ export async function fetchAnimeEpisodes(
           return reanimeEpisodes;
         }
       }
+      if (canTryKickassanime) {
+        console.log(`⚠️ No episodes from ${finalProvider}, trying kickassanime...`);
+        const kickassParams = new URLSearchParams({
+          provider: 'kickassanime',
+          dub: dub ? 'true' : 'false',
+        });
+        const kickassUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${kickassParams.toString()}`;
+        const kickassCacheKey = generateCacheKey(
+          'animeEpisodes',
+          animeId,
+          'kickassanime',
+          dub ? 'dub' : 'sub',
+        );
+        const kickassEpisodes = attachProvider(
+          await fetchFromProxy(kickassUrl, 'Episodes', kickassCacheKey),
+          'kickassanime',
+        );
+        if (kickassEpisodes && !(Array.isArray(kickassEpisodes) && kickassEpisodes.length === 0) && !(typeof kickassEpisodes === 'object' && Object.keys(kickassEpisodes).length === 0)) {
+          return kickassEpisodes;
+        }
+      }
+      if (canTryAnimePahe) {
+        console.log(`⚠️ No episodes from ${finalProvider}, trying animepahe...`);
+        const paheParams = new URLSearchParams({
+          provider: 'animepahe',
+          dub: dub ? 'true' : 'false',
+        });
+        const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
+        const paheCacheKey = generateCacheKey(
+          'animeEpisodes',
+          animeId,
+          'animepahe',
+          dub ? 'dub' : 'sub',
+        );
+        const paheEpisodes = attachProvider(
+          await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
+          'animepahe',
+        );
+        if (paheEpisodes && !(Array.isArray(paheEpisodes) && paheEpisodes.length === 0) && !(typeof paheEpisodes === 'object' && Object.keys(paheEpisodes).length === 0)) {
+          return paheEpisodes;
+        }
+      }
     }
 
     return episodes;
   } catch (error) {
-    if (canTryAnimePahe) {
-      console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
-      const paheParams = new URLSearchParams({
-        provider: 'animepahe',
-        dub: dub ? 'true' : 'false',
-      });
-      const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
-      const paheCacheKey = generateCacheKey(
-        'animeEpisodes',
-        animeId,
-        'animepahe',
-        dub ? 'dub' : 'sub',
-      );
-      try {
-        return attachProvider(
-          await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
-          'animepahe',
-        );
-      } catch (paheError) {
-        if (canTryReanime) {
-          console.log(`⚠️ Error from animepahe, trying reanime...`, paheError);
-          const reanimeParams = new URLSearchParams({
-            provider: 'reanime',
-            dub: dub ? 'true' : 'false',
-          });
-          const reanimeUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${reanimeParams.toString()}`;
-          const reanimeCacheKey = generateCacheKey(
-            'animeEpisodes',
-            animeId,
-            'reanime',
-            dub ? 'dub' : 'sub',
-          );
-          try {
-            return attachProvider(
-              await fetchFromProxy(reanimeUrl, 'Episodes', reanimeCacheKey),
-              'reanime',
-            );
-          } catch (reanimeError) {
-            throw reanimeError;
-          }
-        }
-        throw paheError;
-      }
-    }
     if (canTryReanime) {
       console.log(`⚠️ Error from ${finalProvider}, trying reanime...`, error);
       const reanimeParams = new URLSearchParams({
@@ -1177,7 +1179,117 @@ export async function fetchAnimeEpisodes(
           'reanime',
         );
       } catch (reanimeError) {
+        if (canTryKickassanime) {
+          console.log(`⚠️ Error from reanime, trying kickassanime...`, reanimeError);
+          const kickassParams = new URLSearchParams({
+            provider: 'kickassanime',
+            dub: dub ? 'true' : 'false',
+          });
+          const kickassUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${kickassParams.toString()}`;
+          const kickassCacheKey = generateCacheKey(
+            'animeEpisodes',
+            animeId,
+            'kickassanime',
+            dub ? 'dub' : 'sub',
+          );
+          try {
+            return attachProvider(
+              await fetchFromProxy(kickassUrl, 'Episodes', kickassCacheKey),
+              'kickassanime',
+            );
+          } catch (kickassError) {
+            if (canTryAnimePahe) {
+              console.log(`⚠️ Error from kickassanime, trying animepahe...`, kickassError);
+              const paheParams = new URLSearchParams({
+                provider: 'animepahe',
+                dub: dub ? 'true' : 'false',
+              });
+              const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
+              const paheCacheKey = generateCacheKey(
+                'animeEpisodes',
+                animeId,
+                'animepahe',
+                dub ? 'dub' : 'sub',
+              );
+              try {
+                return attachProvider(
+                  await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
+                  'animepahe',
+                );
+              } catch (paheError) {
+                throw paheError;
+              }
+            }
+            throw kickassError;
+          }
+        }
         throw reanimeError;
+      }
+    }
+    if (canTryKickassanime) {
+      console.log(`⚠️ Error from ${finalProvider}, trying kickassanime...`, error);
+      const kickassParams = new URLSearchParams({
+        provider: 'kickassanime',
+        dub: dub ? 'true' : 'false',
+      });
+      const kickassUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${kickassParams.toString()}`;
+      const kickassCacheKey = generateCacheKey(
+        'animeEpisodes',
+        animeId,
+        'kickassanime',
+        dub ? 'dub' : 'sub',
+      );
+      try {
+        return attachProvider(
+          await fetchFromProxy(kickassUrl, 'Episodes', kickassCacheKey),
+          'kickassanime',
+        );
+      } catch (kickassError) {
+        if (canTryAnimePahe) {
+          console.log(`⚠️ Error from kickassanime, trying animepahe...`, kickassError);
+          const paheParams = new URLSearchParams({
+            provider: 'animepahe',
+            dub: dub ? 'true' : 'false',
+          });
+          const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
+          const paheCacheKey = generateCacheKey(
+            'animeEpisodes',
+            animeId,
+            'animepahe',
+            dub ? 'dub' : 'sub',
+          );
+          try {
+            return attachProvider(
+              await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
+              'animepahe',
+            );
+          } catch (paheError) {
+            throw paheError;
+          }
+        }
+        throw kickassError;
+      }
+    }
+    if (canTryAnimePahe) {
+      console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
+      const paheParams = new URLSearchParams({
+        provider: 'animepahe',
+        dub: dub ? 'true' : 'false',
+      });
+      const paheUrl = `${BASE_URL}meta/anilist/episodes/${animeId}?${paheParams.toString()}`;
+      const paheCacheKey = generateCacheKey(
+        'animeEpisodes',
+        animeId,
+        'animepahe',
+        dub ? 'dub' : 'sub',
+      );
+      try {
+        return attachProvider(
+          await fetchFromProxy(paheUrl, 'Episodes', paheCacheKey),
+          'animepahe',
+        );
+      } catch (paheError) {
+        throw paheError;
       }
     }
     throw error;
@@ -1186,9 +1298,9 @@ export async function fetchAnimeEpisodes(
 
 export async function fetchAnimeEmbeddedEpisodes(
   episodeId: string,
-  provider: string = 'kickassanime',
+  provider: string = 'anikoto',
 ) {
-  const finalProvider = provider || 'kickassanime';
+  const finalProvider = provider || 'anikoto';
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/servers/${episodeId}?${params.toString()}`;
   const cacheKey = generateCacheKey(
@@ -1539,14 +1651,14 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
 
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
-  dub: boolean = false,
-  providers: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'],
+  isDub: boolean = false,
+  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe'],
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
   const providerResults = await Promise.allSettled(
     providers.map((provider) =>
-      fetchAnimeEpisodes(animeId, provider, dub).then((episodes) => ({
+      fetchAnimeEpisodes(animeId, provider, isDub).then((episodes) => ({
         provider,
         episodes: Array.isArray(episodes) ? episodes : [],
       })),
@@ -1620,7 +1732,7 @@ export async function fetchEpisodesFromMultipleProviders(
 
 export async function fetchServersFromMultipleProviders(
   episodesByProvider: Record<string, string>,
-  providers: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'],
+  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe'],
 ): Promise<
   Array<{
     provider: string;
