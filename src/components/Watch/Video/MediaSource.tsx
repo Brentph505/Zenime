@@ -284,9 +284,17 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
         )}
         {airingTime && (
           <p>
-            Episode <strong>{nextEpisodenumber}</strong> will air in{' '}
-            <FaBell />
-            <strong> {airingTime}</strong>.
+            {airingTime === 'Airing now or aired' ? (
+              <>
+                Episode <strong>{nextEpisodenumber}</strong> is <strong>airing now or aired</strong>.
+              </>
+            ) : (
+              <>
+                Episode <strong>{nextEpisodenumber}</strong> will air in{' '}
+                <FaBell />
+                <strong> {airingTime}</strong>.
+              </>
+            )}
           </p>
         )}
       </EpisodeInfoColumn>
