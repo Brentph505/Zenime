@@ -3,6 +3,94 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { FaBell } from 'react-icons/fa';
 import styled from 'styled-components';
 import Image404URL from '/src/assets/404.webp';
+
+// ─── IndexedDB Helper for Large Storage ───────────────────────────────────────
+class WatchHistoryDB {
+  private dbPromise: Promise<IDBDatabase>;
+  private readonly DB_NAME = 'ZenimeWatchDB';
+  private readonly STORE_NAME = 'watchedEpisodes';
+
+  constructor() {
+    this.dbPromise = this.initDB();
+  }
+
+  private initDB(): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.DB_NAME, 1);
+
+      request.onerror = () => {
+        console.warn('[WatchHistoryDB] Failed to open IndexedDB');
+        reject(request.error);
+      };
+
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+          db.createObjectStore(this.STORE_NAME, { keyPath: 'animeId' });
+        }
+      };
+    });
+  }
+
+  async saveWatchedEpisodes(animeId: string, episodes: any[]): Promise<void> {
+    try {
+      const db = await this.dbPromise;
+      const transaction = db.transaction(this.STORE_NAME, 'readwrite');
+      const store = transaction.objectStore(this.STORE_NAME);
+      await new Promise((resolve, reject) => {
+        const request = store.put({ animeId, episodes, timestamp: Date.now() });
+        request.onsuccess = () => resolve(undefined);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (err) {
+      console.warn('[WatchHistoryDB] Failed to save:', err);
+    }
+  }
+
+  async getWatchedEpisodes(animeId: string): Promise<any[] | null> {
+    try {
+      const db = await this.dbPromise;
+      const transaction = db.transaction(this.STORE_NAME, 'readonly');
+      const store = transaction.objectStore(this.STORE_NAME);
+      return new Promise((resolve, reject) => {
+        const request = store.get(animeId);
+        request.onsuccess = () => resolve(request.result?.episodes || null);
+        request.onerror = () => reject(request.error);
+      });
+    } catch (err) {
+      console.warn('[WatchHistoryDB] Failed to get:', err);
+      return null;
+    }
+  }
+
+  async getAllWatchedAnime(): Promise<Record<string, any[]>> {
+    try {
+      const db = await this.dbPromise;
+      const transaction = db.transaction(this.STORE_NAME, 'readonly');
+      const store = transaction.objectStore(this.STORE_NAME);
+      return new Promise((resolve, reject) => {
+        const request = store.getAll();
+        request.onsuccess = () => {
+          const result: Record<string, any[]> = {};
+          request.result.forEach((item: any) => {
+            result[item.animeId] = item.episodes;
+          });
+          resolve(result);
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (err) {
+      console.warn('[WatchHistoryDB] Failed to get all:', err);
+      return {};
+    }
+  }
+}
+
+const watchHistoryDB = new WatchHistoryDB();
 import {
   EpisodeList,
   Player,
@@ -227,7 +315,15 @@ const Watch: React.FC = () => {
   };
 
   const saveServerForEpisode = async (id: string, epId: string, server: string) => {
-    localStorage.setItem(getEpisodeServerKey(id, epId), server);
+    try {
+      localStorage.setItem(getEpisodeServerKey(id, epId), server);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('QuotaExceededError')) {
+        console.warn('[Watch] LocalStorage quota exceeded when saving server preference');
+      } else {
+        console.error('[Watch] Error saving server preference:', err);
+      }
+    }
     try {
       const { redisClient } = await import('../lib/caching/redisClient');
       await redisClient.set(`server-${id}-${epId}`, server, 30 * 24 * 60 * 60);
@@ -346,21 +442,51 @@ const Watch: React.FC = () => {
     (episode: Episode) => {
       if (!animeId) return;
 
-      const globalKey = 'watched-episodes';
-      const allWatchedEpisodes: Record<string, Episode[]> = JSON.parse(
-        localStorage.getItem(globalKey) || '{}',
-      );
-      const animeWatchList = allWatchedEpisodes[animeId] || [];
+      const saveToStorage = async () => {
+        try {
+          // Store full episode data in IndexedDB (large quota, no restrictions)
+          const existingEpisodes = await watchHistoryDB.getWatchedEpisodes(animeId);
+          const episodeList = existingEpisodes || [];
 
-      if (!animeWatchList.some((ep) => ep.id === episode.id)) {
-        const updatedAnimeWatchList = [...animeWatchList, episode];
-        allWatchedEpisodes[animeId] = updatedAnimeWatchList;
-        localStorage.setItem(globalKey, JSON.stringify(allWatchedEpisodes));
-        localStorage.setItem(
-          `${LOCAL_STORAGE_KEYS.WATCHED_EPISODES}${animeId}`,
-          JSON.stringify(updatedAnimeWatchList),
-        );
-      }
+          if (!episodeList.some((ep) => ep.id === episode.id)) {
+            episodeList.push(episode);
+            await watchHistoryDB.saveWatchedEpisodes(animeId, episodeList);
+            console.log(`[Watch] Saved episode to IndexedDB (total: ${episodeList.length})`);
+          }
+
+          // Also cache minimal data in localStorage for faster access
+          try {
+            const globalKey = 'watched-episodes-cache';
+            const minimalEpisodeData = {
+              id: episode.id,
+              number: episode.number,
+              title: episode.title,
+            };
+            const allWatchedEpisodes: Record<string, typeof minimalEpisodeData[]> = JSON.parse(
+              localStorage.getItem(globalKey) || '{}',
+            );
+            const animeWatchList = allWatchedEpisodes[animeId] || [];
+
+            if (!animeWatchList.some((ep) => ep.id === episode.id)) {
+              animeWatchList.push(minimalEpisodeData);
+              // Keep only last 50 episodes per anime in localStorage cache
+              if (animeWatchList.length > 50) {
+                animeWatchList.shift();
+              }
+              allWatchedEpisodes[animeId] = animeWatchList;
+              localStorage.setItem(globalKey, JSON.stringify(allWatchedEpisodes));
+            }
+          } catch (err) {
+            if (err instanceof Error && err.message.includes('QuotaExceededError')) {
+              console.warn('[Watch] LocalStorage quota exceeded for cache (IndexedDB still works)');
+            }
+          }
+        } catch (err) {
+          console.error('[Watch] Error saving watched episode:', err);
+        }
+      };
+
+      saveToStorage();
     },
     [animeId],
   );
@@ -370,6 +496,22 @@ const Watch: React.FC = () => {
       updateWatchedEpisodes(currentEpisode);
     }
   }, [currentEpisode, updateWatchedEpisodes]);
+
+  // ── Sync IndexedDB watch history to localStorage on mount ──────────────────
+  useEffect(() => {
+    const syncWatchHistory = async () => {
+      try {
+        const allWatched = await watchHistoryDB.getAllWatchedAnime();
+        if (Object.keys(allWatched).length > 0) {
+          localStorage.setItem('watched-episodes-full', JSON.stringify(allWatched));
+          console.log('[Watch] Synced watch history from IndexedDB');
+        }
+      } catch (err) {
+        console.warn('[Watch] Failed to sync watch history:', err);
+      }
+    };
+    syncWatchHistory();
+  }, []);
 
   // ─────────────────────────────────────────────────────────────────────────
   // handleEpisodeSelect
@@ -421,10 +563,18 @@ const Watch: React.FC = () => {
 
       setCurrentEpisode(nextEpisode);
 
-      localStorage.setItem(
-        LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId,
-        JSON.stringify({ id: primaryId, title: nextEpisode.title, number: nextEpisode.number }),
-      );
+      try {
+        localStorage.setItem(
+          LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId,
+          JSON.stringify({ id: primaryId, title: nextEpisode.title, number: nextEpisode.number }),
+        );
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('QuotaExceededError')) {
+          console.warn('[Watch] LocalStorage quota exceeded when saving last-watched episode');
+        } else {
+          console.error('[Watch] Error saving last-watched episode:', err);
+        }
+      }
       updateWatchedEpisodes(nextEpisode);
 
       navigate(`/watch/${animeId}?ep=${nextEpisode.number}`, { replace: true });
