@@ -53,7 +53,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto' | 'hentaimama' | 'watchhentai';
+type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'hentaimama' | 'watchhentai';
 type MangaProvider = 'mangahere' | 'mangapill';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -911,7 +911,7 @@ const Info: React.FC = () => {
     // Hentai preference is stored separately
     const savedHentai = localStorage.getItem('hentai-provider-preference') as AnimeProvider | null;
     const savedAnime  = localStorage.getItem('provider-preference') as AnimeProvider | null;
-    return savedAnime || savedHentai || 'kickassanime';
+    return savedAnime || savedHentai || 'anikoto';
   });
 
   // ── Sync state when URL params change ────────────────────────────────────────
@@ -931,7 +931,7 @@ const Info: React.FC = () => {
     } else {
       // Will be overridden by the fetch effect once genres are known
       setProvider(
-        (localStorage.getItem('provider-preference') as AnimeProvider) || 'kickassanime',
+        (localStorage.getItem('provider-preference') as AnimeProvider) || 'anikoto',
       );
     }
   }, [queryType, queryProvider]);
@@ -1050,11 +1050,13 @@ const Info: React.FC = () => {
             ? ['watchhentai', 'hentaimama']
             : ['hentaimama', 'watchhentai'];
         } else if (provider === 'animepahe') {
-          candidates = ['animepahe', 'kickassanime', 'anikoto'];
-        } else if (provider === 'anikoto') {
-          candidates = ['anikoto', 'kickassanime', 'animepahe'];
+          candidates = ['animepahe', 'anikoto', 'reanime', 'kickassanime'];
+        } else if (provider === 'kickassanime') {
+          candidates = ['kickassanime', 'anikoto', 'reanime', 'animepahe'];
+        } else if (provider === 'reanime') {
+          candidates = ['reanime', 'anikoto', 'kickassanime', 'animepahe'];
         } else {
-          candidates = ['kickassanime', 'animepahe', 'anikoto'];
+          candidates = ['anikoto', 'reanime', 'kickassanime', 'animepahe'];
         }
 
         let loaded = false;

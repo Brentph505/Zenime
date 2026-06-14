@@ -298,7 +298,7 @@ const MAX_CACHE_EPISODES_PER_ANIME = 30;
 // Max number of anime entries kept in the localStorage cache
 const MAX_CACHE_ANIME_ENTRIES = 50;
 
-const PROVIDERS: string[] = ['kickassanime', 'animepahe', 'anikoto', 'reanime'];
+const PROVIDERS: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe'];
 
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
 
@@ -313,7 +313,7 @@ function makeEmptyEpisode(): WatchEpisode {
     description: '',
     imageHash: '',
     airDate: '',
-    provider: 'kickassanime',
+    provider: 'anikoto',
     providers: EMPTY_PROVIDERS,
   };
 }
@@ -545,7 +545,7 @@ const Watch: React.FC = () => {
       const primaryProvider =
         (selected as WatchEpisode).provider ||
         Object.keys(resolvedProviders)[0] ||
-        'kickassanime';
+        'anikoto';
 
       const primaryId =
         resolvedProviders[primaryProvider]?.id || selected.id;
@@ -705,8 +705,8 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          const providerPriority = ['hentaimama', 'watchhentai', 'kickassanime', 'animepahe', 'anikoto', 'reanime'];
-          let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'kickassanime';
+          const providerPriority = ['hentaimama', 'watchhentai', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
+          let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'anikoto';
 
           for (const priorityProvider of providerPriority) {
             if (mergedEp.providers[priorityProvider]) {
@@ -966,9 +966,9 @@ const Watch: React.FC = () => {
             const seenProviderName = new Set<string>();
 
             response.servers.forEach((srv: any) => {
-              const sName   = (srv?.name || '').trim();
-              const sUrl    = (srv?.url  || '').trim();
-              const sLang   = (srv?.type || '').toLowerCase();
+              const sName = (srv?.name || '').trim();
+              const sUrl = (srv?.url || '').trim();
+              const sLang = (srv?.type || '').toLowerCase();
 
               if (!sName || !sUrl) return;
 
@@ -1183,8 +1183,12 @@ const Watch: React.FC = () => {
       {animeInfo && animeInfo.status === 'Not yet aired' && animeInfo.trailer ? (
         <div style={{ textAlign: 'center' }}>
           <strong><h2>Time Remaining:</h2></strong>
-          {animeInfo.nextAiringEpisode && countdown !== 'Airing now or aired' ? (
-            <p><FaBell /> {countdown}</p>
+          {animeInfo.nextAiringEpisode ? (
+            countdown === 'Airing now or aired' ? (
+              <p><strong>Airing now or aired</strong></p>
+            ) : (
+              <p><FaBell /> {countdown}</p>
+            )
           ) : (
             <p>Unknown</p>
           )}
