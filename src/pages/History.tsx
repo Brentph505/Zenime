@@ -563,28 +563,6 @@ const AnimeCard = styled(Link)`
   }
 `;
 
-// ─── Manga card slot ────────────────────────────────────────────────────────
-
-// MangaCard ships with its own fixed sizing for the Home page rails.
-// This slot forces it (and its cover image) to stretch to the full
-// width of its GridContainer column, the same way AnimeCard's <img>
-// stretches via `width: 100%` — fixing the oversized gaps on the
-// MANGA tab of Watch History.
-const MangaCardSlot = styled.div`
-  width: 100%;
-
-  & > * {
-    width: 100% !important;
-    max-width: 100% !important;
-  }
-
-  img {
-    width: 100% !important;
-    max-width: 100% !important;
-    height: auto !important;
-  }
-`;
-
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 const EmptyState = styled.div`
@@ -914,19 +892,20 @@ const History: React.FC = () => {
     );
   };
 
+  // MangaCard handles its own sizing via $fullWidth — no extra wrapper needed.
   const renderMangaCard = (manga: AnimeWatchData) => (
-    <MangaCardSlot key={manga.animeId}>
-      <MangaCard
-        animeId={manga.animeId}
-        titleEnglish={safeTitle(manga.titleEnglish, 'english')}
-        titleRomaji={safeTitle(manga.titleRomaji, 'romaji')}
-        coverImage={manga.coverImage}
-        lastChapterNumber={manga.lastEpisodeNumber}
-        lastChapterTitle={manga.lastEpisodeTitle}
-        playbackPercentage={manga.playbackPercentage}
-        onDelete={handleDeleteItem}
-      />
-    </MangaCardSlot>
+    <MangaCard
+      key={manga.animeId}
+      animeId={manga.animeId}
+      titleEnglish={safeTitle(manga.titleEnglish, 'english')}
+      titleRomaji={safeTitle(manga.titleRomaji, 'romaji')}
+      coverImage={manga.coverImage}
+      lastChapterNumber={manga.lastEpisodeNumber}
+      lastChapterTitle={manga.lastEpisodeTitle}
+      playbackPercentage={manga.playbackPercentage}
+      fullWidth
+      onDelete={handleDeleteItem}
+    />
   );
 
   const renderCard = (item: AnimeWatchData) =>
