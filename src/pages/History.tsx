@@ -25,6 +25,7 @@ interface LastVisitedData {
     titleEnglish?: string;
     titleRomaji?: string;
     status?: AniListStatus;
+    coverImage?: string;
   };
 }
 
@@ -38,6 +39,7 @@ interface AnimeWatchData {
   playbackPercentage: number;
   lastEpisodeNumber: string | number;
   lastEpisodeTitle?: string;
+  lastChapterId?: string;
   status?: AniListStatus;
   type: ContentType;
 }
@@ -687,17 +689,21 @@ const History: React.FC = () => {
       return Object.entries(allChapters)
         .map(([mangaId, chapters]) => {
           const lastChapter = chapters[chapters.length - 1];
+          const lastMangaData = lastMangaVisited[mangaId] as any;
+          const coverImage =
+            lastMangaData?.coverImage || lastChapter?.image || undefined;
           return {
             animeId: mangaId,
             titleEnglish: lastMangaVisited[mangaId]?.titleEnglish,
             titleRomaji: lastMangaVisited[mangaId]?.titleRomaji,
-            coverImage: lastChapter?.image,
+            coverImage: coverImage,
             episodes: chapters,
             timestamp: lastMangaVisited[mangaId]?.timestamp || 0,
             playbackPercentage:
               readingProgress[lastChapter?.id]?.playbackPercentage || 0,
             lastEpisodeNumber: lastChapter?.number ?? '',
             lastEpisodeTitle: lastChapter?.title,
+            lastChapterId: lastChapter?.url || lastChapter?.id,
             status: lastMangaVisited[mangaId]?.status,
             type: 'manga' as ContentType,
           };
@@ -902,6 +908,7 @@ const History: React.FC = () => {
       coverImage={manga.coverImage}
       lastChapterNumber={manga.lastEpisodeNumber}
       lastChapterTitle={manga.lastEpisodeTitle}
+      lastChapterId={manga.lastChapterId}
       playbackPercentage={manga.playbackPercentage}
       fullWidth
       onDelete={handleDeleteItem}

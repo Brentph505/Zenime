@@ -17,6 +17,7 @@ import {
   Manga,
   CardItem as AnimeCardItem,
 } from '../index';
+import { saveLastMangaVisited, addReadChapterIfMissing } from '../lib/mangaHistory';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 
 // ─── Animations ───────────────────────────────────────────────────────────────
@@ -1291,26 +1292,15 @@ const Info: React.FC = () => {
 
   const navigateToEntry = (ep: Episode) => {
     if (isManga) {
-      // Track manga reading history
-      const lastVisited = JSON.parse(
-        localStorage.getItem('last-manga-visited') || '{}',
-      );
-      lastVisited[animeInfo.id] = {
+      saveLastMangaVisited(animeInfo.id, {
         timestamp: Date.now(),
-        titleEnglish: animeInfo.title?.english || animeInfo.title?.userPreferred || '',
+        titleEnglish:
+          animeInfo.title?.english || animeInfo.title?.userPreferred || '',
         titleRomaji: animeInfo.title?.romaji || '',
-      };
-      localStorage.setItem('last-manga-visited', JSON.stringify(lastVisited));
+        coverImage: animeInfo.image || undefined,
+      });
 
-      // Add to read-chapters if not already there
-      const readChapters = JSON.parse(
-        localStorage.getItem('read-chapters') || '{}',
-      );
-      if (!readChapters[animeInfo.id]) {
-        readChapters[animeInfo.id] = [];
-      }
-
-      const chapterEntry = {
+      addReadChapterIfMissing(animeInfo.id, {
         id: ep.id,
         number: ep.number,
         title: ep.title || '',
@@ -1318,16 +1308,7 @@ const Info: React.FC = () => {
         description: ep.description || '',
         imageHash: ep.imageHash || '',
         airDate: new Date().toISOString(),
-      };
-
-      if (!readChapters[animeInfo.id].some((ch: any) => ch.id === ep.id)) {
-        readChapters[animeInfo.id].push(chapterEntry);
-      }
-
-      localStorage.setItem(
-        'read-chapters',
-        JSON.stringify(readChapters),
-      );
+      });
 
       navigate(`/read/${animeInfo.id}?chapterId=${ep.id}&provider=${provider}`);
     } else {
@@ -1338,26 +1319,15 @@ const Info: React.FC = () => {
   const navigateToFirst = () => {
     if (!firstEntry) return;
     if (isManga) {
-      // Track manga reading history
-      const lastVisited = JSON.parse(
-        localStorage.getItem('last-manga-visited') || '{}',
-      );
-      lastVisited[animeInfo.id] = {
+      saveLastMangaVisited(animeInfo.id, {
         timestamp: Date.now(),
-        titleEnglish: animeInfo.title?.english || animeInfo.title?.userPreferred || '',
+        titleEnglish:
+          animeInfo.title?.english || animeInfo.title?.userPreferred || '',
         titleRomaji: animeInfo.title?.romaji || '',
-      };
-      localStorage.setItem('last-manga-visited', JSON.stringify(lastVisited));
+        coverImage: animeInfo.image || undefined,
+      });
 
-      // Add to read-chapters if not already there
-      const readChapters = JSON.parse(
-        localStorage.getItem('read-chapters') || '{}',
-      );
-      if (!readChapters[animeInfo.id]) {
-        readChapters[animeInfo.id] = [];
-      }
-
-      const chapterEntry = {
+      addReadChapterIfMissing(animeInfo.id, {
         id: firstEntry.id,
         number: firstEntry.number,
         title: firstEntry.title || '',
@@ -1365,16 +1335,7 @@ const Info: React.FC = () => {
         description: firstEntry.description || '',
         imageHash: firstEntry.imageHash || '',
         airDate: new Date().toISOString(),
-      };
-
-      if (!readChapters[animeInfo.id].some((ch: any) => ch.id === firstEntry.id)) {
-        readChapters[animeInfo.id].push(chapterEntry);
-      }
-
-      localStorage.setItem(
-        'read-chapters',
-        JSON.stringify(readChapters),
-      );
+      });
 
       navigate(`/read/${animeInfo.id}?chapterId=${firstEntry.id}&provider=${provider}`);
     } else {

@@ -27,6 +27,10 @@ import {
   buildImageProxyUrl,
   useAuth,
 } from '../index';
+import {
+  saveLastMangaVisited,
+  addReadChapterIfMissing,
+} from '../lib/mangaHistory';
 
 type MangaChapter = Episode & { url?: string };
 
@@ -724,9 +728,7 @@ function Read() {
   const { animeId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
+  useAuth();
 
   const [mangaInfo, setMangaInfo] = useState<Manga | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<MangaChapter | null>(null);
@@ -874,6 +876,43 @@ function Read() {
   useEffect(() => {
     localStorage.setItem('manga-provider-preference', provider);
   }, [provider]);
+
+  /* ── Track manga reading history ── */
+  useEffect(() => {
+    if (!animeId || !selectedChapter || !mangaInfo) return;
+
+    saveLastMangaVisited(animeId, {
+      timestamp: Date.now(),
+      titleEnglish: mangaInfo.title?.english || mangaInfo.title?.userPreferred || '',
+      titleRomaji: mangaInfo.title?.romaji || '',
+      // Do not overwrite a previously-saved AniList poster from Info page.
+    });
+
+    addReadChapterIfMissing(animeId, {
+      id: selectedChapter.id,
+      number: selectedChapter.number,
+      title: selectedChapter.title || '',
+      image: selectedChapter.image || mangaInfo.image || '',
+      description: selectedChapter.description || '',
+      imageHash: selectedChapter.imageHash || '',
+      airDate: new Date().toISOString(),
+      url: selectedChapter.url,
+    });
+  }, [animeId, selectedChapter, mangaInfo]);
+
+  /* ── Track reading progress ── */
+  useEffect(() => {
+    if (!selectedChapter || !pageCount) return;
+
+    const readingTimes = JSON.parse(
+      localStorage.getItem('all_reading_times') || '{}',
+    );
+    const progressPercentage = Math.round(((currentPage + 1) / pageCount) * 100);
+    readingTimes[selectedChapter.id] = {
+      playbackPercentage: Math.min(progressPercentage, 100),
+    };
+    localStorage.setItem('all_reading_times', JSON.stringify(readingTimes));
+  }, [selectedChapter, currentPage, pageCount]);
 
   /* ── Fetch pages ── */
   useEffect(() => {
