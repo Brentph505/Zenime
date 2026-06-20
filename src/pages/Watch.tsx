@@ -686,8 +686,7 @@ const Watch: React.FC = () => {
         const isDub = language === 'dub';
 
         const isHentai =
-          animeInfo?.genres?.some((g: string) => g.toLowerCase() === 'hentai') ||
-          animeInfo?.isAdult === true;
+          animeInfo?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
         const providersToUse = isHentai ? ['hentaimama', 'watchhentai'] : PROVIDERS;
         console.log(`[Watch] isHentai=${isHentai}, providers:`, providersToUse);
 
