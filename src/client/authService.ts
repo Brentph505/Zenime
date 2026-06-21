@@ -356,7 +356,13 @@ export async function fetchNotifications(
             activityId
             user { id name avatar { medium } }
           }
-          ... on ThreadCommentNotification {
+          ... on ActivityReplyLikeNotification {
+            type
+            context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentSubscribedNotification {
             type
             context
             thread { id title }
@@ -384,24 +390,11 @@ export async function fetchNotifications(
             comment { id threadId }
             user { id name avatar { medium } }
           }
-          ... on MediaDataChangeNotification {
+          ... on ThreadLikeNotification {
             type
-            reason
             context
-            media { id type title { userPreferred } coverImage { medium } }
-          }
-          ... on MediaMergeNotification {
-            type
-            reason
-            context
-            deletedMediaTitles
-            media { id type title { userPreferred } coverImage { medium } }
-          }
-          ... on MediaDeletionNotification {
-            type
-            reason
-            context
-            deletedMediaTitle
+            thread { id title }
+            user { id name avatar { medium } }
           }
           ... on RelatedMediaAdditionNotification {
             type
