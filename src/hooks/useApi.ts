@@ -575,8 +575,14 @@ export async function fetchAiringSchedule(
   let hasNextPage = true;
 
   while (hasNextPage && page <= 10) {
-    try {
-      const response = await fetch(ANILIST_GRAPHQL_URL, {
+    let rateLimitRetries = 0;
+    let response: Response | null = null;
+
+    // Retry the same page a bounded number of times when AniList rate-limits
+    // us (HTTP 429). Without this cap, the old code `continue`d without
+    // incrementing `page`, looping forever if the rate limit persisted.
+    while (rateLimitRetries <= 3) {
+      response = await fetch(ANILIST_GRAPHQL_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -592,10 +598,22 @@ export async function fetchAiringSchedule(
         }),
       });
 
+      if (response.status !== 429) break;
+
+      rateLimitRetries++;
+      console.warn(
+        `⚠️ AniList rate limit hit on page ${page} (attempt ${rateLimitRetries}/3), waiting 2 s…`,
+      );
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+
+    try {
+      if (!response) break;
+
       if (response.status === 429) {
-        console.warn('⚠️ AniList rate limit hit, waiting 2 s…');
-        await new Promise((r) => setTimeout(r, 2000));
-        continue;
+        // Exhausted rate-limit retries for this page — stop paginating.
+        console.warn(`⚠️ AniList rate limit persisted after retries; stopping at page ${page}.`);
+        break;
       }
 
       if (!response.ok) {

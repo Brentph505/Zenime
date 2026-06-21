@@ -293,6 +293,46 @@ export async function fetchMediaListEntry(
   }
 }
 
+/**
+ * Combined view of the viewer's relationship to a single media item:
+ * the MediaList entry (if any) plus the current favourite flag.
+ *
+ * Single GraphQL request — avoids two round-trips on the Info page.
+ */
+export interface UserMediaState {
+  entry: MediaListEntryResult | null;
+  isFavourite: boolean;
+}
+
+export async function fetchUserMediaState(
+  token: string,
+  mediaId: number,
+): Promise<UserMediaState> {
+  const QUERY = /* GraphQL */ `
+    query UserMediaState($mediaId: Int!) {
+      Media: Media(id: $mediaId) { isFavourite }
+      MediaList(mediaId: $mediaId) { ${ENTRY_FIELDS} }
+    }
+  `;
+  try {
+    const data = await gql<{ Media: { isFavourite: boolean } | null; MediaList: MediaListEntryResult | null }>(
+      QUERY, { mediaId }, token,
+    );
+    return {
+      isFavourite: !!data?.Media?.isFavourite,
+      entry: data?.MediaList ?? null,
+    };
+  } catch (err) {
+    // AniList returns a 404 GraphQL error when the list entry doesn't exist
+    // — that's a valid "no entry" state, so swallow it. Other errors propagate.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('Not Found') || msg.includes('404')) {
+      return { entry: null, isFavourite: false };
+    }
+    throw err;
+  }
+}
+
 /** Fetch all entries in a user's anime or manga list with a given status */
 export async function fetchUserList(
   token: string,
@@ -481,6 +521,39 @@ export async function markAnimeCompleted(
     progress: totalEpisodes,
     status: 'COMPLETED',
   });
+}
+
+/**
+ * Sync manga reading progress (chapters read) to AniList.
+ * Mirrors syncWatchProgress: auto-sets CURRENT if it was PLANNING,
+ * and COMPLETED if progress reaches the total chapter count.
+ */
+export async function syncMangaReadProgress(
+  token: string,
+  mediaId: number,
+  progress: number,
+  totalChapters?: number | null,
+): Promise<MediaListEntryResult | null> {
+  try {
+    const existing = await fetchMediaListEntry(token, mediaId);
+    const currentStatus = existing?.status;
+
+    let newStatus: MediaListStatus | undefined;
+    if (totalChapters && progress >= totalChapters) {
+      newStatus = 'COMPLETED';
+    } else if (!currentStatus || currentStatus === 'PLANNING') {
+      newStatus = 'CURRENT';
+    }
+
+    return await saveMediaListEntry(token, {
+      mediaId,
+      progress,
+      ...(newStatus ? { status: newStatus } : {}),
+    });
+  } catch (err) {
+    console.error('[authService] syncMangaReadProgress failed:', err);
+    return null;
+  }
 }
 
 // ─── Backward-compatible aliases ──────────────────────────────────────────────

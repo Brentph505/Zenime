@@ -3,13 +3,11 @@ import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { FaBookOpen, FaBookmark } from 'react-icons/fa';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
-
-const LOCAL_STORAGE_KEYS = {
-  READ_CHAPTERS: 'read-chapters',
-  LAST_MANGA_VISITED: 'last-manga-visited',
-  READING_PROGRESS: 'all_reading_times',
-  MANGA_BOOKMARKS: 'manga-bookmarks',
-};
+import {
+  LOCAL_STORAGE_KEYS,
+  isMangaBookmarked,
+  toggleMangaBookmark,
+} from '../../lib/mangaHistory';
 
 // ── Overlay elements ── defined before MangaCardLink so styled() refs resolve ──
 
@@ -236,10 +234,7 @@ export const MangaCard: React.FC<MangaCardProps> = ({
   const [isBookmarked, setIsBookmarked] = useState(false);
 
   useEffect(() => {
-    const bookmarks = JSON.parse(
-      localStorage.getItem(LOCAL_STORAGE_KEYS.MANGA_BOOKMARKS) || '{}',
-    );
-    setIsBookmarked(!!bookmarks[animeId]);
+    setIsBookmarked(isMangaBookmarked(animeId));
   }, [animeId]);
 
   // Safely unwrap title — handles both plain strings and AniList shape objects
@@ -274,19 +269,9 @@ export const MangaCard: React.FC<MangaCardProps> = ({
   const handleBookmarkClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const bookmarks = JSON.parse(
-      localStorage.getItem(LOCAL_STORAGE_KEYS.MANGA_BOOKMARKS) || '{}',
-    );
-    if (bookmarks[animeId]) {
-      delete bookmarks[animeId];
-    } else {
-      bookmarks[animeId] = { timestamp: Date.now() };
-    }
-    localStorage.setItem(
-      LOCAL_STORAGE_KEYS.MANGA_BOOKMARKS,
-      JSON.stringify(bookmarks),
-    );
-    setIsBookmarked((prev) => !prev);
+    // Delegates to the shared helper so the Bookmarks tab (and any other
+    // listener) gets the `manga-bookmarks-changed` event and refreshes.
+    setIsBookmarked(toggleMangaBookmark(animeId));
   };
 
   const handleDeleteClick = (e: React.MouseEvent) => {

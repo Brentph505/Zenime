@@ -18,6 +18,8 @@ import {
   CardItem as AnimeCardItem,
 } from '../index';
 import { saveLastMangaVisited, addReadChapterIfMissing } from '../lib/mangaHistory';
+import { ListActions } from '../components/Info/ListActions';
+import { MangaBookmarkButton } from '../components/Home/MangaBookmarkButton';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 
 // ─── Animations ───────────────────────────────────────────────────────────────
@@ -317,6 +319,11 @@ const DesktopTitleBlock = styled.div`@media (max-width: 860px) { display: none; 
 const MobileActionBar = styled.div`
   display: none;
   @media (max-width: 860px) { display: flex; gap: 0.25rem; flex-wrap: wrap; align-items: center; }
+`;
+
+const MobileListActions = styled.div`
+  display: none;
+  @media (max-width: 860px) { display: block; flex-basis: 100%; }
 `;
 
 const MobileWatchBtn = styled.button`
@@ -1411,7 +1418,12 @@ const Info: React.FC = () => {
                     <SiMyanimelist size={20} />
                   </ExtBtn>
                 )}
+                {isManga && (
+                  <MangaBookmarkButton mangaId={animeInfo.id} />
+                )}
               </ExtRow>
+
+              <ListActions mediaId={Number(animeInfo.id)} type={isManga ? 'MANGA' : 'ANIME'} />
 
               <SidebarMeta>
                 {isManga ? (
@@ -1451,6 +1463,12 @@ const Info: React.FC = () => {
                   <SiMyanimelist size={18} />
                 </MobileExtBtn>
               )}
+              {isManga && (
+                <MangaBookmarkButton mangaId={animeInfo.id} showLabel={false} />
+              )}
+              <MobileListActions>
+                <ListActions mediaId={Number(animeInfo.id)} type={isManga ? 'MANGA' : 'ANIME'} />
+              </MobileListActions>
             </MobileActionBar>
 
             {/* Mobile: meta grid */}

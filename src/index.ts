@@ -18,6 +18,9 @@ export { CardItem } from './components/Cards/CardItem';
 export { EpisodeCard } from './components/Home/EpisodeCard';
 export { HomeCarousel } from './components/Home/HomeCarousel';
 export { HomeSideBar } from './components/Home/HomeSideBar';
+export { MangaCard } from './components/Home/MangaCard';
+export { MangaGrid } from './components/Home/MangaGrid';
+export { MangaBookmarkButton } from './components/Home/MangaBookmarkButton';
 
 // TODO Skeletons for Loading States
 export {
@@ -52,6 +55,7 @@ export * from './hooks/useTIme';
 export * from './hooks/useFilters';
 export * from './hooks/useCountdown';
 export { useUserAnimeList } from './hooks/useUserAnimeList';
+export { useAniListEntry } from './hooks/useAniListEntry';
 
 // * ==== Client ====
 export { ApolloClientProvider } from './client/ApolloClient';

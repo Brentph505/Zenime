@@ -26,10 +26,15 @@ import {
   Episode,
   buildImageProxyUrl,
   useAuth,
+  useSettings,
+  syncMangaReadProgress,
+  MangaBookmarkButton,
 } from '../index';
 import {
   saveLastMangaVisited,
   addReadChapterIfMissing,
+  setLastReadChapter,
+  getLastReadChapter,
 } from '../lib/mangaHistory';
 
 type MangaChapter = Episode & { url?: string };
@@ -728,7 +733,8 @@ function Read() {
   const { animeId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  useAuth();
+  const { isLoggedIn } = useAuth();
+  const { settings } = useSettings();
 
   const [mangaInfo, setMangaInfo] = useState<Manga | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<MangaChapter | null>(null);
@@ -761,6 +767,11 @@ function Read() {
   const lastScrollY = useRef(0);
   const scrollRaf = useRef<number | null>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  // Throttle: only one AniList progress sync per chapter id.
+  const syncedChaptersRef = useRef<Set<string>>(new Set());
+  // Tracks chapter ids we've already restored scroll position for, so the
+  // resume effect only runs once per chapter (and never fights the observer).
+  const restoredScrollRef = useRef<Set<string>>(new Set());
 
   const chapterIdParam = searchParams.get('chapterId') || '';
   const providerParam = searchParams.get('provider');
@@ -853,10 +864,22 @@ function Read() {
             (previousChapter.number && chapter.number === previousChapter.number)
           );
 
+        // Last-read pointer: when there's no explicit ?chapterId=, resume the
+        // chapter the reader last had open instead of always chs[0].
+        const lastRead = chapterIdParam ? null : getLastReadChapter(animeId);
+        const findByLastRead = (chapter: MangaChapter) =>
+          !!lastRead && (
+            chapter.id === lastRead.id ||
+            chapter.url === lastRead.url ||
+            chapter.url === lastRead.id ||
+            (lastRead.number != null && chapter.number === lastRead.number)
+          );
+
         const shouldResetSelection = providerSwitchRef.current;
         const matchedChapter = !shouldResetSelection
           ? (chs.find((c) => chapterIdParam && findBySlug(c))
             || (previousChapter ? chs.find(findByPrevious) : null)
+            || (lastRead ? chs.find(findByLastRead) : null)
             || chs[0])
           : null;
 
@@ -898,6 +921,16 @@ function Read() {
       airDate: new Date().toISOString(),
       url: selectedChapter.url,
     });
+
+    // Per-manga pointer to the last-opened chapter, so re-entering the reader
+    // (with no ?chapterId=) resumes where the user left off instead of ch.1.
+    // Mirrors the anime side's `last-watched-{animeId}`.
+    setLastReadChapter(animeId, {
+      id: selectedChapter.id,
+      number: selectedChapter.number,
+      title: selectedChapter.title || '',
+      url: selectedChapter.url,
+    });
   }, [animeId, selectedChapter, mangaInfo]);
 
   /* ── Track reading progress ── */
@@ -912,7 +945,43 @@ function Read() {
       playbackPercentage: Math.min(progressPercentage, 100),
     };
     localStorage.setItem('all_reading_times', JSON.stringify(readingTimes));
-  }, [selectedChapter, currentPage, pageCount]);
+
+    // ── Sync to AniList when the chapter is essentially finished ──
+    // We sync once per chapter (throttled by syncedChaptersRef), mirroring the
+    // anime Player's one-shot-per-episode pattern. syncMangaReadProgress
+    // auto-promotes PLANNING→CURRENT and →COMPLETED on the final chapter.
+    if (
+      settings.aniListSync &&
+      isLoggedIn &&
+      animeId &&
+      progressPercentage >= 95 &&
+      !syncedChaptersRef.current.has(selectedChapter.id)
+    ) {
+      const mediaId = parseInt(animeId, 10);
+      const chapterProgress =
+        typeof selectedChapter.number === 'number'
+          ? selectedChapter.number
+          : parseInt(String(selectedChapter.number ?? '0'), 10) || 0;
+
+      if (!Number.isNaN(mediaId) && chapterProgress > 0) {
+        syncedChaptersRef.current.add(selectedChapter.id);
+        const totalChapters = mangaInfo?.totalChapters ?? undefined;
+
+        const accessToken = localStorage.getItem('accessToken');
+        if (accessToken) {
+          void syncMangaReadProgress(accessToken, mediaId, chapterProgress, totalChapters)
+            .then(() => {
+              console.log('✅ [AniList] Manga progress saved — chapter', chapterProgress);
+            })
+            .catch((err) => {
+              console.error('❌ [AniList] Failed to sync manga progress:', err);
+              // Allow a retry on failure.
+              syncedChaptersRef.current.delete(selectedChapter.id);
+            });
+        }
+      }
+    }
+  }, [selectedChapter, currentPage, pageCount, animeId, mangaInfo, settings.aniListSync, isLoggedIn]);
 
   /* ── Fetch pages ── */
   useEffect(() => {
@@ -949,6 +1018,74 @@ function Read() {
       })
       .finally(() => setIsPageLoading(false));
   }, [selectedChapter, provider]);
+
+  /* ── Restore reading position ──
+     Read.tsx writes all_reading_times[chapterId] = { playbackPercentage } on
+     scroll but previously never read it back, so reopening a chapter always
+     started at page 0. This effect runs once per chapter, after its pages
+     have loaded, and:
+       1. computes the target page from the stored percentage,
+       2. primes image visibility around that page (the observer only loads
+          images as they scroll into view, so a mid-chapter jump would otherwise
+          show blank cells),
+       3. scrolls the column to the target page. */
+  useEffect(() => {
+    if (!selectedChapter || readPages.length === 0) return;
+    if (restoredScrollRef.current.has(selectedChapter.id)) return;
+
+    // Skip provider switches — we don't want to fight an intentional reset.
+    if (providerSwitchRef.current) {
+      providerSwitchRef.current = false;
+      restoredScrollRef.current.add(selectedChapter.id);
+      return;
+    }
+
+    let pct = 0;
+    try {
+      const all = JSON.parse(localStorage.getItem('all_reading_times') || '{}');
+      pct = all[selectedChapter.id]?.playbackPercentage ?? 0;
+    } catch { pct = 0; }
+
+    // < 5% means the user barely read it — start fresh at the top.
+    if (pct < 5) {
+      restoredScrollRef.current.add(selectedChapter.id);
+      return;
+    }
+
+    const total = readPages.length;
+    const targetIdx = Math.min(
+      total - 1,
+      Math.max(0, Math.floor((pct / 100) * total)),
+    );
+
+    // Prime visibility for the target page ±1 so images load before scroll.
+    setPageStates((prev) => {
+      const next = [...prev];
+      [targetIdx - 1, targetIdx, targetIdx + 1].forEach((i) => {
+        if (i >= 0 && i < next.length) {
+          next[i] = { ...next[i], visible: true, loading: !next[i].loaded };
+        }
+      });
+      return next;
+    });
+
+    restoredScrollRef.current.add(selectedChapter.id);
+    setCurrentPage(targetIdx);
+
+    // Defer the scroll until the primed pages have rendered.
+    const raf = requestAnimationFrame(() => {
+      const col = pagesColRef.current;
+      if (!col) return;
+      const el = col.querySelector(`[data-idx="${targetIdx}"]`) as HTMLElement | null;
+      if (el) {
+        el.scrollIntoView({ block: 'start', behavior: 'auto' });
+      } else {
+        // Fallback: jump proportionally if the element isn't queryable yet.
+        col.scrollTop = (col.scrollHeight - col.clientHeight) * (pct / 100);
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [selectedChapter, readPages]);
 
   /* ── IntersectionObserver ── */
   useEffect(() => {
@@ -1230,6 +1367,10 @@ function Read() {
           {!isMobile && 'Next'}
           <FaChevronRight />
         </PrimaryBtn>
+
+        {animeId && (
+          <MangaBookmarkButton mangaId={animeId} variant='toolbar' />
+        )}
 
         <Sep />
 

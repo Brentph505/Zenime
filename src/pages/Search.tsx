@@ -8,7 +8,6 @@ import {
   fetchAdvancedSearch,
   SkeletonCard,
   type Anime,
-  useAuth,
 } from '../index';
 
 const Container = styled.div`
@@ -26,8 +25,6 @@ const Container = styled.div`
 const Search = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // User authentication data
-  const { isLoggedIn, userData } = useAuth();
 
   const sortParam = searchParams.get('sort');
   // Directly initialize state from URL parameters
@@ -90,6 +87,15 @@ const Search = () => {
   const [hasNextPage, setHasNextPage] = useState<boolean>(false);
   const [page, setPage] = useState<number>(1);
   const delayTimeout = useRef<number | null>(null);
+  // Prevents setSearchParams from firing after the component starts unmounting
+  // (e.g. when navigating to /watch or /info via a card click)
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -99,7 +105,8 @@ const Search = () => {
     };
   }, [query]);
 
-  const updateSearchParams = () => {
+  const updateSearchParams = useCallback(() => {
+    if (!isMounted.current) return;
     const params = new URLSearchParams();
     params.set('query', query);
     if (selectedGenres.length > 0) {
@@ -115,7 +122,7 @@ const Search = () => {
     params.set('sort', sortParam);
 
     setSearchParams(params, { replace: true });
-  };
+  }, [query, selectedGenres, selectedYear, selectedSeason, selectedFormat, selectedStatus, selectedSort, sortDirection, setSearchParams]);
 
   useEffect(() => {
     setPage(1);
@@ -180,6 +187,7 @@ const Search = () => {
   };
 
   useEffect(() => {
+    if (!isMounted.current) return;
     const newQuery = searchParams.get('query') || '';
     if (newQuery !== query) {
       setQuery(newQuery);
@@ -225,7 +233,7 @@ const Search = () => {
 
       <div>
         {(isLoading && page === 1) ||
-        (isLoading && page === 1 && animeData.length === 0) ? (
+          (isLoading && page === 1 && animeData.length === 0) ? (
           <StyledCardGrid>
             {Array.from({ length: 17 }).map((_, index) => (
               <SkeletonCard key={index} />

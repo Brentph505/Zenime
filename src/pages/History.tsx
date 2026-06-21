@@ -1,10 +1,17 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
-import { FaPlay, FaSortAmountDown, FaSortAmountUp, FaSearch } from 'react-icons/fa';
+import { FaPlay, FaSortAmountDown, FaSortAmountUp, FaSearch, FaTrashAlt, FaBookmark } from 'react-icons/fa';
 import { IoIosCloseCircleOutline, IoIosArrowDown } from 'react-icons/io';
 import { Episode } from '../index';
+import { MangaGrid } from '../components/Home/MangaGrid';
 import { MangaCard } from '../components/Home/MangaCard';
+import {
+  getMangaBookmarks,
+  getLastMangaVisited,
+  clearMangaBookmarks,
+  MANGA_BOOKMARKS_CHANGED_EVENT,
+} from '../lib/mangaHistory';
 
 type AniListStatus =
   | 'CURRENT'
@@ -14,10 +21,10 @@ type AniListStatus =
   | 'PAUSED'
   | 'REPEATING';
 
-type StatusFilter = 'all' | AniListStatus;
+type StatusFilter = 'all' | 'bookmarked' | AniListStatus;
 type SortOption = 'lastWatched' | 'alphabetical' | 'progress' | 'airDate';
 type SortOrder = 'asc' | 'desc';
-type ContentType = 'anime' | 'manga';
+type ContentType = 'anime' | 'manga' | 'bookmarks';
 
 interface LastVisitedData {
   [key: string]: {
@@ -290,6 +297,44 @@ const SortButton = styled.button`
   }
 `;
 
+// ── Clear-all + bookmark-only toggle ─────────────────────────────────────────
+
+const ClearAllButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: 0.5rem;
+  background-color: transparent;
+  color: rgba(239, 68, 68, 0.85);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+
+  @media (min-width: 768px) {
+    padding: 0.575rem 0.75rem;
+    order: 5;
+  }
+
+  &:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: rgba(239, 68, 68, 0.8);
+  }
+
+  svg {
+    font-size: 0.85rem;
+  }
+`;
+
 // ── ANIME / MANGA tabs ────────────────────────────────────────────────────────
 
 const TabGroup = styled.div`
@@ -368,18 +413,6 @@ const GridContainer = styled.div`
 
   @media (min-width: 1200px) {
     grid-template-columns: repeat(6, 1fr);
-  }
-`;
-
-// ─── Manga Grid Container ─────────────────────────────────────────────────────
-
-const MangaGridContainer = styled.div`
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(3, 1fr);
-
-  @media (min-width: 1200px) {
-    grid-template-columns: repeat(7, 1fr);
   }
 `;
 
@@ -610,6 +643,9 @@ const History: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [contentType, setContentType] = useState<ContentType>('anime');
+  // Bumped whenever the bookmark store changes (same-tab or cross-tab) so the
+  // Bookmarks tab + bookmark filter re-read from localStorage.
+  const [bookmarkVersion, setBookmarkVersion] = useState(0);
 
   const lastAnimeVisited = useMemo<LastVisitedData>(() => {
     const data = localStorage.getItem('last-anime-visited');
@@ -621,7 +657,8 @@ const History: React.FC = () => {
     return data ? JSON.parse(data) : {};
   }, [mangaStorageData]);
 
-  // Sync both storage keys when any tab changes them
+  // Sync storage keys when any tab changes them (cross-tab via `storage`,
+  // same-tab for bookmarks via the custom event MangaCard dispatches).
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'watched-episodes' || e.key === null) {
@@ -634,10 +671,19 @@ const History: React.FC = () => {
       ) {
         setMangaStorageData(localStorage.getItem('read-chapters'));
       }
+      if (e.key === 'manga-bookmarks' || e.key === null) {
+        setBookmarkVersion((v) => v + 1);
+      }
     };
 
+    const handleBookmarksChanged = () => setBookmarkVersion((v) => v + 1);
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener(MANGA_BOOKMARKS_CHANGED_EVENT, handleBookmarksChanged);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener(MANGA_BOOKMARKS_CHANGED_EVENT, handleBookmarksChanged);
+    };
   }, []);
 
   // ── Build anime list ──────────────────────────────────────────────────────
@@ -714,16 +760,72 @@ const History: React.FC = () => {
     }
   }, [mangaStorageData, lastMangaVisited]);
 
+  // ── Build bookmark list ───────────────────────────────────────────────────
+  // Reads `manga-bookmarks` and merges in whatever we know about each manga
+  // from `last-manga-visited` + `read-chapters` so we get a cover, title, and
+  // last-read chapter. A bookmark is never silently dropped even if we have no
+  // other data for it (shows as "Unknown Manga").
+  const bookmarkList = useMemo<AnimeWatchData[]>(() => {
+    // bookmarkVersion is the dependency that re-triggers this memo.
+    void bookmarkVersion;
+
+    const bookmarks = getMangaBookmarks();
+    const visited = getLastMangaVisited();
+    const readingProgress = JSON.parse(
+      localStorage.getItem('all_reading_times') || '{}',
+    ) as Record<string, { playbackPercentage: number }>;
+
+    let readChapters: Record<string, Episode[]> = {};
+    try { readChapters = JSON.parse(localStorage.getItem('read-chapters') || '{}'); }
+    catch { readChapters = {}; }
+
+    return Object.entries(bookmarks)
+      .map(([mangaId, bm]) => {
+        const lastMangaData = visited[mangaId] as any;
+        const chapters = readChapters[mangaId] ?? [];
+        const lastChapter = chapters[chapters.length - 1];
+        const coverImage =
+          lastMangaData?.coverImage || lastChapter?.image || undefined;
+        return {
+          animeId: mangaId,
+          titleEnglish: lastMangaData?.titleEnglish,
+          titleRomaji: lastMangaData?.titleRomaji,
+          coverImage,
+          episodes: chapters,
+          // Prefer the bookmark timestamp (when it was saved); fall back to
+          // last-visited, then 0.
+          timestamp: bm?.timestamp || lastMangaData?.timestamp || 0,
+          playbackPercentage:
+            readingProgress[lastChapter?.id]?.playbackPercentage || 0,
+          lastEpisodeNumber: lastChapter?.number ?? '',
+          lastEpisodeTitle: lastChapter?.title,
+          lastChapterId: lastChapter?.url || lastChapter?.id,
+          status: lastMangaData?.status,
+          type: 'manga' as ContentType,
+        };
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+  }, [bookmarkVersion]);
+
   // ── Active list (whichever tab is showing) ────────────────────────────────
 
-  const activeList = contentType === 'anime' ? animeList : mangaList;
+  const activeList =
+    contentType === 'anime'
+      ? animeList
+      : contentType === 'bookmarks'
+        ? bookmarkList
+        : mangaList;
 
   // ── Filter + sort ─────────────────────────────────────────────────────────
 
   const filteredAndSortedList = useMemo<AnimeWatchData[]>(() => {
     let list = [...activeList];
 
-    if (statusFilter !== 'all') {
+    // Manga-tab-only "bookmarked" filter (folded into the status dropdown).
+    if (contentType === 'manga' && statusFilter === 'bookmarked') {
+      const bookmarks = getMangaBookmarks();
+      list = list.filter((item) => !!bookmarks[item.animeId]);
+    } else if (statusFilter !== 'all' && statusFilter !== 'bookmarked') {
       list = list.filter((item) => item.status === statusFilter);
     }
 
@@ -770,7 +872,7 @@ const History: React.FC = () => {
     }
 
     return list;
-  }, [activeList, statusFilter, searchQuery, sortBy, sortOrder]);
+  }, [activeList, statusFilter, searchQuery, sortBy, sortOrder, contentType, bookmarkVersion]);
 
   // ── Grouping ──────────────────────────────────────────────────────────────
 
@@ -811,7 +913,16 @@ const History: React.FC = () => {
 
   const removeFromHistory = useCallback(
     (ids: string[]) => {
-      if (contentType === 'manga') {
+      if (contentType === 'bookmarks') {
+        // Removing from the Bookmarks tab only un-bookmarks; it leaves reading
+        // history untouched.
+        const updated = JSON.parse(
+          localStorage.getItem('manga-bookmarks') || '{}',
+        );
+        ids.forEach((id) => delete updated[id]);
+        localStorage.setItem('manga-bookmarks', JSON.stringify(updated));
+        setBookmarkVersion((v) => v + 1);
+      } else if (contentType === 'manga') {
         const updated = JSON.parse(
           localStorage.getItem('read-chapters') || '{}',
         );
@@ -847,6 +958,29 @@ const History: React.FC = () => {
     },
     [removeFromHistory],
   );
+
+  // Wipe the entire active tab's store. Confirms first. Bookmarks are cleared
+  // via the shared helper (which also notifies listeners); anime/manga history
+  // only clears their own key and leaves bookmarks intact.
+  const handleClearAll = useCallback(() => {
+    if (activeList.length === 0) return;
+    const label =
+      contentType === 'bookmarks'
+        ? 'all bookmarks'
+        : contentType === 'manga'
+          ? 'all manga reading history'
+          : 'all anime watch history';
+    if (!window.confirm(`Are you sure you want to remove ${label}? This cannot be undone.`)) {
+      return;
+    }
+
+    if (contentType === 'bookmarks') {
+      clearMangaBookmarks();
+      setBookmarkVersion((v) => v + 1);
+    } else {
+      removeFromHistory(activeList.map((item) => item.animeId));
+    }
+  }, [contentType, activeList, removeFromHistory]);
 
   // ── Render helpers ────────────────────────────────────────────────────────
 
@@ -916,15 +1050,22 @@ const History: React.FC = () => {
   );
 
   const renderCard = (item: AnimeWatchData) =>
-    contentType === 'manga' ? renderMangaCard(item) : renderAnimeCard(item);
+    contentType === 'anime' ? renderAnimeCard(item) : renderMangaCard(item);
 
   // ── Empty full-page state (no history at all for this tab) ────────────────
 
   if (activeList.length === 0) {
-    const isManga = contentType === 'manga';
+    // Bookmarks tab also shows manga content, so use manga labels for it.
+  const isManga = contentType !== 'anime';
     return (
       <Container>
-        <PageTitle>WATCH HISTORY</PageTitle>
+        <PageTitle>
+          {contentType === 'bookmarks'
+            ? 'BOOKMARKS'
+            : isManga
+              ? 'READING HISTORY'
+              : 'WATCH HISTORY'}
+        </PageTitle>
 
         <ControlBar>
           {/* ── Search ───────────────────────────────────────────────── */}
@@ -958,6 +1099,13 @@ const History: React.FC = () => {
                   aria-label='Show manga'
                 >
                   MANGA
+                </TabButton>
+                <TabButton
+                  $active={contentType === 'bookmarks'}
+                  onClick={() => setContentType('bookmarks')}
+                  aria-label='Show bookmarks'
+                >
+                  <FaBookmark aria-hidden='true' /> BOOKMARKS
                 </TabButton>
               </TabGroup>
 
@@ -1002,6 +1150,9 @@ const History: React.FC = () => {
                   aria-label='Filter by AniList status'
                 >
                   <option value='all'>All statuses</option>
+                  {contentType === 'manga' && (
+                    <option value='bookmarked'>Bookmarked</option>
+                  )}
                   <option value='CURRENT'>
                     {isManga ? 'Reading' : 'Watching'}
                   </option>
@@ -1020,11 +1171,19 @@ const History: React.FC = () => {
         </ControlBar>
 
         <EmptyState>
-          <h2>{isManga ? 'No Reading History Yet' : 'No Watch History Yet'}</h2>
+          <h2>
+            {contentType === 'bookmarks'
+              ? 'No Bookmarks Yet'
+              : isManga
+                ? 'No Reading History Yet'
+                : 'No Watch History Yet'}
+          </h2>
           <p>
-            {isManga
-              ? 'Start reading manga to build your history'
-              : 'Start watching anime to build your history'}
+            {contentType === 'bookmarks'
+              ? 'Tap the bookmark icon on a manga to save it here'
+              : isManga
+                ? 'Start reading manga to build your history'
+                : 'Start watching anime to build your history'}
           </p>
           <Link to='/'>Go to Home</Link>
         </EmptyState>
@@ -1034,7 +1193,8 @@ const History: React.FC = () => {
 
   // ── Main render ───────────────────────────────────────────────────────────
 
-  const isManga = contentType === 'manga';
+  // Bookmarks tab also shows manga content, so use manga labels for it.
+  const isManga = contentType !== 'anime';
 
   return (
     <Container>
@@ -1086,6 +1246,22 @@ const History: React.FC = () => {
             >
               {sortOrder === 'asc' ? <FaSortAmountUp /> : <FaSortAmountDown />}
             </SortButton>
+
+            {activeList.length > 0 && (
+              <ClearAllButton
+                onClick={handleClearAll}
+                title={`Clear ${
+                  contentType === 'bookmarks'
+                    ? 'bookmarks'
+                    : isManga
+                      ? 'reading history'
+                      : 'watch history'
+                }`}
+                aria-label='Clear all'
+              >
+                <FaTrashAlt aria-hidden='true' />
+              </ClearAllButton>
+            )}
           </FilterTop>
 
           <FilterBottom>
@@ -1116,6 +1292,9 @@ const History: React.FC = () => {
                 aria-label='Filter by AniList status'
               >
                 <option value='all'>All statuses</option>
+                {contentType === 'manga' && (
+                  <option value='bookmarked'>Bookmarked</option>
+                )}
                 <option value='CURRENT'>
                   {isManga ? 'Reading' : 'Watching'}
                 </option>
@@ -1160,10 +1339,10 @@ const History: React.FC = () => {
                   <IoIosCloseCircleOutline aria-hidden='true' />
                 </RemoveGroupButton>
               </DateGroupHeader>
-              {contentType === 'manga' ? (
-                <MangaGridContainer>{items.map(renderCard)}</MangaGridContainer>
-              ) : (
+              {contentType === 'anime' ? (
                 <GridContainer>{items.map(renderCard)}</GridContainer>
+              ) : (
+                <MangaGrid>{items.map(renderCard)}</MangaGrid>
               )}
             </DateGroup>
           ))
@@ -1175,18 +1354,30 @@ const History: React.FC = () => {
                   {letter}
                   <CountBadge>{items.length}</CountBadge>
                 </DateLabel>
+                <RemoveGroupButton
+                  onClick={(e) =>
+                    handleDeleteGroup(
+                      items.map((i) => i.animeId),
+                      e,
+                    )
+                  }
+                  title={`Remove all under ${letter}`}
+                  aria-label={`Remove all entries under ${letter}`}
+                >
+                  <IoIosCloseCircleOutline aria-hidden='true' />
+                </RemoveGroupButton>
               </DateGroupHeader>
-              {contentType === 'manga' ? (
-                <MangaGridContainer>{items.map(renderCard)}</MangaGridContainer>
-              ) : (
+              {contentType === 'anime' ? (
                 <GridContainer>{items.map(renderCard)}</GridContainer>
+              ) : (
+                <MangaGrid>{items.map(renderCard)}</MangaGrid>
               )}
             </DateGroup>
           ))
-        ) : contentType === 'manga' ? (
-          <MangaGridContainer>{filteredAndSortedList.map(renderCard)}</MangaGridContainer>
-        ) : (
+        ) : contentType === 'anime' ? (
           <GridContainer>{filteredAndSortedList.map(renderCard)}</GridContainer>
+        ) : (
+          <MangaGrid>{filteredAndSortedList.map(renderCard)}</MangaGrid>
         )}
       </MainContent>
     </Container>

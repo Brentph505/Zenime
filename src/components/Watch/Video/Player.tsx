@@ -22,7 +22,7 @@ import {
   useSettings,
 } from '../../../index';
 import { useAuth } from '../../../client/useAuth';
-import { saveWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
+import { syncWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
 import {
   DefaultAudioLayout,
   defaultLayoutIcons,
@@ -100,6 +100,8 @@ type PlayerProps = {
   banner?: string;
   malId?: string;
   animeId?: string;
+  /** Total episodes for the series — enables auto-complete on the final episode. */
+  totalEpisodes?: number;
   updateDownloadLink: (link: string) => void;
   onEpisodeEnd: () => Promise<void>;
   onPrevEpisode: () => void;
@@ -159,6 +161,7 @@ export function Player({
   banner,
   malId,
   animeId,
+  totalEpisodes,
   updateDownloadLink,
   onEpisodeEnd,
   onPrevEpisode,
@@ -313,7 +316,7 @@ export function Player({
         // localStorage unavailable — ignore
       }
 
-      if (settings.aniListSync && isLoggedIn && malId && propEpisodeNumber) {
+      if (settings.aniListSync && isLoggedIn && animeId && propEpisodeNumber) {
         const now = Date.now();
         const minProgress = Math.min(aniListProgressRef.current.lastSavedProgress + 15, 99);
         if (
@@ -490,7 +493,7 @@ export function Player({
       window.removeEventListener('pagehide', saveIframeProgressOnUnload);
       window.removeEventListener('beforeunload', saveIframeProgressOnUnload);
     };
-  }, [isEmbedded, episodeId, settings, isLoggedIn, malId, propEpisodeNumber]);
+  }, [isEmbedded, episodeId, settings, isLoggedIn, animeId, propEpisodeNumber]);
 
   const prevIsEmbeddedRef = useRef<boolean>(isEmbedded);
 
@@ -670,7 +673,7 @@ export function Player({
       allPlaybackInfo[episodeId] = playbackInfo;
       localStorage.setItem('all_episode_times', JSON.stringify(allPlaybackInfo));
 
-      if (settings.aniListSync && isLoggedIn && malId && propEpisodeNumber) {
+      if (settings.aniListSync && isLoggedIn && animeId && propEpisodeNumber) {
         const now = Date.now();
         const minProgress = Math.min(
           aniListProgressRef.current.lastSavedProgress + 15,
@@ -908,19 +911,32 @@ export function Player({
     const accessToken =
       typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
-    if (!isLoggedIn || !accessToken || !malId || !settings.aniListSync) return;
+    if (!isLoggedIn || !accessToken || !settings.aniListSync) return;
 
     try {
-      const malIdNum = parseInt(malId);
-      if (isNaN(malIdNum)) return;
+      // The app's `animeId` (from the /watch/:animeId route, backed by the
+      // meta/anilist API) IS the AniList media ID. Use it directly instead of
+      // doing a malId → AniList ID round-trip, which previously made sync
+      // silently no-op whenever `malId` was missing.
+      let aniListId: number | null = animeId ? parseInt(animeId, 10) : NaN;
 
-      const aniListId = await getAniListIdFromMalId(malIdNum);
-      if (!aniListId) {
-        console.warn('⚠️ [AniList] Could not find AniList ID for MAL ID:', malId);
+      // Fall back to the MAL conversion only if we genuinely don't have an
+      // AniList-shaped id.
+      if ((!aniListId || isNaN(aniListId)) && malId) {
+        const malIdNum = parseInt(malId, 10);
+        if (!isNaN(malIdNum)) {
+          aniListId = await getAniListIdFromMalId(malIdNum);
+        }
+      }
+
+      if (!aniListId || isNaN(aniListId)) {
+        console.warn('⚠️ [AniList] Could not resolve AniList media ID for progress sync.');
         return;
       }
 
-      await saveWatchProgress(accessToken, aniListId, episodeNumber);
+      // syncWatchProgress auto-promotes PLANNING→CURRENT and →COMPLETED on the
+      // final episode (when totalEpisodes is known).
+      await syncWatchProgress(accessToken, aniListId, episodeNumber, totalEpisodes);
       console.log('✅ [AniList] Progress saved for episode', episodeNumber);
     } catch (error) {
       console.error('❌ [AniList] Failed to save progress:', error);

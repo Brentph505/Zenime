@@ -1221,6 +1221,7 @@ const Watch: React.FC = () => {
                     episodeProvider={currentEpisode.provider}
                     malId={animeInfo?.malId}
                     animeId={animeId}
+                    totalEpisodes={animeInfo?.totalEpisodes}
                     banner={selectedBackgroundImage}
                     updateDownloadLink={updateDownloadLink}
                     onEpisodeEnd={handleEpisodeEnd}

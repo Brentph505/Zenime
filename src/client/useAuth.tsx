@@ -43,13 +43,15 @@ import {
   deleteMediaListEntry,
   toggleFavourite,
   fetchMediaListEntry,
+  fetchUserMediaState,
   fetchNotificationCount,
   type MediaListStatus,
   type SaveEntryInput,
+  type UserMediaState,
 } from './authService';
 
 // ─── Re-export so callers don't need to import authService directly ──────────
-export type { MediaListStatus, SaveEntryInput };
+export type { MediaListStatus, SaveEntryInput, UserMediaState };
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,6 +100,8 @@ export interface AuthContextType {
     studioId?: number;
   }) => Promise<boolean>;
   getListEntry: (mediaId: number) => Promise<MediaListEntry | null>;
+  /** Fetch the viewer's list entry + favourite flag for a single media item. */
+  getUserMediaState: (mediaId: number) => Promise<UserMediaState | null>;
   updateProgress: (
     mediaId: number,
     progress: number,
@@ -427,6 +431,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     catch (err) { console.error('[Auth] getListEntry failed:', err); return null; }
   }, []);
 
+  const getUserMediaState = useCallback(async (
+    mediaId: number,
+  ): Promise<UserMediaState | null> => {
+    const token = getToken();
+    if (!isValidToken(token)) return null;
+    try { return await fetchUserMediaState(token, mediaId); }
+    catch (err) { console.error('[Auth] getUserMediaState failed:', err); return null; }
+  }, []);
+
   const updateProgress = useCallback(async (
     mediaId: number,
     progress: number,
@@ -443,7 +456,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoggedIn, userData, username: userData?.name ?? null,
       isValidatingToken, unreadNotifications,
       login, logout, refreshUserData,
-      saveEntry, deleteEntry, toggleFav, getListEntry, updateProgress,
+      saveEntry, deleteEntry, toggleFav, getListEntry, getUserMediaState, updateProgress,
     }}>
       {children}
     </AuthContext.Provider>

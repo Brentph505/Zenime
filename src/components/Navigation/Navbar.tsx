@@ -103,6 +103,40 @@ const RightContent = styled.div`
   height: 2rem;
 `;
 
+// Wraps the profile button so the unread-notification badge can anchor to it.
+// Inherits the parent's 2rem height so the inner StyledButton (height: 100%)
+// matches the size of the dark/light-mode button next to it.
+const ProfileButtonWrap = styled.div`
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+`;
+
+const NotifBadge = styled.div`
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  min-width: 1.05rem;
+  height: 1.05rem;
+  padding: 0 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  border-radius: 999px;
+  line-height: 1;
+  text-decoration: none;
+  border: 1.5px solid var(--global-primary-bg, #0a0a0c);
+  z-index: 2;
+  pointer-events: auto;
+  transition: transform 0.15s ease;
+  &:hover { transform: scale(1.08); }
+`;
+
 const Icon = styled.div<{ $isFocused: boolean }>`
   margin: 0;
   padding: 0 0.25rem;
@@ -225,7 +259,7 @@ const getInitialThemePreference = () => {
 };
 
 export const Navbar = () => {
-  const { isLoggedIn, userData } = useAuth();
+  const { isLoggedIn, userData, unreadNotifications } = useAuth();
   const [isPaddingExtended, setIsPaddingExtended] = useState(false);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -524,21 +558,35 @@ export const Navbar = () => {
               <StyledButton onClick={toggleTheme} aria-label='Toggle Dark Mode'>
                 {isDarkMode ? <FiSun /> : <FiMoon />}
               </StyledButton>
-              <StyledButton onClick={navigateToProfile}>
-                {isLoggedIn && userData ? (
-                  <img
-                    src={userData.avatar.large}
-                    alt={`${userData.name}'s avatar`}
-                    style={{
-                      width: '25px',
-                      height: '25px',
-                      borderRadius: '50%',
-                    }}
-                  />
-                ) : (
-                  <CgProfile />
+              <ProfileButtonWrap>
+                <StyledButton onClick={navigateToProfile} aria-label='Profile'>
+                  {isLoggedIn && userData ? (
+                    <img
+                      src={userData.avatar.large}
+                      alt={`${userData.name}'s avatar`}
+                      style={{
+                        width: '25px',
+                        height: '25px',
+                        borderRadius: '50%',
+                      }}
+                    />
+                  ) : (
+                    <CgProfile />
+                  )}
+                </StyledButton>
+                {isLoggedIn && unreadNotifications > 0 && (
+                  <NotifBadge
+                    as='a'
+                    href={`https://anilist.co/user/${encodeURIComponent(userData?.name ?? '')}/notifications`}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                    title={`${unreadNotifications} unread notification${unreadNotifications === 1 ? '' : 's'}`}
+                    aria-label={`${unreadNotifications} unread notifications`}
+                  >
+                    {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                  </NotifBadge>
                 )}
-              </StyledButton>
+              </ProfileButtonWrap>
             </RightContent>
           </TopContainer>
 
