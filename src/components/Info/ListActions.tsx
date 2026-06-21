@@ -137,10 +137,24 @@ export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME
     : STATUS_OPTIONS;
 
   const commitScore = () => {
-    const n = parseFloat(scoreText);
-    if (Number.isNaN(n)) { setScoreText(score ? String(score) : ''); return; }
+    const trimmed = scoreText.trim();
+    // Empty → clear the score send 0 / no-op.
+    if (trimmed === '') {
+      setScoreText(score ? String(score) : '');
+      return;
+    }
+    const n = parseFloat(trimmed);
+    if (Number.isNaN(n)) {
+      // Invalid input — revert to the last confirmed score.
+      setScoreText(score ? String(score) : '');
+      return;
+    }
     const clamped = Math.max(0, Math.min(100, Math.round(n)));
-    setScore(clamped);
+    setScoreText(String(clamped));
+    // Avoid a redundant save when the value is unchanged.
+    if (clamped !== score) {
+      void setScore(clamped);
+    }
   };
 
   return (

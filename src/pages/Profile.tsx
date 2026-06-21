@@ -3,6 +3,7 @@ import styled, { keyframes, css } from 'styled-components';
 import { IoLogOutOutline } from 'react-icons/io5';
 import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
 import { Settings } from '../components/Profile/Settings';
+import { ANILIST_ENTRY_CHANGED_EVENT } from '../hooks/useAniListEntry';
 import { SiAnilist } from 'react-icons/si';
 import { CgProfile } from 'react-icons/cg';
 import { FiClock, FiStar, FiTv, FiFilm, FiChevronDown, FiUser, FiLogOut, FiSettings } from 'react-icons/fi';
@@ -465,13 +466,22 @@ const SettingsPanel = styled.div`
 
 /* ─────────── Component ─────────── */
 export const Profile: React.FC = () => {
-  const { isLoggedIn, userData, login, logout } = useAuth();
+  const { isLoggedIn, userData, login, logout, refreshUserData } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   const location = useLocation();
   const isSettingsPage = location.pathname.endsWith('/settings');
+
+  // Refresh stats (counts, mean score, …) when a list entry changes elsewhere
+  // (e.g. status/score set on the Info page) so the numbers don't go stale.
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const handler = () => { void refreshUserData(); };
+    window.addEventListener(ANILIST_ENTRY_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(ANILIST_ENTRY_CHANGED_EVENT, handler);
+  }, [isLoggedIn, refreshUserData]);
 
   useEffect(() => {
     document.title = isSettingsPage

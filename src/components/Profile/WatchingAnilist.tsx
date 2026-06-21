@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { useAuth } from '../../client/useAuth';
 import { type AnimeListEntry, type MediaListStatus } from '../../client/authService';
 import { useUserAnimeList } from '../../hooks/useUserAnimeList';
+import { ANILIST_ENTRY_CHANGED_EVENT } from '../../hooks/useAniListEntry';
 import { CardGrid } from '../../index';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -79,10 +80,18 @@ export const WatchingAnilist = () => {
   const [selectedStatus, setSelectedStatus] = useState<MediaListStatus>(
     () => (localStorage.getItem('selectedStatus') as MediaListStatus) || 'CURRENT',
   );
-  const { entries, loading, error } = useUserAnimeList(
+  const { entries, loading, error, refresh } = useUserAnimeList(
     isLoggedIn ? userData?.name : undefined,
     selectedStatus,
   );
+
+  // Re-fetch the user's list when an entry changes elsewhere (e.g. status or
+  // score set on the Info page) so this view stays in sync without a manual reload.
+  useEffect(() => {
+    const handler = () => { void refresh(); };
+    window.addEventListener(ANILIST_ENTRY_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(ANILIST_ENTRY_CHANGED_EVENT, handler);
+  }, [refresh]);
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newStatus = e.target.value as MediaListStatus;
