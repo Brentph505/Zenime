@@ -321,6 +321,10 @@ export async function fetchNotifications(
             contexts
             media { id type title { userPreferred } coverImage { medium } }
           }
+          ... on RelatedMediaAdditionNotification {
+            type
+            media { id type title { userPreferred } coverImage { medium } }
+          }
           ... on FollowingNotification {
             type
             context
@@ -330,15 +334,10 @@ export async function fetchNotifications(
             type
             context
             activityId
+            message { id }
             user { id name avatar { medium } }
           }
           ... on ActivityReplyNotification {
-            type
-            context
-            activityId
-            user { id name avatar { medium } }
-          }
-          ... on ActivityMentionNotification {
             type
             context
             activityId
@@ -350,56 +349,72 @@ export async function fetchNotifications(
             activityId
             user { id name avatar { medium } }
           }
-          ... on ActivityLikeNotification {
+          ... on ActivityMentionNotification {
             type
             context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ActivityLikeNotification {
+            type
             activityId
             user { id name avatar { medium } }
           }
           ... on ActivityReplyLikeNotification {
             type
-            context
             activityId
-            user { id name avatar { medium } }
-          }
-          ... on ThreadCommentSubscribedNotification {
-            type
-            context
-            thread { id title }
-            comment { id threadId }
-            user { id name avatar { medium } }
-          }
-          ... on ThreadCommentReplyNotification {
-            type
-            context
-            thread { id title }
-            comment { id threadId }
             user { id name avatar { medium } }
           }
           ... on ThreadCommentMentionNotification {
             type
             context
             thread { id title }
-            comment { id threadId }
+            comment { id }
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentReplyNotification {
+            type
+            context
+            thread { id title }
+            comment { id }
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentSubscribedNotification {
+            type
+            context
+            thread { id title }
+            comment { id }
             user { id name avatar { medium } }
           }
           ... on ThreadCommentLikeNotification {
             type
-            context
             thread { id title }
-            comment { id threadId }
+            comment { id }
             user { id name avatar { medium } }
           }
           ... on ThreadLikeNotification {
             type
-            context
             thread { id title }
             user { id name avatar { medium } }
           }
-          ... on RelatedMediaAdditionNotification {
+          ... on MediaDataChangeNotification {
             type
+            reason
             context
             media { id type title { userPreferred } coverImage { medium } }
+          }
+          ... on MediaMergeNotification {
+            type
+            reason
+            context
+            deletedMediaTitles
+            media { id type title { userPreferred } coverImage { medium } }
+          }
+          ... on MediaDeletionNotification {
+            type
+            reason
+            context
+            deletedMediaTitle
           }
         }
       }

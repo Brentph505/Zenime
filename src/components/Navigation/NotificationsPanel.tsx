@@ -333,23 +333,39 @@ function renderNotification(n: AniListNotification): RenderedNotif {
         html: <><strong>{user}</strong> mentioned you{ctx ? ` · ${ctx}` : ''}</>,
       };
     case 'ACTIVITY_LIKE':
+    case 'ACTIVITY_REPLY_LIKE':
       return {
         icon: <FaHeart />,
         avatar: n.user?.avatar,
         to: n.activityUrl,
         external: true,
-        html: <><strong>{user}</strong> liked your activity{ctx ? ` · ${ctx}` : ''}</>,
+        html: <><strong>{user}</strong> liked your activity</>,
       };
-    case 'THREAD_COMMENT':
     case 'THREAD_COMMENT_REPLY':
-    case 'THREAD_COMMENT_MENTION':
-    case 'THREAD_COMMENT_LIKE':
+    case 'THREAD_COMMENT_SUBSCRIBED':
       return {
         icon: <FaRegCommentDots />,
         avatar: n.user?.avatar,
         to: n.activityUrl,
         external: true,
-        html: <><strong>{user}</strong> {n.type.includes('LIKE') ? 'liked' : 'commented on'} your forum post{ctx ? ` · ${ctx}` : ''}</>,
+        html: <><strong>{user}</strong> replied to a forum thread you're in{ctx ? ` · ${ctx}` : ''}</>,
+      };
+    case 'THREAD_COMMENT_MENTION':
+      return {
+        icon: <FaAt />,
+        avatar: n.user?.avatar,
+        to: n.activityUrl,
+        external: true,
+        html: <><strong>{user}</strong> mentioned you in a forum thread{ctx ? ` · ${ctx}` : ''}</>,
+      };
+    case 'THREAD_COMMENT_LIKE':
+    case 'THREAD_LIKE':
+      return {
+        icon: <FaHeart />,
+        avatar: n.user?.avatar,
+        to: n.activityUrl,
+        external: true,
+        html: <><strong>{user}</strong> liked your forum post</>,
       };
     case 'MEDIA_DATA_CHANGE':
       return {
