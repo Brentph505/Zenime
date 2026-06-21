@@ -128,12 +128,12 @@ const NotifRow = styled(Link)`
   gap: 0.7rem;
   padding: 0.6rem 1rem;
   text-decoration: none;
-  color: var(--global-text, #e5e7eb);
+  color: var(--global-text, #c9d1d9);
   transition: background 0.13s;
   border-left: 2px solid transparent;
 
   &:hover {
-    background: rgba(255,255,255,0.04);
+    background: var(--global-tertiary-bg, #21262d);
     border-left-color: var(--primary-accent, #c084fc);
   }
 `;
@@ -144,12 +144,12 @@ const NotifRowExternal = styled.a`
   gap: 0.7rem;
   padding: 0.6rem 1rem;
   text-decoration: none;
-  color: var(--global-text, #e5e7eb);
+  color: var(--global-text, #c9d1d9);
   transition: background 0.13s;
   border-left: 2px solid transparent;
 
   &:hover {
-    background: rgba(255,255,255,0.04);
+    background: var(--global-tertiary-bg, #21262d);
     border-left-color: var(--primary-accent, #c084fc);
   }
 `;
@@ -228,12 +228,12 @@ const Spinner = styled(FaCircleNotch)`
 const RetryBtn = styled.button`
   border: 1px solid var(--global-border, rgba(255,255,255,0.12));
   background: transparent;
-  color: var(--global-text, #e5e7eb);
+  color: var(--global-text, #c9d1d9);
   padding: 0.35rem 0.9rem;
   border-radius: 6px;
   font-size: 0.78rem;
   cursor: pointer;
-  &:hover { background: rgba(255,255,255,0.06); }
+  &:hover { background: var(--global-tertiary-bg, #21262d); }
 `;
 
 const LoadMoreBtn = styled.button`
@@ -248,7 +248,7 @@ const LoadMoreBtn = styled.button`
   font-size: 0.78rem;
   font-weight: 600;
   cursor: pointer;
-  &:hover { background: rgba(255,255,255,0.06); color: var(--global-text); }
+  &:hover { background: var(--global-tertiary-bg, #21262d); color: var(--global-text); }
   &:disabled { opacity: 0.6; cursor: not-allowed; }
 `;
 
