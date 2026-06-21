@@ -139,15 +139,18 @@ const NotifBadge = styled.div`
 `;
 
 // ── Profile dropdown card ─────────────────────────────────────────────────────
+// Opaque background (not --global-div-tr, which is only ~50% alpha and would
+// make the dropdown see-through). Falls back to the theme's primary surface.
 const ProfileMenu = styled.div`
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   min-width: 230px;
-  background: var(--global-div-tr, #111827);
+  background: var(--global-secondary-bg, #161b22);
   border: 1px solid var(--global-border, rgba(255,255,255,0.08));
   border-radius: var(--global-border-radius, 8px);
-  box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+  box-shadow: 0 12px 36px var(--global-card-shadow, rgba(0,0,0,0.45));
+  backdrop-filter: blur(12px);
   overflow: hidden;
   z-index: 200;
   animation: profileMenuIn 0.18s ease both;
@@ -162,6 +165,7 @@ const ProfileMenuHeader = styled.div`
   align-items: center;
   gap: 0.6rem;
   padding: 0.75rem 0.85rem;
+  background: var(--global-tertiary-bg, #21262d);
   border-bottom: 1px solid var(--global-border, rgba(255,255,255,0.08));
 `;
 
@@ -203,19 +207,16 @@ const ProfileMenuItem = styled.button<{ $danger?: boolean }>`
   padding: 0.6rem 0.85rem;
   background: none;
   border: none;
-  color: ${({ $danger }) => ($danger ? '#f87171' : 'var(--global-text, #e5e7eb)')};
+  color: ${({ $danger }) => ($danger ? '#f87171' : 'var(--global-text, #c9d1d9)')};
   font-size: 0.82rem;
   font-weight: 500;
   cursor: pointer;
   text-align: left;
   transition: background 0.12s;
 
-  &:hover { background: rgba(255,255,255,0.07); }
+  /* Works in both themes — the var flips with the .dark-mode class. */
+  &:hover { background: var(--global-tertiary-bg, #21262d); }
   svg { font-size: 0.9rem; opacity: 0.85; flex-shrink: 0; }
-
-  @media (prefers-color-scheme: light) {
-    &:hover { background: rgba(0,0,0,0.05); }
-  }
 `;
 
 const ProfileMenuItemBadge = styled.span`

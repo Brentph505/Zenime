@@ -99,7 +99,7 @@ const CloseBtn = styled.button`
   color: var(--global-text-muted, #9ca3af);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
-  &:hover { background: rgba(255,255,255,0.08); color: var(--global-text); }
+  &:hover { background: var(--global-tertiary-bg, #21262d); color: var(--global-text); }
 `;
 
 const ScrollArea = styled.div`
@@ -110,7 +110,7 @@ const ScrollArea = styled.div`
 
   &::-webkit-scrollbar { width: 5px; }
   &::-webkit-scrollbar-track { background: transparent; }
-  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 99px; }
+  &::-webkit-scrollbar-thumb { background: var(--global-div, #30363d); border-radius: 99px; }
 `;
 
 const SectionLabel = styled.div`
