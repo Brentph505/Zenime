@@ -306,115 +306,86 @@ export async function fetchNotifications(
   page: number = 1,
   perPage: number = 25,
 ): Promise<FetchNotificationsResult> {
+  // NotificationUnion is a GraphQL interface — common fields (id, createdAt,
+  // type) must be selected *inside* each `... on <Type>` fragment, not at the
+  // top level (querying them there returns "Cannot query field on
+  // NotificationUnion").
   const NOTIFICATIONS_QUERY = /* GraphQL */ `
     query Notifications($page: Int, $perPage: Int) {
       Page(page: $page, perPage: $perPage) {
         pageInfo { hasNextPage currentPage }
         notifications(resetNotificationCount: false) {
-          __typename
-          id
-          createdAt
-
           ... on AiringNotification {
-            type
-            episode
-            contexts
+            id type createdAt episode contexts
             media { id type title { userPreferred } coverImage { medium } }
           }
           ... on RelatedMediaAdditionNotification {
-            type
+            id type createdAt
             media { id type title { userPreferred } coverImage { medium } }
           }
           ... on FollowingNotification {
-            type
-            context
+            id type createdAt context
             user { id name avatar { medium } }
           }
           ... on ActivityMessageNotification {
-            type
-            context
-            activityId
-            message { id }
+            id type createdAt context activityId
             user { id name avatar { medium } }
           }
           ... on ActivityReplyNotification {
-            type
-            context
-            activityId
+            id type createdAt context activityId
             user { id name avatar { medium } }
           }
           ... on ActivityReplySubscribedNotification {
-            type
-            context
-            activityId
+            id type createdAt context activityId
             user { id name avatar { medium } }
           }
           ... on ActivityMentionNotification {
-            type
-            context
-            activityId
+            id type createdAt context activityId
             user { id name avatar { medium } }
           }
           ... on ActivityLikeNotification {
-            type
-            activityId
+            id type createdAt activityId
             user { id name avatar { medium } }
           }
           ... on ActivityReplyLikeNotification {
-            type
-            activityId
+            id type createdAt activityId
             user { id name avatar { medium } }
           }
           ... on ThreadCommentMentionNotification {
-            type
-            context
-            thread { id title }
-            comment { id }
+            id type createdAt context
+            thread { id title } comment { id }
             user { id name avatar { medium } }
           }
           ... on ThreadCommentReplyNotification {
-            type
-            context
-            thread { id title }
-            comment { id }
+            id type createdAt context
+            thread { id title } comment { id }
             user { id name avatar { medium } }
           }
           ... on ThreadCommentSubscribedNotification {
-            type
-            context
-            thread { id title }
-            comment { id }
+            id type createdAt context
+            thread { id title } comment { id }
             user { id name avatar { medium } }
           }
           ... on ThreadCommentLikeNotification {
-            type
-            thread { id title }
-            comment { id }
+            id type createdAt
+            thread { id title } comment { id }
             user { id name avatar { medium } }
           }
           ... on ThreadLikeNotification {
-            type
+            id type createdAt
             thread { id title }
             user { id name avatar { medium } }
           }
           ... on MediaDataChangeNotification {
-            type
-            reason
-            context
+            id type createdAt reason context
             media { id type title { userPreferred } coverImage { medium } }
           }
           ... on MediaMergeNotification {
-            type
-            reason
-            context
-            deletedMediaTitles
+            id type createdAt reason context deletedMediaTitles
             media { id type title { userPreferred } coverImage { medium } }
           }
           ... on MediaDeletionNotification {
-            type
-            reason
-            context
-            deletedMediaTitle
+            id type createdAt reason context deletedMediaTitle
           }
         }
       }
