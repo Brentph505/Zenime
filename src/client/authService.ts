@@ -260,6 +260,200 @@ export async function fetchNotificationCount(token: string): Promise<number> {
   }
 }
 
+// ─── Notifications list ───────────────────────────────────────────────────────
+
+/**
+ * A flattened, discriminated view of an AniList notification. AniList returns
+ * per-type objects (AiringNotification, FollowingNotification, …); we project
+ * them into one shape so the UI can render a single list without 12 branches.
+ */
+export interface AniListNotification {
+  id: number;
+  type: string;
+  /** Unix seconds. */
+  createdAt: number;
+  /** Who triggered the notification (follows, replies, likes…). */
+  user?: { id: number; name: string; avatar?: string } | null;
+  /** The media the notification is about (airing, data change…). */
+  media?: {
+    id: number;
+    title?: string;
+    coverImage?: string;
+    type?: string;
+  } | null;
+  /** Episode / chapter number for airing notifications. */
+  episode?: number | null;
+  /** Free-text context (e.g. reply snippet) where AniList provides one. */
+  context?: string;
+  /** Reason code for activity/thread notifications (e.g. "liked"). */
+  reason?: string;
+  /** A direct AniList URL to the activity/thread when available. */
+  activityUrl?: string;
+}
+
+export interface FetchNotificationsResult {
+  items: AniListNotification[];
+  hasNextPage: boolean;
+}
+
+/**
+ * Fetch the signed-in viewer's notifications (most recent first).
+ * Uses `resetNotificationCount: false` so viewing them here doesn't mutate the
+ * server-side unread count (the UI clears the badge locally via useAuth).
+ */
+export async function fetchNotifications(
+  token: string,
+  page: number = 1,
+  perPage: number = 25,
+): Promise<FetchNotificationsResult> {
+  const NOTIFICATIONS_QUERY = /* GraphQL */ `
+    query Notifications($page: Int, $perPage: Int) {
+      Page(page: $page, perPage: $perPage) {
+        pageInfo { hasNextPage currentPage }
+        notifications(resetNotificationCount: false) {
+          __typename
+          id
+          createdAt
+
+          ... on AiringNotification {
+            type
+            episode
+            contexts
+            media { id type title { userPreferred } coverImage { medium } }
+          }
+          ... on FollowingNotification {
+            type
+            context
+            user { id name avatar { medium } }
+          }
+          ... on ActivityMessageNotification {
+            type
+            context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ActivityReplyNotification {
+            type
+            context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ActivityMentionNotification {
+            type
+            context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ActivityReplySubscribedNotification {
+            type
+            context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ActivityLikeNotification {
+            type
+            context
+            activityId
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentNotification {
+            type
+            context
+            thread { id title }
+            comment { id threadId }
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentReplyNotification {
+            type
+            context
+            thread { id title }
+            comment { id threadId }
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentMentionNotification {
+            type
+            context
+            thread { id title }
+            comment { id threadId }
+            user { id name avatar { medium } }
+          }
+          ... on ThreadCommentLikeNotification {
+            type
+            context
+            thread { id title }
+            comment { id threadId }
+            user { id name avatar { medium } }
+          }
+          ... on MediaDataChangeNotification {
+            type
+            reason
+            context
+            media { id type title { userPreferred } coverImage { medium } }
+          }
+          ... on MediaMergeNotification {
+            type
+            reason
+            context
+            deletedMediaTitles
+            media { id type title { userPreferred } coverImage { medium } }
+          }
+          ... on MediaDeletionNotification {
+            type
+            reason
+            context
+            deletedMediaTitle
+          }
+          ... on RelatedMediaAdditionNotification {
+            type
+            context
+            media { id type title { userPreferred } coverImage { medium } }
+          }
+        }
+      }
+    }
+  `;
+
+  const data = await gql<{
+    Page: {
+      pageInfo: { hasNextPage: boolean };
+      notifications: any[];
+    } | null;
+  }>(NOTIFICATIONS_QUERY, { page, perPage }, token);
+
+  const raw = data?.Page?.notifications ?? [];
+  const hasNextPage = data?.Page?.pageInfo?.hasNextPage ?? false;
+
+  const items: AniListNotification[] = raw.map((n) => ({
+    id: n.id,
+    type: n.type ?? n.__typename ?? 'UNKNOWN',
+    createdAt: n.createdAt ?? 0,
+    user: n.user
+      ? { id: n.user.id, name: n.user.name, avatar: n.user.avatar?.medium }
+      : null,
+    media: n.media
+      ? {
+          id: n.media.id,
+          title: n.media.title?.userPreferred,
+          coverImage: n.media.coverImage?.medium,
+          type: n.media.type,
+        }
+      : null,
+    episode: n.episode ?? null,
+    // AniList returns an array of context fragments for many types; join them.
+    context: Array.isArray(n.contexts)
+      ? n.contexts.join(' ')
+      : n.context ?? '',
+    reason: n.reason,
+    activityUrl: n.activityId
+      ? `https://anilist.co/activity/${n.activityId}`
+      : n.thread?.id
+        ? `https://anilist.co/forum/thread/${n.thread.id}`
+        : undefined,
+  }));
+
+  return { items, hasNextPage };
+}
+
 // ─── Media list entry query ───────────────────────────────────────────────────
 
 const ENTRY_FIELDS = /* GraphQL */ `

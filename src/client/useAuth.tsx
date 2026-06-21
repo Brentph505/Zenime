@@ -83,6 +83,8 @@ export interface AuthContextType {
   username: string | null;
   isValidatingToken: boolean;
   unreadNotifications: number;
+  /** Clear the unread-notification badge locally after the user views them. */
+  markNotificationsRead: () => void;
 
   // Auth
   login: () => void;
@@ -394,6 +396,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Clears the unread-notification badge locally. We use resetNotificationCount:
+  // false when fetching, so the server-side count is untouched — this only
+  // reflects "the user has now seen them" in the UI.
+  const markNotificationsRead = useCallback(() => {
+    setUnreadNotifications(0);
+  }, []);
+
   // ── List management ───────────────────────────────────────────────────────
 
   const saveEntry = useCallback(async (
@@ -454,7 +463,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       isLoggedIn, userData, username: userData?.name ?? null,
-      isValidatingToken, unreadNotifications,
+      isValidatingToken, unreadNotifications, markNotificationsRead,
       login, logout, refreshUserData,
       saveEntry, deleteEntry, toggleFav, getListEntry, getUserMediaState, updateProgress,
     }}>

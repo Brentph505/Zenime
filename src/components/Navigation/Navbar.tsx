@@ -8,10 +8,11 @@ import {
 } from 'react-router-dom';
 import { DropDownSearch, useAuth } from '../../index';
 import { fetchAdvancedSearch, type Anime } from '../..';
-import { FiSun, FiMoon, FiX /* FiMenu */ } from 'react-icons/fi';
+import { FiSun, FiMoon, FiX, FiUser, FiSettings, FiBell, FiLogOut /* FiMenu */ } from 'react-icons/fi';
 import { GoCommandPalette } from 'react-icons/go';
 import { IoIosSearch } from 'react-icons/io';
 import { CgProfile } from 'react-icons/cg';
+import { NotificationsPanel } from './NotificationsPanel';
 
 const StyledNavbar = styled.div<{ $isExtended?: boolean }>`
   position: fixed;
@@ -137,6 +138,107 @@ const NotifBadge = styled.div`
   &:hover { transform: scale(1.08); }
 `;
 
+// ── Profile dropdown card ─────────────────────────────────────────────────────
+const ProfileMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 230px;
+  background: var(--global-div-tr, #111827);
+  border: 1px solid var(--global-border, rgba(255,255,255,0.08));
+  border-radius: var(--global-border-radius, 8px);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.45);
+  overflow: hidden;
+  z-index: 200;
+  animation: profileMenuIn 0.18s ease both;
+  @keyframes profileMenuIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+`;
+
+const ProfileMenuHeader = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-bottom: 1px solid var(--global-border, rgba(255,255,255,0.08));
+`;
+
+const ProfileMenuAvatar = styled.img`
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+`;
+
+const ProfileMenuName = styled.div`
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+`;
+
+const ProfileMenuUsername = styled.span`
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--global-text, #e5e7eb);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const ProfileMenuSub = styled.span`
+  font-size: 0.62rem;
+  color: var(--global-text-muted, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+`;
+
+const ProfileMenuItem = styled.button<{ $danger?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  background: none;
+  border: none;
+  color: ${({ $danger }) => ($danger ? '#f87171' : 'var(--global-text, #e5e7eb)')};
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+
+  &:hover { background: rgba(255,255,255,0.07); }
+  svg { font-size: 0.9rem; opacity: 0.85; flex-shrink: 0; }
+
+  @media (prefers-color-scheme: light) {
+    &:hover { background: rgba(0,0,0,0.05); }
+  }
+`;
+
+const ProfileMenuItemBadge = styled.span`
+  margin-left: auto;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  border-radius: 999px;
+`;
+
+const ProfileMenuDivider = styled.div`
+  height: 1px;
+  background: var(--global-border, rgba(255,255,255,0.08));
+  margin: 2px 0;
+`;
+
 const Icon = styled.div<{ $isFocused: boolean }>`
   margin: 0;
   padding: 0 0.25rem;
@@ -259,7 +361,7 @@ const getInitialThemePreference = () => {
 };
 
 export const Navbar = () => {
-  const { isLoggedIn, userData, unreadNotifications } = useAuth();
+  const { isLoggedIn, userData, unreadNotifications, logout, markNotificationsRead } = useAuth();
   const [isPaddingExtended, setIsPaddingExtended] = useState(false);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -272,6 +374,12 @@ export const Navbar = () => {
   const [searchResults, setSearchResults] = useState<Anime[]>([]);
   const debounceTimeout = useRef<Timer | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  // ── Profile dropdown + notifications panel state ──
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notificationsClosing, setNotificationsClosing] = useState(false);
   const [search, setSearch] = useState({
     isSearchFocused: false,
     searchQuery: searchParams.get('query') || '',
@@ -483,6 +591,51 @@ export const Navbar = () => {
     }
   };
 
+  // ── Profile dropdown: close on outside click ──
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [profileMenuOpen]);
+
+  // ── Notifications panel open/close (slide-out animation, then unmount) ──
+  const openNotifications = () => {
+    setProfileMenuOpen(false);
+    setNotificationsOpen(true);
+    setNotificationsClosing(false);
+  };
+
+  const closeNotifications = useCallback(() => {
+    setNotificationsClosing(true);
+    setTimeout(() => {
+      setNotificationsOpen(false);
+      setNotificationsClosing(false);
+    }, 200);
+  }, []);
+
+  // Token getter for the panel (reads the same key useAuth uses).
+  const getAccessToken = useCallback(() => {
+    try { return localStorage.getItem('accessToken'); } catch { return null; }
+  }, []);
+
+  // ESC closes whichever overlay is open.
+  useEffect(() => {
+    if (!profileMenuOpen && !notificationsOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setProfileMenuOpen(false);
+        if (notificationsOpen) closeNotifications();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [profileMenuOpen, notificationsOpen, closeNotifications]);
+
   return (
     <>
       <StyledNavbar $isExtended={isPaddingExtended} ref={navbarRef}>
@@ -559,7 +712,14 @@ export const Navbar = () => {
                 {isDarkMode ? <FiSun /> : <FiMoon />}
               </StyledButton>
               <ProfileButtonWrap>
-                <StyledButton onClick={navigateToProfile} aria-label='Profile'>
+                <StyledButton
+                  onClick={() => {
+                    if (isLoggedIn) setProfileMenuOpen((o) => !o);
+                    else navigateToProfile();
+                  }}
+                  aria-label='Profile'
+                  aria-expanded={profileMenuOpen}
+                >
                   {isLoggedIn && userData ? (
                     <img
                       src={userData.avatar.large}
@@ -574,17 +734,52 @@ export const Navbar = () => {
                     <CgProfile />
                   )}
                 </StyledButton>
+
                 {isLoggedIn && unreadNotifications > 0 && (
                   <NotifBadge
-                    as='a'
-                    href={`https://anilist.co/user/${encodeURIComponent(userData?.name ?? '')}/notifications`}
-                    target='_blank'
-                    rel='noopener noreferrer'
                     title={`${unreadNotifications} unread notification${unreadNotifications === 1 ? '' : 's'}`}
                     aria-label={`${unreadNotifications} unread notifications`}
                   >
                     {unreadNotifications > 99 ? '99+' : unreadNotifications}
                   </NotifBadge>
+                )}
+
+                {profileMenuOpen && isLoggedIn && (
+                  <ProfileMenu ref={profileMenuRef} role='menu'>
+                    <ProfileMenuHeader>
+                      <ProfileMenuAvatar
+                        src={userData?.avatar.large}
+                        alt={userData?.name ?? 'avatar'}
+                      />
+                      <ProfileMenuName>
+                        <ProfileMenuUsername>{userData?.name ?? 'User'}</ProfileMenuUsername>
+                        <ProfileMenuSub>AniList Member</ProfileMenuSub>
+                      </ProfileMenuName>
+                    </ProfileMenuHeader>
+
+                    <ProfileMenuItem
+                      onClick={() => { setProfileMenuOpen(false); navigate('/profile'); }}
+                    >
+                      <FiUser /> Profile
+                    </ProfileMenuItem>
+                    <ProfileMenuItem
+                      onClick={() => { setProfileMenuOpen(false); navigate('/profile/settings'); }}
+                    >
+                      <FiSettings /> Settings
+                    </ProfileMenuItem>
+                    <ProfileMenuItem onClick={openNotifications}>
+                      <FiBell /> Notifications
+                      {unreadNotifications > 0 && (
+                        <ProfileMenuItemBadge>
+                          {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                        </ProfileMenuItemBadge>
+                      )}
+                    </ProfileMenuItem>
+                    <ProfileMenuDivider />
+                    <ProfileMenuItem $danger onClick={() => { setProfileMenuOpen(false); logout(); }}>
+                      <FiLogOut /> Log out
+                    </ProfileMenuItem>
+                  </ProfileMenu>
                 )}
               </ProfileButtonWrap>
             </RightContent>
@@ -633,6 +828,17 @@ export const Navbar = () => {
           )}
         </NavbarWrapper>
       </StyledNavbar>
+
+      {isLoggedIn && (
+        <NotificationsPanel
+          open={notificationsOpen}
+          closing={notificationsClosing}
+          onClose={closeNotifications}
+          isLoggedIn={isLoggedIn}
+          getToken={getAccessToken}
+          markRead={markNotificationsRead}
+        />
+      )}
       {/* Conditionally render InputContainer below the navbar for mobile view when visibility is toggled */}
     </>
   );
