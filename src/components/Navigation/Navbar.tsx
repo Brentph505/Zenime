@@ -13,6 +13,7 @@ import { GoCommandPalette } from 'react-icons/go';
 import { IoIosSearch } from 'react-icons/io';
 import { CgProfile } from 'react-icons/cg';
 import { NotificationsPanel } from './NotificationsPanel';
+import { SettingsOverlay } from '../Profile/SettingsOverlay';
 
 const StyledNavbar = styled.div<{ $isExtended?: boolean }>`
   position: fixed;
@@ -381,6 +382,7 @@ export const Navbar = () => {
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsClosing, setNotificationsClosing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [search, setSearch] = useState({
     isSearchFocused: false,
     searchQuery: searchParams.get('query') || '',
@@ -626,16 +628,17 @@ export const Navbar = () => {
 
   // ESC closes whichever overlay is open.
   useEffect(() => {
-    if (!profileMenuOpen && !notificationsOpen) return;
+    if (!profileMenuOpen && !notificationsOpen && !settingsOpen) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setProfileMenuOpen(false);
         if (notificationsOpen) closeNotifications();
+        if (settingsOpen) setSettingsOpen(false);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [profileMenuOpen, notificationsOpen, closeNotifications]);
+  }, [profileMenuOpen, notificationsOpen, settingsOpen, closeNotifications]);
 
   return (
     <>
@@ -764,7 +767,7 @@ export const Navbar = () => {
                       <FiUser /> Profile
                     </ProfileMenuItem>
                     <ProfileMenuItem
-                      onClick={() => { setProfileMenuOpen(false); navigate('/profile/settings'); }}
+                      onClick={() => { setProfileMenuOpen(false); setSettingsOpen(true); }}
                     >
                       <FiSettings /> Settings
                     </ProfileMenuItem>
@@ -840,6 +843,9 @@ export const Navbar = () => {
           markRead={markNotificationsRead}
         />
       )}
+
+      <SettingsOverlay open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
       {/* Conditionally render InputContainer below the navbar for mobile view when visibility is toggled */}
     </>
   );
