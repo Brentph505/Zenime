@@ -71,7 +71,6 @@ function App() {
                   <Route path='/studio/:studioId' element={<Studio />} />
                   <Route path='/history' element={<History />} />
                   <Route path='/profile' element={<Profile />} />
-                  <Route path='/profile/settings' element={<Profile />} />
                   <Route path='/about' element={<About />} />
                   <Route path='/pptos' element={<PolicyTerms />} />
                   <Route path='/callback' element={<Callback />} />

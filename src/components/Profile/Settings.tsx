@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import styled, { keyframes, css } from 'styled-components';
-import { useNavigate } from 'react-router-dom';
 import {
   IoArrowBack,
   IoLanguageOutline,
@@ -14,6 +13,7 @@ import {
   IoServerOutline,
   IoRefreshOutline,
   IoTrashOutline,
+  IoClose,
   IoChevronDown,
 } from 'react-icons/io5';
 import { useSettings } from '../../index';
@@ -31,7 +31,6 @@ interface Preferences {
   defaultServers: string;
   restoreDefaultPreferences: string;
   clearContinueWatching: string;
-  openButton: string;
 }
 
 interface SettingsProps {
@@ -43,28 +42,25 @@ const fadeIn = keyframes`
   to   { opacity: 1; transform: translateY(0); }
 `;
 
-const pulse = keyframes`
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.6; }
-`;
-
 /* ── Layout ── */
 
 const Wrapper = styled.div`
   display: flex;
   flex-direction: column;
-  align-items: center;
   width: 100%;
-  padding: 1.5rem 1rem 3rem;
   animation: ${fadeIn} 0.25s ease both;
 `;
 
 const Inner = styled.div`
   width: 100%;
-  max-width: 46rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
+  padding: 1.25rem 1.25rem 1.75rem;
+
+  @media (min-width: 600px) {
+    padding: 1.5rem 1.75rem 2rem;
+  }
 `;
 
 /* ── Header ── */
@@ -72,42 +68,71 @@ const Inner = styled.div`
 const Header = styled.div`
   display: flex;
   align-items: center;
-  gap: 0.875rem;
-  padding-bottom: 0.25rem;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--global-border);
+  background: var(--global-tertiary-bg);
+  border-radius: var(--global-border-radius) var(--global-border-radius) 0 0;
+
+  @media (min-width: 600px) {
+    padding: 1rem 1.75rem;
+  }
 `;
 
-const BackBtn = styled.button`
+const HeaderLeft = styled.div`
   display: flex;
   align-items: center;
+  gap: 0.6rem;
+`;
+
+const HeaderIcon = styled.span`
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: var(--global-border-radius);
-  background: var(--global-div);
-  color: var(--global-text);
-  border: none;
-  cursor: pointer;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 8px;
+  background: var(--primary-accent);
+  color: #ffffff;
+  font-size: 0.95rem;
   flex-shrink: 0;
-  transition: background 0.15s, transform 0.1s;
-
-  &:hover  { background: var(--global-div-tr); }
-  &:active { transform: scale(0.94); }
-
-  svg { font-size: 1.1rem; }
 `;
 
 const PageTitle = styled.h1`
   color: var(--global-text);
-  font-size: 1.35rem;
-  font-weight: 600;
+  font-size: 1.15rem;
+  font-weight: 700;
   margin: 0;
   letter-spacing: -0.01em;
+
+  @media (min-width: 600px) { font-size: 1.3rem; }
 `;
 
-/* ── Section card ── */
+const CloseBtn = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--global-border-radius);
+  background: transparent;
+  color: var(--global-text-muted);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+
+  &:hover { background: var(--global-card-bg); color: var(--global-text); }
+
+  svg { font-size: 1.15rem; }
+`;
+
+/* ── Section card (opaque) ── */
 
 const Card = styled.div`
-  background: var(--global-div-tr);
+  background: var(--global-secondary-bg);
+  border: 1px solid var(--global-border);
   border-radius: var(--global-border-radius);
   overflow: hidden;
 `;
@@ -116,43 +141,43 @@ const SectionHeader = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.875rem 1.125rem 0.75rem;
-  border-bottom: 1px solid rgba(128, 128, 128, 0.12);
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--global-border);
+  background: var(--global-tertiary-bg);
 
   svg {
-    font-size: 1rem;
-    opacity: 0.55;
+    font-size: 0.95rem;
+    color: var(--primary-accent);
     flex-shrink: 0;
   }
 `;
 
 const SectionLabel = styled.span`
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--global-text);
-  opacity: 0.45;
+  color: var(--global-text-muted);
 `;
 
 /* ── Row ── */
 
-const Row = styled.div<{ last?: boolean }>`
+const Row = styled.div<{ $last?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.8rem 1.125rem;
+  padding: 0.7rem 1rem;
   transition: background 0.12s;
 
-  ${({ last }) =>
-    !last &&
+  ${({ $last }) =>
+    !$last &&
     css`
-      border-bottom: 1px solid rgba(128, 128, 128, 0.08);
+      border-bottom: 1px solid var(--global-border);
     `}
 
   &:hover {
-    background: rgba(128, 128, 128, 0.04);
+    background: var(--global-card-bg);
   }
 `;
 
@@ -167,18 +192,18 @@ const RowIcon = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: calc(var(--global-border-radius) * 0.6);
-  background: rgba(128, 128, 128, 0.1);
-  color: var(--global-text);
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: 7px;
+  background: var(--global-card-bg);
+  color: var(--global-text-muted);
   flex-shrink: 0;
 
-  svg { font-size: 0.9rem; opacity: 0.8; }
+  svg { font-size: 0.85rem; }
 `;
 
 const RowName = styled.span`
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: var(--global-text);
   white-space: nowrap;
   overflow: hidden;
@@ -195,76 +220,76 @@ const SelectWrap = styled.div`
 
   svg.chevron {
     position: absolute;
-    right: 0.45rem;
+    right: 0.5rem;
     pointer-events: none;
     font-size: 0.75rem;
-    opacity: 0.5;
+    color: var(--global-text-muted);
   }
 `;
 
 const StyledSelect = styled.select`
   appearance: none;
   -webkit-appearance: none;
-  background: var(--global-div);
+  background: var(--global-card-bg);
   color: var(--global-text);
   font-size: 0.8rem;
-  padding: 0.35rem 1.75rem 0.35rem 0.65rem;
-  border: 1px solid rgba(128, 128, 128, 0.18);
+  padding: 0.4rem 1.85rem 0.4rem 0.7rem;
+  border: 1px solid var(--global-border);
   border-radius: var(--global-border-radius);
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.15s;
   outline: none;
 
-  &:hover  { border-color: rgba(128, 128, 128, 0.35); }
-  &:focus  { border-color: rgba(128, 128, 128, 0.5); }
+  &:hover  { border-color: var(--primary-accent); }
+  &:focus  { border-color: var(--primary-accent); }
+
+  option {
+    background: var(--global-secondary-bg);
+    color: var(--global-text);
+  }
 `;
 
 /* ── Toggle switch ── */
 
-const ToggleTrack = styled.label<{ on: boolean }>`
+const ToggleTrack = styled.button<{ $on: boolean }>`
   position: relative;
   display: inline-flex;
-  width: 2.4rem;
-  height: 1.35rem;
+  width: 2.5rem;
+  height: 1.4rem;
   border-radius: 999px;
-  background: ${({ on }) => (on ? 'var(--global-text)' : 'rgba(128,128,128,0.2)')};
+  background: ${({ $on }) => ($on ? 'var(--primary-accent)' : 'var(--global-card-bg)')};
+  border: 1px solid ${({ $on }) => ($on ? 'var(--primary-accent)' : 'var(--global-border)')};
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s, border-color 0.2s;
   flex-shrink: 0;
-
-  input { position: absolute; opacity: 0; width: 0; height: 0; }
+  padding: 0;
 `;
 
-const ToggleThumb = styled.span<{ on: boolean }>`
+const ToggleThumb = styled.span<{ $on: boolean }>`
   position: absolute;
-  top: 0.175rem;
-  left: ${({ on }) => (on ? 'calc(100% - 1rem - 0.175rem)' : '0.175rem')};
-  width: 1rem;
-  height: 1rem;
+  top: 50%;
+  left: ${({ $on }) => ($on ? 'calc(100% - 1.05rem - 0.2rem)' : '0.2rem')};
+  transform: translateY(-50%);
+  width: 1.05rem;
+  height: 1.05rem;
   border-radius: 50%;
-  background: ${({ on }) =>
-    on ? 'var(--global-div-tr)' : 'rgba(128,128,128,0.55)'};
+  background: ${({ $on }) => ($on ? '#ffffff' : 'var(--global-text-muted)')};
   transition: left 0.2s, background 0.2s;
 `;
 
 /* ── Action button ── */
 
-const ActionBtn = styled.button<{ danger?: boolean }>`
+const ActionBtn = styled.button<{ $danger?: boolean }>`
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.4rem;
   font-size: 0.78rem;
-  font-weight: 500;
-  padding: 0.35rem 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.8rem;
   border-radius: var(--global-border-radius);
-  border: 1px solid
-    ${({ danger }) =>
-      danger
-        ? 'rgba(239,68,68,0.35)'
-        : 'rgba(128,128,128,0.2)'};
-  background: transparent;
-  color: ${({ danger }) =>
-    danger ? 'rgba(239,68,68,0.85)' : 'var(--global-text)'};
+  border: 1px solid ${({ $danger }) => ($danger ? 'rgba(239,68,68,0.4)' : 'var(--global-border)')};
+  background: ${({ $danger }) => ($danger ? 'transparent' : 'var(--global-card-bg)')};
+  color: ${({ $danger }) => ($danger ? '#f87171' : 'var(--global-text)')};
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.15s, border-color 0.15s, transform 0.1s;
@@ -272,10 +297,8 @@ const ActionBtn = styled.button<{ danger?: boolean }>`
   svg { font-size: 0.85rem; }
 
   &:hover {
-    background: ${({ danger }) =>
-      danger ? 'rgba(239,68,68,0.08)' : 'rgba(128,128,128,0.08)'};
-    border-color: ${({ danger }) =>
-      danger ? 'rgba(239,68,68,0.6)' : 'rgba(128,128,128,0.4)'};
+    background: ${({ $danger }) => ($danger ? 'rgba(239,68,68,0.1)' : 'var(--global-tertiary-bg)')};
+    border-color: ${({ $danger }) => ($danger ? 'rgba(239,68,68,0.6)' : 'var(--primary-accent)')};
   }
 
   &:active { transform: scale(0.97); }
@@ -285,12 +308,11 @@ const ActionBtn = styled.button<{ danger?: boolean }>`
 
 const DisabledPill = styled.span`
   font-size: 0.75rem;
-  padding: 0.3rem 0.65rem;
+  padding: 0.35rem 0.7rem;
   border-radius: var(--global-border-radius);
-  background: var(--global-div);
-  color: var(--global-text);
-  opacity: 0.6;
-  border: 1px solid rgba(128, 128, 128, 0.15);
+  background: var(--global-card-bg);
+  color: var(--global-text-muted);
+  border: 1px solid var(--global-border);
 `;
 
 /* ════════════════════════════════════════════════
@@ -302,8 +324,16 @@ const BOOL_KEYS: BoolKey[] = ['autoskipIntroOutro', 'autoPlay', 'autoNext', 'ani
 
 const isBoolKey = (k: string): k is BoolKey => BOOL_KEYS.includes(k as BoolKey);
 
+const DEFAULT_SETTINGS = {
+  autoSkip: false,
+  autoPlay: true,
+  autoNext: false,
+  defaultLanguage: 'sub',
+  defaultServers: 'default',
+  aniListSync: false,
+};
+
 export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
-  const navigate = useNavigate();
   const { settings, setSettings } = useSettings();
 
   const [preferences, setPreferences] = useState<Preferences>({
@@ -319,13 +349,13 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     defaultServers: 'Default',
     restoreDefaultPreferences: 'Restore',
     clearContinueWatching: 'Clear',
-    openButton: 'Open',
   });
 
   useEffect(() => {
     setPreferences((prev) => ({
       ...prev,
       defaultLanguage: settings.defaultLanguage,
+      defaultServers: settings.defaultServers === 'default' ? 'Default' : settings.defaultServers,
       autoskipIntroOutro: settings.autoSkip ? 'Enabled' : 'Disabled',
       autoPlay: settings.autoPlay ? 'Enabled' : 'Disabled',
       autoNext: settings.autoNext ? 'Enabled' : 'Disabled',
@@ -339,11 +369,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       case 'titleLanguage':         return ['English (Attack on Titan)', 'Romaji (Shingeki no Kyojin)', 'Native (進撃の巨人)'];
       case 'characterNameLanguage': return ['Romaji (Zoldyck Killua)', 'Native (キルア=ゾルディック)'];
       case 'ratingSource':          return ['Anilist', 'IMDb', 'MyAnimeList'];
-      case 'autoskipIntroOutro':    return ['Enabled', 'Disabled'];
-      case 'autoPlay':              return ['Enabled', 'Disabled'];
       case 'defaultServers':        return ['Default', 'Vidstreaming', 'Gogo'];
-      case 'autoNext':              return ['Enabled', 'Disabled'];
-      case 'aniListSync':           return ['Enabled', 'Disabled'];
       default:                      return [];
     }
   };
@@ -359,8 +385,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       case 'autoPlay':           setSettings({ autoPlay: value === 'Enabled' }); break;
       case 'autoNext':           setSettings({ autoNext: value === 'Enabled' }); break;
       case 'aniListSync':        setSettings({ aniListSync: value === 'Enabled' }); break;
-      case 'defaultLanguage':    setSettings({ defaultLanguage: value }); break;
-      case 'defaultServers':     setSettings({ defaultServers: value }); break;
+      case 'defaultLanguage':    setSettings({ defaultLanguage: value.toLowerCase() }); break;
+      case 'defaultServers':     setSettings({ defaultServers: value.toLowerCase() }); break;
     }
   };
 
@@ -369,9 +395,24 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     handlePreferenceChange(key, next);
   };
 
-  const handleGoback = () => {
-    if (onClose) { onClose(); return; }
-    navigate('/profile');
+  // Restore all settings to defaults.
+  const handleRestoreDefaults = () => {
+    setSettings(DEFAULT_SETTINGS);
+    ['autoSkip', 'autoPlay', 'autoNext', 'defaultLanguage', 'defaultServers', 'aniListSync'].forEach((k) => {
+      localStorage.removeItem(k);
+    });
+  };
+
+  // Clear all local continue-watching history (anime + manga).
+  const handleClearContinueWatching = () => {
+    if (!window.confirm('Clear all continue-watching and reading history? This cannot be undone.')) return;
+    ['watched-episodes', 'watched-episodes-cache', 'read-chapters', 'last-anime-visited', 'last-manga-visited', 'all_episode_times', 'all_reading_times'].forEach((k) => {
+      localStorage.removeItem(k);
+    });
+  };
+
+  const handleClose = () => {
+    onClose?.();
   };
 
   const rowIcon: Record<string, React.ReactNode> = {
@@ -381,7 +422,8 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     openKeyboardShortcuts: <IoKeyOutline />,
     defaultLanguage:       <IoLanguageOutline />,
     defaultServers:        <IoServerOutline />,
-  autoskipIntroOutro:    <IoPlaySkipForwardOutline />,
+    autoskipIntroOutro:    <IoPlaySkipForwardOutline />,
+    autoPlay:              <IoPlayOutline />,
     autoNext:              <IoPlaySkipForwardOutline />,
     aniListSync:           <IoSyncOutline />,
     restoreDefaultPreferences: <IoRefreshOutline />,
@@ -403,7 +445,7 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     clearContinueWatching:     'Clear continue watching',
   };
 
-  const renderControl = (key: string, isLast: boolean) => {
+  const renderControl = (key: string) => {
     if (key === 'openKeyboardShortcuts') {
       return <DisabledPill>Open</DisabledPill>;
     }
@@ -411,27 +453,24 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     if (isBoolKey(key)) {
       const on = preferences[key as keyof Preferences] === 'Enabled';
       return (
-        <ToggleTrack on={on} onClick={() => handleToggle(key as BoolKey)}>
-          <input type="checkbox" checked={on} readOnly />
-          <ToggleThumb on={on} />
+        <ToggleTrack $on={on} onClick={() => handleToggle(key as BoolKey)} aria-label={label[key]} role='switch' aria-checked={on}>
+          <ToggleThumb $on={on} />
         </ToggleTrack>
       );
     }
 
-    if (key === 'restoreDefaultPreferences' || key === 'clearContinueWatching') {
-      const isDanger = key === 'clearContinueWatching';
+    if (key === 'restoreDefaultPreferences') {
       return (
-        <ActionBtn
-          danger={isDanger}
-          onClick={() =>
-            handlePreferenceChange(
-              key as keyof Preferences,
-              key === 'restoreDefaultPreferences' ? 'Restore' : 'Clear',
-            )
-          }
-        >
-          {rowIcon[key]}
-          {key === 'restoreDefaultPreferences' ? 'Restore' : 'Clear'}
+        <ActionBtn onClick={handleRestoreDefaults}>
+          {rowIcon[key]} Restore
+        </ActionBtn>
+      );
+    }
+
+    if (key === 'clearContinueWatching') {
+      return (
+        <ActionBtn $danger onClick={handleClearContinueWatching}>
+          {rowIcon[key]} Clear
         </ActionBtn>
       );
     }
@@ -440,15 +479,14 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
       <SelectWrap>
         <StyledSelect
           value={preferences[key as keyof Preferences]}
-          onChange={(e) =>
-            handlePreferenceChange(key as keyof Preferences, e.target.value)
-          }
+          onChange={(e) => handlePreferenceChange(key as keyof Preferences, e.target.value)}
+          aria-label={label[key]}
         >
           {getOptionsForPreference(key).map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
         </StyledSelect>
-        <IoChevronDown className="chevron" />
+        <IoChevronDown className='chevron' />
       </SelectWrap>
     );
   };
@@ -466,21 +504,26 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
     },
     {
       icon: <IoRefreshOutline />,
-      label: 'Other',
+      label: 'Data',
       keys: ['restoreDefaultPreferences', 'clearContinueWatching'],
     },
   ];
 
   return (
     <Wrapper>
-      <Inner>
-        <Header>
-          <BackBtn onClick={handleGoback} aria-label="Go back">
-            <IoArrowBack />
-          </BackBtn>
+      <Header>
+        <HeaderLeft>
+          <HeaderIcon><IoRefreshOutline /></HeaderIcon>
           <PageTitle>Settings</PageTitle>
-        </Header>
+        </HeaderLeft>
+        {onClose && (
+          <CloseBtn onClick={handleClose} aria-label='Close settings'>
+            <IoClose />
+          </CloseBtn>
+        )}
+      </Header>
 
+      <Inner>
         {sections.map((section) => (
           <Card key={section.label}>
             <SectionHeader>
@@ -489,12 +532,12 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             </SectionHeader>
 
             {section.keys.map((key, i) => (
-              <Row key={key} last={i === section.keys.length - 1}>
+              <Row key={key} $last={i === section.keys.length - 1}>
                 <RowLeft>
                   <RowIcon>{rowIcon[key]}</RowIcon>
                   <RowName>{label[key]}</RowName>
                 </RowLeft>
-                {renderControl(key, i === section.keys.length - 1)}
+                {renderControl(key)}
               </Row>
             ))}
           </Card>
