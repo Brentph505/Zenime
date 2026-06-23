@@ -4,11 +4,12 @@ import { FaPlay } from 'react-icons/fa';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import 'swiper/swiper-bundle.css';
 import { useNavigate } from 'react-router-dom';
-import { SkeletonSlide, Anime } from '../../index';
+import { SkeletonSlide, Anime, useTitleWithSubtitle } from '../../index';
 import { TbCards } from 'react-icons/tb';
 import { FaStar } from 'react-icons/fa';
 import { FaClock } from 'react-icons/fa6';
 import { FaInfoCircle } from 'react-icons/fa';
+import { useSettings } from '../Profile/SettingsProvider';
 
 const StyledSwiperContainer = styled(Swiper)`
   position: relative;
@@ -334,6 +335,7 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
   error,
 }) => {
   const navigate = useNavigate();
+  const { settings } = useSettings();
 
   const handlePlayButtonClick = (id: string) => {
     navigate(`/watch/${id}`);
@@ -341,6 +343,20 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
 
   const handleDetailButtonClick = (id: string) => {
     navigate(`/info/${id}`);
+  };
+
+  const getTitleForCarousel = (titleObj: any): string => {
+    const english = titleObj.english || '';
+    const romaji = titleObj.romaji || '';
+    const native = titleObj.native || '';
+
+    if (settings.titleLanguage.includes('English')) {
+      return english || romaji || '';
+    } else if (settings.titleLanguage.includes('Native')) {
+      return native || romaji || english || '';
+    } else {
+      return romaji || english || '';
+    }
   };
 
   const truncateTitle = (title: string, maxLength: number = 40): string => {
@@ -411,7 +427,7 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
                 />
                 <ContentWrapper>
                   <SlideContent>
-                    <SlideTitle>{truncateTitle(title.english)}</SlideTitle>
+                    <SlideTitle>{truncateTitle(getTitleForCarousel(title))}</SlideTitle>
                     <SlideInfo>
                       {type && <SlideInfoItem>{type}</SlideInfoItem>}
                       {totalEpisodes && (
