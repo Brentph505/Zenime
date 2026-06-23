@@ -9,17 +9,11 @@
  */
 
 import { useMangaBookmarkSync } from '../hooks/useMangaBookmarkSync';
-import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
-import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
+// import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
+// import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
 
 export function MangaSyncActivator() {
-  // Activate anime episode progress sync
-  useAnimeProgressSync();
-
-  // Activate AniList history sync on login
-  useSyncAniListHistory();
-
-  // Activate manga bookmark sync
+  // Activate manga bookmark sync (anime sync disabled temporarily due to crash)
   useMangaBookmarkSync();
   
   // This component doesn't render anything

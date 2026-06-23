@@ -8,7 +8,7 @@
  * Renders nothing when the user is not logged in.
  */
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { useAuth, useAniListEntry } from '../../index';
@@ -24,11 +24,20 @@ const T = {
   border: 'var(--global-border, rgba(255,255,255,0.08))',
 };
 
-const STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+const ANIME_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
   { value: 'CURRENT',   label: 'Watching'      },
   { value: 'PLANNING',  label: 'Plan to Watch' },
   { value: 'COMPLETED', label: 'Completed'     },
   { value: 'REPEATING', label: 'Re-watching'   },
+  { value: 'PAUSED',    label: 'Paused'        },
+  { value: 'DROPPED',   label: 'Dropped'       },
+];
+
+const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+  { value: 'CURRENT',   label: 'Reading'       },
+  { value: 'PLANNING',  label: 'Plan to Read'  },
+  { value: 'COMPLETED', label: 'Completed'     },
+  { value: 'REPEATING', label: 'Re-reading'    },
   { value: 'PAUSED',    label: 'Paused'        },
   { value: 'DROPPED',   label: 'Dropped'       },
 ];
@@ -91,24 +100,7 @@ const Select = styled.select`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-const ScoreInput = styled.input`
-  width: 4.2rem;
-  height: 2.05rem;
-  padding: 0 0.5rem;
-  background: ${T.card};
-  color: ${T.text};
-  border: 1px solid ${T.border};
-  border-radius: 6px;
-  font-size: 0.8rem;
-  text-align: center;
-  outline: none;
-  &:hover { border-color: ${T.accent}; }
-  &:focus { border-color: ${T.accent}; }
-  &:disabled { opacity: 0.5; cursor: not-allowed; }
-  &::-webkit-outer-spin-button,
-  &::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  -moz-appearance: textfield;
-`;
+
 
 const Hint = styled.p`
   margin: 0;
@@ -119,43 +111,14 @@ const Hint = styled.p`
 export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME' }) => {
   const { isLoggedIn } = useAuth();
   const {
-    loading, inList, status, score, isFavourite, saving,
-    setStatus, setScore, toggleFavourite,
+    loading, inList, status, isFavourite, saving,
+    setStatus, toggleFavourite,
   } = useAniListEntry(mediaId, isLoggedIn);
-
-  // Local input mirror so typing the score doesn't fight the hook state.
-  const [scoreText, setScoreText] = useState(String(score || ''));
-  useEffect(() => { setScoreText(score ? String(score) : ''); }, [score]);
 
   if (!isLoggedIn) return null;
 
   const isManga = type === 'MANGA';
-  const watchingLabel = isManga ? 'Reading' : 'Watching';
-  const statusLabel = isManga
-    ? STATUS_OPTIONS.map((o) => o.value === 'CURRENT'
-        ? { ...o, label: 'Reading' } : o)
-    : STATUS_OPTIONS;
-
-  const commitScore = () => {
-    const trimmed = scoreText.trim();
-    // Empty → clear the score send 0 / no-op.
-    if (trimmed === '') {
-      setScoreText(score ? String(score) : '');
-      return;
-    }
-    const n = parseFloat(trimmed);
-    if (Number.isNaN(n)) {
-      // Invalid input — revert to the last confirmed score.
-      setScoreText(score ? String(score) : '');
-      return;
-    }
-    const clamped = Math.max(0, Math.min(100, Math.round(n)));
-    setScoreText(String(clamped));
-    // Avoid a redundant save when the value is unchanged.
-    if (clamped !== score) {
-      void setScore(clamped);
-    }
-  };
+  const statusOptions = isManga ? MANGA_STATUS_OPTIONS : ANIME_STATUS_OPTIONS;
 
   return (
     <Wrap>
@@ -185,28 +148,13 @@ export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME
           <option value='' disabled>
             {inList ? `${status}…` : 'Add to list'}
           </option>
-          {statusLabel.map(({ value, label }) => (
+          {statusOptions.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
         </Select>
-
-        <ScoreInput
-          type='number'
-          min={0}
-          max={100}
-          step={1}
-          value={scoreText}
-          placeholder='0'
-          disabled={loading || saving}
-          onChange={(e) => setScoreText(e.target.value)}
-          onBlur={commitScore}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-          title={`Score (0–100, AniList scale) — currently ${watchingLabel}`}
-          aria-label='AniList score'
-        />
       </Row>
 
-      {loading && <Hint>Loading your {isManga ? 'reading' : 'list'} status…</Hint>}
+      {loading && <Hint>Loading your {isManga ? 'reading' : 'watch'} status…</Hint>}
     </Wrap>
   );
 };

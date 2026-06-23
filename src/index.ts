@@ -57,7 +57,6 @@ export * from './hooks/useCountdown';
 export { useUserAnimeList } from './hooks/useUserAnimeList';
 export { useAniListEntry } from './hooks/useAniListEntry';
 export { useNotifications } from './hooks/useNotifications';
-export { useTitle } from './hooks/useTitle';
 export { useTitleWithSubtitle } from './hooks/useTitleWithSubtitle';
 export { useCharacterName } from './hooks/useCharacterName';
 export { useMangaBookmarkSync } from './hooks/useMangaBookmarkSync';
