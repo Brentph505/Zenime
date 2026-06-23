@@ -26,6 +26,7 @@ const Button = styled.button<{ $active?: boolean }>`
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
   border: 1px solid
     ${({ $active }) => ($active ? 'var(--primary-accent)' : 'var(--global-border)')};
   border-radius: var(--global-border-radius, 6px);
@@ -51,6 +52,14 @@ const Button = styled.button<{ $active?: boolean }>`
   &:focus-visible {
     outline: none;
     border-color: var(--primary-accent);
+  }
+
+  @media (max-width: 860px) {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.75rem;
+    svg {
+      font-size: 0.8rem;
+    }
   }
 `;
 
