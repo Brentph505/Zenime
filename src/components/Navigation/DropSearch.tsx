@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { Anime } from '../../index';
+import { useTitleWithSubtitle } from '../../hooks/useTitleWithSubtitle';
 import { FaArrowRight, FaStar } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
 import { BsArrowUpSquare, BsArrowDownSquare } from 'react-icons/bs';
@@ -129,6 +130,46 @@ interface Props {
   containerWidth: number;
 }
 
+interface SearchItemProps {
+  result: Anime;
+  isSelected: boolean;
+  onSelect: () => void;
+}
+
+const SearchResultItem: React.FC<SearchItemProps> = ({ result, isSelected, onSelect }) => {
+  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(result.title);
+
+  return (
+    <Item
+      title={displayTitle}
+      $isSelected={isSelected}
+      onClick={onSelect}
+      role='listitem'
+    >
+      <Image
+        src={result.image || ''}
+        alt={displayTitle || 'n/a'}
+      />
+      <div>
+        <Title>
+          {displayTitle || 'n/a'}
+        </Title>
+        <Details $isSelected={isSelected}>
+          <span>&nbsp;{result.type}</span>
+          <span>&nbsp;&nbsp;</span>
+          <TbCards color='#' />
+          <span>&nbsp;</span>
+          <span>{result.totalEpisodes || 'N/A'}&nbsp;</span>
+          <FaStar color='#' />
+          <span>&nbsp;</span>
+          <span>{result.rating ? result.rating / 10 : 'N/A'}&nbsp;</span>
+          <span>&nbsp;&nbsp;</span>
+        </Details>
+      </div>
+    </Item>
+  );
+};
+
 export const DropDownSearch: React.FC<Props> = ({
   searchResults,
   onClose,
@@ -203,37 +244,15 @@ export const DropDownSearch: React.FC<Props> = ({
       role='list'
     >
       {searchResults.map((result, index) => (
-        <Item
+        <SearchResultItem
           key={result.id}
-          title={result.title.english || result.title.romaji}
-          $isSelected={index === selectedIndex}
-          onClick={() => {
+          result={result}
+          isSelected={index === selectedIndex}
+          onSelect={() => {
             onClose();
             navigate(`/watch/${result.id}`);
           }}
-          role='listitem'
-        >
-          <Image
-            src={result.image || ''}
-            alt={result.title?.english || result.title?.romaji || 'n/a'}
-          />
-          <div>
-            <Title>
-              {result.title?.english || result.title?.romaji || 'n/a'}
-            </Title>
-            <Details $isSelected={index === selectedIndex}>
-              <span>&nbsp;{result.type}</span>
-              <span>&nbsp;&nbsp;</span>
-              <TbCards color='#' />
-              <span>&nbsp;</span>
-              <span>{result.totalEpisodes || 'N/A'}&nbsp;</span>
-              <FaStar color='#' />
-              <span>&nbsp;</span>
-              <span>{result.rating ? result.rating / 10 : 'N/A'}&nbsp;</span>
-              <span>&nbsp;&nbsp;</span>
-            </Details>
-          </div>
-        </Item>
+        />
       ))}
       <div>
         <ViewAllItem

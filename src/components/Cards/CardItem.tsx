@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { StatusIndicator, type Anime } from '../../index';
+import { useTitleWithSubtitle } from '../../hooks/useTitleWithSubtitle';
 import { FaPlay, FaInfoCircle } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
@@ -208,10 +209,7 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
 
   const imageSrc = anime.image || '';
 
-  const displayTitle = useMemo(
-    () => anime.title.english || anime.title.romaji || 'No Title',
-    [anime.title.english, anime.title.romaji],
-  );
+  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(anime.title);
 
   const truncateTitle = useMemo(
     () => (title: string, maxLength: number) =>
@@ -289,9 +287,11 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
         </TitleContainer>
 
         <div>
-          <CardDetails title='Romaji Title'>
-            {truncateTitle(anime.title.romaji || '', 24)}
-          </CardDetails>
+          {displaySubtitle && (
+            <CardDetails title='Subtitle'>
+              {truncateTitle(displaySubtitle, 24)}
+            </CardDetails>
+          )}
           <CardDetails title='Card Details'>
             {anime.releaseDate && (
               <>

@@ -383,7 +383,6 @@ const Watch: React.FC = () => {
   const [sourceType, setSourceType] = useState<string>('');
   const [downloadLink, setDownloadLink] = useState('');
   const [availableServers, setAvailableServers] = useState<string[]>([]);
-  const [hasFetchedServers, setHasFetchedServers] = useState<boolean>(false);
   const [serverEntries, setServerEntries] = useState<
     Array<{ name: string; url: string; type: string; provider?: string }>
   >([]);
@@ -835,7 +834,6 @@ const Watch: React.FC = () => {
     if (currentEpisode.id && currentEpisode.id !== '0') {
       setSourceType('');
       setAvailableServers([]);
-      setHasFetchedServers(false);
       setServerEntries([]);
       setEmbeddedUrl('');
       setServerUrl('');
@@ -849,8 +847,6 @@ const Watch: React.FC = () => {
     if (!currentEpisode.id || currentEpisode.id === '0') return;
 
     const fetchAvailableServers = async () => {
-      setHasFetchedServers(false);
-
       const episodesByProvider: Record<string, string> = {};
       if (currentEpisode.providers && Object.keys(currentEpisode.providers).length > 0) {
         Object.entries(currentEpisode.providers).forEach(([provider, data]) => {
@@ -874,7 +870,6 @@ const Watch: React.FC = () => {
       if (providerList.length === 0) {
         console.warn('[Watch] No providers available for this episode');
         setAvailableServers([]);
-        setHasFetchedServers(true);
         return;
       }
 
@@ -1052,8 +1047,6 @@ const Watch: React.FC = () => {
         await Promise.all(providerFetches);
       } catch (err) {
         console.error('[Watch] Error fetching servers from multiple providers:', err);
-      } finally {
-        setHasFetchedServers(true);
       }
     };
 

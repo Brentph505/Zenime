@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Link } from 'react-router-dom';
 import { fetchAiringSchedule, AniListAiringItem } from '../../hooks/useApi';
+import { useTitleWithSubtitle } from '../../hooks/useTitleWithSubtitle';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -14,6 +15,7 @@ interface ScheduleItem {
   title: string;
   englishTitle: string | null;
   romajiTitle: string;
+  nativeTitle: string;
   image: string;
   color: string | null;
   type: string;
@@ -21,6 +23,11 @@ interface ScheduleItem {
   rating: number | null;
   genres: string[];
   countryOfOrigin: string;
+  titleObj: {
+    english: string | null;
+    romaji: string;
+    native?: string;
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -78,6 +85,7 @@ function mapToScheduleItem(raw: AniListAiringItem): ScheduleItem {
     title: media.title.userPreferred || media.title.romaji || 'Unknown',
     englishTitle: media.title.english ?? null,
     romajiTitle: media.title.romaji || 'Unknown',
+    nativeTitle: media.title.native || 'Unknown',
     image: media.coverImage.large || media.coverImage.medium || '',
     color: media.coverImage.color ?? null,
     type: media.type ?? 'ANIME',
@@ -85,6 +93,11 @@ function mapToScheduleItem(raw: AniListAiringItem): ScheduleItem {
     rating: media.averageScore ?? null,
     genres: media.genres ?? [],
     countryOfOrigin: media.countryOfOrigin ?? '',
+    titleObj: {
+      english: media.title.english ?? null,
+      romaji: media.title.romaji || 'Unknown',
+      native: media.title.native || undefined,
+    },
   };
 }
 
@@ -512,6 +525,28 @@ const RatingLabel = styled.span`
 const DAY_OFFSETS = [0, 1, 2, 3, 4, 5, 6]; // 0 = today … 6 = 6 days from now
 const MOBILE_LIMIT = 6;
 
+interface ScheduleItemCardProps {
+  item: ScheduleItem;
+}
+
+/**
+ * Wrapper component to render a single schedule item with language-aware titles
+ */
+const ScheduleItemCard: React.FC<ScheduleItemCardProps> = ({ item }) => {
+  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(item.titleObj as any);
+
+  return (
+    <>
+      <AnimeTitleEnglish>
+        {displayTitle}
+      </AnimeTitleEnglish>
+      {displaySubtitle && (
+        <AnimeTitleRomaji>{displaySubtitle}</AnimeTitleRomaji>
+      )}
+    </>
+  );
+};
+
 export default function AnimeSchedule() {
   const [activeDayOffset, setActiveDayOffset] = useState<number>(0);
   const [showAll, setShowAll] = useState(false);
@@ -632,12 +667,7 @@ export default function AnimeSchedule() {
 
                 {/* Title + meta */}
                 <ContentWrapper>
-                  <AnimeTitleEnglish>
-                    {item.englishTitle || item.title}
-                  </AnimeTitleEnglish>
-                  {item.romajiTitle !== (item.englishTitle || item.title) && (
-                    <AnimeTitleRomaji>{item.romajiTitle}</AnimeTitleRomaji>
-                  )}
+                  <ScheduleItemCard item={item} />
                   <EpisodeInfo>
                     <EpisodeBadge>Ep {item.episode}</EpisodeBadge>
                     <TypeBadge>{item.format || item.type}</TypeBadge>

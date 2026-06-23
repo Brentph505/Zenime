@@ -22,18 +22,29 @@ import {
   usePreserveScrollOnReload,
   Callback,
   ApolloClientProvider,
-  Settings,
   SettingsProvider,
   Info,
   Studio,
   History,
+  useSettings,
 } from './index';
+import { MangaSyncActivator } from './components/MangaSyncActivator';
 import { register } from 'swiper/element/bundle';
 import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './client/useAuth';
 import ReactGA from 'react-ga4';
 
 register();
+
+// Wrapper component to show Watch or Info page based on settings
+function WatchInfoPage() {
+  const { settings } = useSettings();
+  
+  if (settings.watchOrInfo === 'Info') {
+    return <Info />;
+  }
+  return <Watch />;
+}
 
 function App() {
   usePreserveScrollOnReload();
@@ -52,6 +63,7 @@ function App() {
         <AuthProvider>
           <ThemeProvider>
             <SettingsProvider>
+              <MangaSyncActivator />
               <Navbar />
               <ShortcutsPopup />
               <ScrollToTop />
@@ -61,10 +73,10 @@ function App() {
                   <Route path='/' element={<Home />} />
                   <Route path='/home' element={<Home />} />
                   <Route path='/search' element={<Search />} />
-                  <Route path='/watch/:animeId' element={<Watch />} />
+                  <Route path='/watch/:animeId' element={<WatchInfoPage />} />
                   <Route
                     path='/watch/:animeId/:animeTitle/:episodeNumber'
-                    element={<Watch />}
+                    element={<WatchInfoPage />}
                   />
                   <Route path='/info/:animeId' element={<Info />} />
                   <Route path='/read/:animeId' element={<Read />} />

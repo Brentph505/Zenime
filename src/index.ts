@@ -57,6 +57,12 @@ export * from './hooks/useCountdown';
 export { useUserAnimeList } from './hooks/useUserAnimeList';
 export { useAniListEntry } from './hooks/useAniListEntry';
 export { useNotifications } from './hooks/useNotifications';
+export { useTitle } from './hooks/useTitle';
+export { useTitleWithSubtitle } from './hooks/useTitleWithSubtitle';
+export { useCharacterName } from './hooks/useCharacterName';
+export { useMangaBookmarkSync } from './hooks/useMangaBookmarkSync';
+export { useAnimeProgressSync } from './hooks/useAnimeProgressSync';
+export { useSyncAniListHistory } from './hooks/useSyncAniListHistory';
 
 // * ==== Client ====
 export { ApolloClientProvider } from './client/ApolloClient';

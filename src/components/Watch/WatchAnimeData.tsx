@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useNavigate, Link } from 'react-router-dom';
-import { Seasons, Anime } from '../../index';
+import { Seasons, Anime, useTitleWithSubtitle } from '../../index';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import { FaExternalLinkAlt } from 'react-icons/fa';
 
@@ -341,6 +341,7 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
   const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
+  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(animeData.title);
 
   const getAnimeIdFromUrl = () => {
     const pathParts = window.location.pathname.split('/');
@@ -464,18 +465,16 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
             <AnimeDataText>
               <>
                 <p className='anime-title'>
-                  {animeData.title.english
-                    ? animeData.title.english
-                    : animeData.title.romaji}
+                  {displayTitle}
                 </p>
-                <p
-                  className='anime-title-romaji'
-                  style={{ color: animeData.color }}
-                >
-                  {animeData.title.romaji
-                    ? animeData.title.romaji
-                    : animeData.title.native}
-                </p>
+                {displaySubtitle && (
+                  <p
+                    className='anime-title-romaji'
+                    style={{ color: animeData.color }}
+                  >
+                    {displaySubtitle}
+                  </p>
+                )}
               </>
               {!isScreenUnder500px() && animeData.description && (
                 <AnimeDataText>

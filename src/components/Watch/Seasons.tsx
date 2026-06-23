@@ -2,6 +2,7 @@ import React from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { Relation } from '../../index';
+import { useTitleWithSubtitle } from '../../hooks/useTitleWithSubtitle';
 
 const SeasonCardContainer = styled.div`
   display: grid;
@@ -89,6 +90,33 @@ const RelationType = styled.div`
   margin-bottom: 0.5rem;
 `;
 
+interface SeasonCardItemProps {
+  relation: Relation;
+}
+
+const SeasonCardItem: React.FC<SeasonCardItemProps> = ({ relation }) => {
+  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(relation.title);
+
+  return (
+    <SeasonCard
+      to={`/watch/${relation.id}`}
+      title={`Watch ${displayTitle}`}
+      aria-label={`Watch ${displayTitle}`}
+      style={{ backgroundImage: `url(${relation.image})` }}
+    >
+      <img
+        src={relation.image}
+        alt={`${displayTitle} Cover`}
+        style={{ display: 'none' }}
+      />
+      <Content>
+        <RelationType>{relation.relationType}</RelationType>
+        <SeasonName>{displayTitle}</SeasonName>
+      </Content>
+    </SeasonCard>
+  );
+};
+
 export const Seasons: React.FC<{ relations: Relation[] }> = ({ relations }) => {
   const sortedRelations = [...relations].sort((a, b) => {
     if (a.relationType === 'PREQUEL' && b.relationType !== 'PREQUEL') return -1;
@@ -99,27 +127,7 @@ export const Seasons: React.FC<{ relations: Relation[] }> = ({ relations }) => {
   return (
     <SeasonCardContainer>
       {sortedRelations.map((relation) => (
-        <SeasonCard
-          key={relation.id}
-          to={`/watch/${relation.id}`}
-          title={`Watch ${relation.title.english || relation.title.romaji || relation.title.userPreferred}`}
-          aria-label={`Watch ${relation.title.english || relation.title.romaji || relation.title.userPreferred}`}
-          style={{ backgroundImage: `url(${relation.image})` }}
-        >
-          <img
-            src={relation.image}
-            alt={`${relation.title.english || relation.title.romaji || relation.title.userPreferred} Cover`}
-            style={{ display: 'none' }}
-          />
-          <Content>
-            <RelationType>{relation.relationType}</RelationType>
-            <SeasonName>
-              {relation.title.english ||
-                relation.title.romaji ||
-                relation.title.userPreferred}
-            </SeasonName>
-          </Content>
-        </SeasonCard>
+        <SeasonCardItem key={relation.id} relation={relation} />
       ))}
     </SeasonCardContainer>
   );

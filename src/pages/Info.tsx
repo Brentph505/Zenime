@@ -16,6 +16,8 @@ import {
   Anime,
   Manga,
   CardItem as AnimeCardItem,
+  useTitleWithSubtitle,
+  useCharacterName,
 } from '../index';
 import { saveLastMangaVisited, addReadChapterIfMissing } from '../lib/mangaHistory';
 import { ListActions } from '../components/Info/ListActions';
@@ -888,6 +890,24 @@ const ProviderButton = styled.button<{ $active?: boolean }>`
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+interface CharacterCardComponentProps {
+  character: any;
+}
+
+const CharacterCardComponent: React.FC<CharacterCardComponentProps> = ({ character }) => {
+  const displayName = useCharacterName(character.name);
+  
+  return (
+    <CharCard>
+      <CharImg src={character.image} alt={displayName} />
+      <div style={{ minWidth: 0 }}>
+        <CharName>{displayName}</CharName>
+        <CharRole>{character.role}</CharRole>
+      </div>
+    </CharCard>
+  );
+};
+
 const Info: React.FC = () => {
   const { animeId } = useParams<{ animeId?: string }>();
   const navigate    = useNavigate();
@@ -902,6 +922,10 @@ const Info: React.FC = () => {
   const [animeInfo, setAnimeInfo] = useState<Anime & Partial<Manga> | null>(null);
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
+  
+  // Call hook unconditionally at the top level, before any conditional renders
+  const titleDisplay = useTitleWithSubtitle(animeInfo?.title);
+  
   const [activeTab, setActiveTab] = useState<InfoTab>('overview');
   const [selectedEpisodeId] = useState<string | null>(null);
 
@@ -1198,10 +1222,10 @@ const Info: React.FC = () => {
   // Update document title
   useEffect(() => {
     if (animeInfo?.title) {
-      const name = animeInfo.title.english || animeInfo.title.romaji || '';
-      document.title = name ? `${name} · Zenime` : 'Zenime';
+      const displayName = animeInfo.title.english || animeInfo.title.romaji || '';
+      document.title = displayName ? `${displayName} · Zenime` : 'Zenime';
     }
-  }, [animeInfo]);
+  }, [animeInfo?.title]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -1266,8 +1290,8 @@ const Info: React.FC = () => {
   const mediaInfo   = animeInfo as Anime & Partial<Manga>;
   const banner      = mediaInfo.cover || mediaInfo.image;
   const cover       = mediaInfo.image;
-  const title       = mediaInfo.title.english || mediaInfo.title.romaji || '';
-  const romaji      = mediaInfo.title.romaji;
+  const title       = titleDisplay.title || '';
+  const romaji      = titleDisplay.subtitle;
 
   // Determine final display type — use mediaType state (driven by URL) as
   // the primary signal, but allow AniList `type` field to distinguish between
@@ -1533,13 +1557,7 @@ const Info: React.FC = () => {
                 {animeInfo.characters?.length > 0 ? (
                   <CharGrid>
                     {animeInfo.characters.slice(0, 24).map(c => (
-                      <CharCard key={c.id}>
-                        <CharImg src={c.image} alt={c.name.userPreferred} />
-                        <div style={{ minWidth: 0 }}>
-                          <CharName>{c.name.userPreferred}</CharName>
-                          <CharRole>{c.role}</CharRole>
-                        </div>
-                      </CharCard>
+                      <CharacterCardComponent key={c.id} character={c} />
                     ))}
                   </CharGrid>
                 ) : <Desc>No character data available.</Desc>}

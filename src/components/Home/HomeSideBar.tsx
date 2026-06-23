@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { TbCards } from 'react-icons/tb';
 import { FaStar, FaCalendarAlt } from 'react-icons/fa';
 import { Anime, StatusIndicator } from '../../index';
+import { useTitleWithSubtitle } from '../../hooks/useTitleWithSubtitle';
 
 const SidebarStyled = styled.div`
   transition: 0.2s ease-in-out;
@@ -128,6 +129,62 @@ const Details = styled.p`
   }
 `;
 
+// Sub-component to use useTitleWithSubtitle hook for each anime
+const SideBarAnimeCard: React.FC<{ anime: Anime; index: number }> = ({ anime, index }) => {
+  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(anime.title);
+
+  return (
+    <Link
+      to={`/watch/${anime.id}`}
+      key={anime.id}
+      style={{ textDecoration: 'none', color: 'inherit' }}
+      title={`${displayTitle}`}
+      aria-label={`Watch ${displayTitle}`}
+    >
+      <AnimeCard
+        $backgroundImage={anime.image}
+        style={{ animationDelay: `${index * 0.1}s` }}
+      >
+        <AnimeImageStyled
+          src={anime.image}
+          alt={displayTitle}
+        />
+        <InfoStyled>
+          <TitleWithDot>
+            <StatusIndicator status={anime.status} />
+            <Title>{displayTitle}</Title>
+          </TitleWithDot>
+          <Details>
+            {anime.type && <>{anime.type}</>}
+            {anime.releaseDate && (
+              <>
+                <FaCalendarAlt /> {anime.releaseDate}
+              </>
+            )}
+            {anime.currentEpisode !== null &&
+              anime.currentEpisode !== undefined &&
+              anime.totalEpisodes !== null &&
+              anime.totalEpisodes !== undefined &&
+              anime.totalEpisodes !== 0 &&
+              anime.totalEpisodes !== 0 && (
+                <>
+                  <TbCards /> {String(anime.currentEpisode).split('-')[0]}
+                  {' / '}
+                  {anime.totalEpisodes}
+                </>
+              )}
+            {anime.rating && (
+              <>
+                <FaStar /> {anime.rating}
+              </>
+            )}
+          </Details>
+        </InfoStyled>
+      </AnimeCard>
+    </Link>
+  );
+};
+
 export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
   animeData,
 }) => {
@@ -147,54 +204,7 @@ export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
   return (
     <SidebarStyled>
       {displayedAnime.map((anime: Anime, index) => (
-        <Link
-          to={`/watch/${anime.id}`}
-          key={anime.id}
-          style={{ textDecoration: 'none', color: 'inherit' }}
-          title={`${anime.title.userPreferred}`}
-          aria-label={`Watch ${anime.title.userPreferred}`}
-        >
-          <AnimeCard
-            $backgroundImage={anime.image}
-            style={{ animationDelay: `${index * 0.1}s` }}
-          >
-            <AnimeImageStyled
-              src={anime.image}
-              alt={anime.title.userPreferred}
-            />
-            <InfoStyled>
-              <TitleWithDot>
-                <StatusIndicator status={anime.status} />
-                <Title>{anime.title.english || anime.title.romaji}</Title>
-              </TitleWithDot>
-              <Details>
-                {anime.type && <>{anime.type}</>}
-                {anime.releaseDate && (
-                  <>
-                    <FaCalendarAlt /> {anime.releaseDate}
-                  </>
-                )}
-                {anime.currentEpisode !== null &&
-                  anime.currentEpisode !== undefined &&
-                  anime.totalEpisodes !== null &&
-                  anime.totalEpisodes !== undefined &&
-                  anime.totalEpisodes !== 0 &&
-                  anime.totalEpisodes !== 0 && (
-                    <>
-                      <TbCards /> {String(anime.currentEpisode).split('-')[0]}
-                      {' / '}
-                      {anime.totalEpisodes}
-                    </>
-                  )}
-                {anime.rating && (
-                  <>
-                    <FaStar /> {anime.rating}
-                  </>
-                )}
-              </Details>
-            </InfoStyled>
-          </AnimeCard>
-        </Link>
+        <SideBarAnimeCard key={anime.id} anime={anime} index={index} />
       ))}
     </SidebarStyled>
   );

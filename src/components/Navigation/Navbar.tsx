@@ -374,12 +374,13 @@ export const Navbar = () => {
   const navbarRef = useRef(null);
   const dropdownRef = useRef<HTMLDivElement>(null); // Ref for the dropdown container
   const [searchResults, setSearchResults] = useState<Anime[]>([]);
-  const debounceTimeout = useRef<Timer | null>(null);
+  const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
   // ── Profile dropdown + notifications panel state ──
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+  const profileButtonRef = useRef<HTMLDivElement>(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notificationsClosing, setNotificationsClosing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -586,19 +587,13 @@ export const Navbar = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  //navigate to profile
-  const navigateToProfile = () => {
-    // Check if the current location's pathname is not '/profile' before navigating
-    if (location.pathname !== '/profile') {
-      navigate('/profile');
-    }
-  };
-
   // ── Profile dropdown: close on outside click ──
   useEffect(() => {
     if (!profileMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+      const isClickOnButton = profileButtonRef.current && profileButtonRef.current.contains(e.target as Node);
+      const isClickOnMenu = profileMenuRef.current && profileMenuRef.current.contains(e.target as Node);
+      if (!isClickOnButton && !isClickOnMenu) {
         setProfileMenuOpen(false);
       }
     };
@@ -715,12 +710,9 @@ export const Navbar = () => {
               <StyledButton onClick={toggleTheme} aria-label='Toggle Dark Mode'>
                 {isDarkMode ? <FiSun /> : <FiMoon />}
               </StyledButton>
-              <ProfileButtonWrap>
+              <ProfileButtonWrap ref={profileButtonRef}>
                 <StyledButton
-                  onClick={() => {
-                    if (isLoggedIn) setProfileMenuOpen((o) => !o);
-                    else navigateToProfile();
-                  }}
+                  onClick={() => setProfileMenuOpen((o) => !o)}
                   aria-label='Profile'
                   aria-expanded={profileMenuOpen}
                 >
@@ -748,41 +740,58 @@ export const Navbar = () => {
                   </NotifBadge>
                 )}
 
-                {profileMenuOpen && isLoggedIn && (
-                  <ProfileMenu ref={profileMenuRef} role='menu'>
-                    <ProfileMenuHeader>
-                      <ProfileMenuAvatar
-                        src={userData?.avatar.large}
-                        alt={userData?.name ?? 'avatar'}
-                      />
-                      <ProfileMenuName>
-                        <ProfileMenuUsername>{userData?.name ?? 'User'}</ProfileMenuUsername>
-                        <ProfileMenuSub>AniList Member</ProfileMenuSub>
-                      </ProfileMenuName>
-                    </ProfileMenuHeader>
+                {profileMenuOpen && (
+                  <ProfileMenu ref={profileMenuRef} role='menu' onClick={(e) => e.stopPropagation()}>
+                    {isLoggedIn && userData ? (
+                      <>
+                        <ProfileMenuHeader>
+                          <ProfileMenuAvatar
+                            src={userData.avatar.large}
+                            alt={userData.name}
+                          />
+                          <ProfileMenuName>
+                            <ProfileMenuUsername>{userData.name}</ProfileMenuUsername>
+                            <ProfileMenuSub>AniList Member</ProfileMenuSub>
+                          </ProfileMenuName>
+                        </ProfileMenuHeader>
 
-                    <ProfileMenuItem
-                      onClick={() => { setProfileMenuOpen(false); navigate('/profile'); }}
-                    >
-                      <FiUser /> Profile
-                    </ProfileMenuItem>
-                    <ProfileMenuItem
-                      onClick={() => { setProfileMenuOpen(false); setSettingsOpen(true); }}
-                    >
-                      <FiSettings /> Settings
-                    </ProfileMenuItem>
-                    <ProfileMenuItem onClick={openNotifications}>
-                      <FiBell /> Notifications
-                      {unreadNotifications > 0 && (
-                        <ProfileMenuItemBadge>
-                          {unreadNotifications > 99 ? '99+' : unreadNotifications}
-                        </ProfileMenuItemBadge>
-                      )}
-                    </ProfileMenuItem>
-                    <ProfileMenuDivider />
-                    <ProfileMenuItem $danger onClick={() => { setProfileMenuOpen(false); logout(); }}>
-                      <FiLogOut /> Log out
-                    </ProfileMenuItem>
+                        <ProfileMenuItem
+                          onClick={() => { setProfileMenuOpen(false); navigate('/profile'); }}
+                        >
+                          <FiUser /> Profile
+                        </ProfileMenuItem>
+                        <ProfileMenuItem onClick={openNotifications}>
+                          <FiBell /> Notifications
+                          {unreadNotifications > 0 && (
+                            <ProfileMenuItemBadge>
+                              {unreadNotifications > 99 ? '99+' : unreadNotifications}
+                            </ProfileMenuItemBadge>
+                          )}
+                        </ProfileMenuItem>
+                        <ProfileMenuItem
+                          onClick={() => { setProfileMenuOpen(false); setSettingsOpen(true); }}
+                        >
+                          <FiSettings /> Settings
+                        </ProfileMenuItem>
+                        <ProfileMenuDivider />
+                        <ProfileMenuItem $danger onClick={() => { setProfileMenuOpen(false); logout(); }}>
+                          <FiLogOut /> Log out
+                        </ProfileMenuItem>
+                      </>
+                    ) : (
+                      <>
+                        <ProfileMenuItem
+                          onClick={() => { setProfileMenuOpen(false); navigate('/profile'); }}
+                        >
+                          <FiUser /> Log in
+                        </ProfileMenuItem>
+                        <ProfileMenuItem
+                          onClick={() => { setProfileMenuOpen(false); setSettingsOpen(true); }}
+                        >
+                          <FiSettings /> Settings
+                        </ProfileMenuItem>
+                      </>
+                    )}
                   </ProfileMenu>
                 )}
               </ProfileButtonWrap>

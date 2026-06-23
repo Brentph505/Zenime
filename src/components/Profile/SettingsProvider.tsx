@@ -15,6 +15,10 @@ interface SettingsContextType {
     defaultLanguage: string;
     defaultServers: string;
     aniListSync: boolean;
+    syncThreshold: number;
+    watchOrInfo: 'Watch' | 'Info';
+    titleLanguage: string;
+    characterNameLanguage: string;
   };
   setSettings: (settings: Partial<SettingsContextType['settings']>) => void;
 }
@@ -46,6 +50,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
      defaultLanguage: localStorage.getItem('defaultLanguage') || 'sub',
      defaultServers: localStorage.getItem('defaultServers') || 'default',
      aniListSync: localStorage.getItem('aniListSync') === 'true',
+     syncThreshold: Number(localStorage.getItem('syncThreshold')) || 80,
+     watchOrInfo: (localStorage.getItem('watchOrInfo') as 'Watch' | 'Info') || 'Watch',
+     titleLanguage: localStorage.getItem('titleLanguage') || 'Romaji',
+     characterNameLanguage: localStorage.getItem('characterNameLanguage') || 'Romaji',
    });
 
   useEffect(() => {
@@ -57,6 +65,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
     localStorage.setItem('defaultLanguage', settings.defaultLanguage);
     localStorage.setItem('defaultServers', settings.defaultServers);
     localStorage.setItem('aniListSync', settings.aniListSync ? 'true' : 'false');
+    localStorage.setItem('syncThreshold', String(settings.syncThreshold));
+    localStorage.setItem('watchOrInfo', settings.watchOrInfo);
+    localStorage.setItem('titleLanguage', settings.titleLanguage);
+    localStorage.setItem('characterNameLanguage', settings.characterNameLanguage);
   }, [settings]);
 
   const setSettings = (
