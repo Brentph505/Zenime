@@ -409,9 +409,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     input: SaveEntryInput,
   ): Promise<MediaListEntry | null> => {
     const token = getToken();
-    if (!isValidToken(token)) { console.warn('[Auth] saveEntry: not authenticated'); return null; }
-    try { return await saveMediaListEntry(token, input); }
-    catch (err) { console.error('[Auth] saveEntry failed:', err); return null; }
+    if (!isValidToken(token)) {
+      console.warn('[Auth] saveEntry: not authenticated');
+      return null;
+    }
+    try {
+      console.log('[Auth] saveEntry START:', {
+        mediaId: input.mediaId,
+        status: input.status,
+        score: input.score,
+        progress: input.progress,
+      });
+      const result = await saveMediaListEntry(token, input);
+      console.log('[Auth] saveEntry SUCCESS:', {
+        id: result?.id,
+        status: result?.status,
+        score: result?.score,
+        progress: result?.progress,
+      });
+      return result;
+    } catch (err) {
+      console.error('[Auth] saveEntry FAILED:', err instanceof Error ? err.message : err);
+      return null;
+    }
   }, []);
 
   const deleteEntry = useCallback(async (listEntryId: number): Promise<boolean> => {
@@ -426,9 +446,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     staffId?: number; studioId?: number;
   }): Promise<boolean> => {
     const token = getToken();
-    if (!isValidToken(token)) return false;
-    try { await toggleFavourite(token, params); return true; }
-    catch (err) { console.error('[Auth] toggleFav failed:', err); return false; }
+    if (!isValidToken(token)) {
+      console.warn('[Auth] toggleFav: not authenticated');
+      return false;
+    }
+    try {
+      console.log('[Auth] toggleFav START:', params);
+      await toggleFavourite(token, params);
+      console.log('[Auth] toggleFav SUCCESS:', params);
+      return true;
+    } catch (err) {
+      console.error('[Auth] toggleFav FAILED:', err instanceof Error ? err.message : err);
+      return false;
+    }
   }, []);
 
   const getListEntry = useCallback(async (

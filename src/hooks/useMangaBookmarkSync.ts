@@ -47,23 +47,23 @@ export function useMangaBookmarkSync() {
   const syncBookmarkToAniList = useCallback(
     async (mangaId: string) => {
       if (!isLoggedIn) {
-        console.warn('[MangaSync] Cannot sync: not logged in');
+        console.warn('[MangaSync] syncBookmarkToAniList: not logged in');
         return;
       }
 
       if (!saveEntry) {
-        console.warn('[MangaSync] Cannot sync: saveEntry not available');
+        console.warn('[MangaSync] syncBookmarkToAniList: saveEntry not available');
         return;
       }
 
       try {
         const id = parseInt(mangaId, 10);
         if (Number.isNaN(id)) {
-          console.warn('[MangaSync] Invalid manga ID:', mangaId);
+          console.warn('[MangaSync] syncBookmarkToAniList: invalid manga ID:', mangaId);
           return;
         }
 
-        console.log(`[MangaSync] Attempting to sync manga ${mangaId} to AniList...`);
+        console.log(`[MangaSync] syncBookmarkToAniList START: manga ${mangaId}`);
 
         // Save to AniList with PLANNING status
         const result = await saveEntry({
@@ -79,12 +79,12 @@ export function useMangaBookmarkSync() {
             BOOKMARKS_SYNCED_KEY,
             JSON.stringify(lastSyncRef.current),
           );
-          console.log(`[MangaSync] ✅ Successfully synced bookmark for manga ${mangaId} to AniList`);
+          console.log(`[MangaSync] ✅ SYNCED: manga ${mangaId} → status: ${result.status}`);
         } else {
-          console.error(`[MangaSync] ❌ saveEntry returned null for manga ${mangaId}`);
+          console.error(`[MangaSync] ❌ FAILED: saveEntry returned null for manga ${mangaId}`);
         }
       } catch (err) {
-        console.error(`[MangaSync] ❌ Failed to sync manga ${mangaId}:`, err);
+        console.error(`[MangaSync] ❌ ERROR in syncBookmarkToAniList (manga ${mangaId}):`, err instanceof Error ? err.message : err);
       }
     },
     [isLoggedIn, saveEntry],
@@ -93,49 +93,74 @@ export function useMangaBookmarkSync() {
   /**
    * Syncs all local bookmarks to AniList.
    */
+  /**
+   * Syncs all local bookmarks to AniList.
+   */
   const syncAllBookmarks = useCallback(async () => {
     if (!isLoggedIn) {
-      console.log('[MangaSync] Skipping sync: not logged in');
+      console.log('[MangaSync] syncAllBookmarks: skipped (not logged in)');
       return;
     }
 
     if (!settings.aniListSync) {
-      console.log('[MangaSync] Skipping sync: autosync disabled');
+      console.log('[MangaSync] syncAllBookmarks: skipped (autosync disabled)');
       return;
     }
 
     const bookmarks = getMangaBookmarks();
     const bookmarkIds = Object.keys(bookmarks);
 
-    console.log(`[MangaSync] Starting sync of ${bookmarkIds.length} bookmarks`, bookmarkIds);
+    console.log(`[MangaSync] syncAllBookmarks START: ${bookmarkIds.length} bookmarks`);
 
     if (bookmarkIds.length === 0) {
-      console.log('[MangaSync] No bookmarks to sync');
+      console.log('[MangaSync] syncAllBookmarks: no bookmarks to sync');
       return;
     }
 
+    let synced = 0;
+    let failed = 0;
+
     // Sync each bookmark sequentially to avoid rate limiting
     for (const mangaId of bookmarkIds) {
-      await syncBookmarkToAniList(mangaId);
+      try {
+        await syncBookmarkToAniList(mangaId);
+        synced++;
+      } catch (err) {
+        failed++;
+        console.error(`[MangaSync] syncAllBookmarks: error syncing ${mangaId}:`, err);
+      }
       // Small delay between requests to be respectful to the API
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
-    console.log('[MangaSync] Bookmark sync complete');
+    console.log(`[MangaSync] syncAllBookmarks COMPLETE: ${synced}/${bookmarkIds.length} synced, ${failed} failed`);
   }, [isLoggedIn, settings.aniListSync, syncBookmarkToAniList]);
 
   /**
    * Handle bookmark changes (when user bookmarks a new manga)
    */
   const handleBookmarkChanged = useCallback(() => {
-    if (!isLoggedIn || !settings.aniListSync) return;
+    if (!isLoggedIn) {
+      console.log('[MangaSync] handleBookmarkChanged: skipped (not logged in)');
+      return;
+    }
+    if (!settings.aniListSync) {
+      console.log('[MangaSync] handleBookmarkChanged: skipped (autosync disabled)');
+      return;
+    }
 
     // Find newly bookmarked manga and sync them
     const bookmarks = getMangaBookmarks();
-    for (const mangaId of Object.keys(bookmarks)) {
-      if (!lastSyncRef.current[mangaId]) {
-        void syncBookmarkToAniList(mangaId);
-      }
+    const newBookmarks = Object.keys(bookmarks).filter((mangaId) => !lastSyncRef.current[mangaId]);
+    
+    if (newBookmarks.length === 0) {
+      console.log('[MangaSync] handleBookmarkChanged: no new bookmarks to sync');
+      return;
+    }
+
+    console.log(`[MangaSync] handleBookmarkChanged: syncing ${newBookmarks.length} new bookmarks`);
+    for (const mangaId of newBookmarks) {
+      void syncBookmarkToAniList(mangaId);
     }
   }, [isLoggedIn, settings.aniListSync, syncBookmarkToAniList]);
 

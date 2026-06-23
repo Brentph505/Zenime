@@ -102,19 +102,24 @@ export function useAniListEntry(
   // ── setStatus ───────────────────────────────────────────────────────────────
   const setStatus = useCallback(
     async (status: MediaListStatus) => {
-      if (!mediaId) return false;
+      if (!mediaId) {
+        console.warn('[useAniListEntry] setStatus: no mediaId');
+        return false;
+      }
       const prev = stateRef.current;
+      console.log(`[useAniListEntry] setStatus OPTIMISTIC: ${prev.status} → ${status}`);
       setState((s) => ({ ...s, inList: true, status, saving: true }));
 
       try {
         const result = await saveEntry({ mediaId, status });
         if (!result) {
+          console.warn('[useAniListEntry] setStatus mutation returned null, reverting');
           // Save failed — roll back to the last confirmed state.
           setState((s) => ({ ...s, status: prev.status, inList: prev.inList, saving: false }));
-          console.warn('[useAniListEntry] setStatus failed, reverted');
           return false;
         }
         // Sync from the authoritative returned entry.
+        console.log('[useAniListEntry] setStatus COMMITTED:', result.status);
         setState((s) => ({
           ...s,
           inList: true,
@@ -125,7 +130,8 @@ export function useAniListEntry(
         }));
         dispatchEntryChanged();
         return true;
-      } catch {
+      } catch (err) {
+        console.error('[useAniListEntry] setStatus caught error:', err instanceof Error ? err.message : err);
         setState((s) => ({ ...s, status: prev.status, inList: prev.inList, saving: false }));
         return false;
       }
@@ -138,8 +144,12 @@ export function useAniListEntry(
   // display format, so we always send the raw point value.
   const setScore = useCallback(
     async (score: number) => {
-      if (!mediaId) return false;
+      if (!mediaId) {
+        console.warn('[useAniListEntry] setScore: no mediaId');
+        return false;
+      }
       const prev = stateRef.current;
+      console.log(`[useAniListEntry] setScore OPTIMISTIC: ${prev.score} → ${score}`);
       setState((s) => ({ ...s, score, inList: true, saving: true }));
 
       try {
@@ -151,10 +161,11 @@ export function useAniListEntry(
           status: prev.status ?? undefined,
         });
         if (!result) {
+          console.warn('[useAniListEntry] setScore mutation returned null, reverting');
           setState((s) => ({ ...s, score: prev.score, inList: prev.inList, saving: false }));
-          console.warn('[useAniListEntry] setScore failed, reverted');
           return false;
         }
+        console.log('[useAniListEntry] setScore COMMITTED:', result.score);
         setState((s) => ({
           ...s,
           inList: true,
@@ -165,7 +176,8 @@ export function useAniListEntry(
         }));
         dispatchEntryChanged();
         return true;
-      } catch {
+      } catch (err) {
+        console.error('[useAniListEntry] setScore caught error:', err instanceof Error ? err.message : err);
         setState((s) => ({ ...s, score: prev.score, inList: prev.inList, saving: false }));
         return false;
       }
@@ -176,25 +188,32 @@ export function useAniListEntry(
   // ── toggleFavourite ─────────────────────────────────────────────────────────
   const toggleFavourite = useCallback(
     async (type: 'ANIME' | 'MANGA' = 'ANIME') => {
-      if (!mediaId) return false;
+      if (!mediaId) {
+        console.warn('[useAniListEntry] toggleFavourite: no mediaId');
+        return false;
+      }
       const prev = stateRef.current;
       const nextFav = !prev.isFavourite;
+      const key = type === 'MANGA' ? 'mangaId' : 'animeId';
+      console.log(`[useAniListEntry] toggleFavourite OPTIMISTIC: ${prev.isFavourite} → ${nextFav} (${type})`);
       setState((s) => ({ ...s, isFavourite: nextFav, saving: true }));
 
       try {
-        const key = type === 'MANGA' ? 'mangaId' : 'animeId';
         const ok = await toggleFav({ [key]: mediaId } as {
           animeId?: number; mangaId?: number;
         });
         if (!ok) {
+          console.warn('[useAniListEntry] toggleFavourite mutation returned false, reverting');
           // Toggle failed — revert the heart.
           setState((s) => ({ ...s, isFavourite: prev.isFavourite, saving: false }));
-          console.warn('[useAniListEntry] toggleFavourite failed, reverted');
           return false;
         }
+        console.log(`[useAniListEntry] toggleFavourite COMMITTED: ${nextFav}`);
         setState((s) => ({ ...s, isFavourite: nextFav, saving: false }));
+        dispatchEntryChanged();
         return true;
-      } catch {
+      } catch (err) {
+        console.error('[useAniListEntry] toggleFavourite caught error:', err instanceof Error ? err.message : err);
         setState((s) => ({ ...s, isFavourite: prev.isFavourite, saving: false }));
         return false;
       }
