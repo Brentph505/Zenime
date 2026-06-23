@@ -99,6 +99,12 @@ export function useSyncAniListHistory() {
 
           if (!animeId) continue;
 
+          // Skip entries with invalid media data
+          if (!entry.media?.title?.romaji && !entry.media?.title?.english) {
+            console.warn(`[HistorySync] Skipping entry ${animeId} with invalid title`);
+            continue;
+          }
+
           // Update progress from AniList if it has more progress than local
           const localProgress = localWatchedEpisodes[animeId] || 0;
           const anilistProgress = entry.progress || 0;
@@ -111,17 +117,17 @@ export function useSyncAniListHistory() {
           if (!localLastVisited[animeId]) {
             localLastVisited[animeId] = {
               timestamp: Date.now(),
-              titleEnglish: entry.media?.title?.english || 'Unknown',
-              titleRomaji: entry.media?.title?.romaji || 'Unknown',
+              titleEnglish: entry.media?.title?.english || entry.media?.title?.romaji || 'Unknown',
+              titleRomaji: entry.media?.title?.romaji || entry.media?.title?.english || 'Unknown',
               status: entry.status,
-              totalEpisodes: entry.media?.episodes,
+              totalEpisodes: entry.media?.episodes || null,
             };
           } else {
             // Update metadata with AniList data
             localLastVisited[animeId] = {
               ...localLastVisited[animeId],
               status: entry.status,
-              totalEpisodes: entry.media?.episodes || localLastVisited[animeId].totalEpisodes,
+              totalEpisodes: entry.media?.episodes !== undefined ? entry.media.episodes : localLastVisited[animeId].totalEpisodes,
             };
           }
         }

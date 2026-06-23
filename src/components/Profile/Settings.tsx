@@ -63,8 +63,8 @@ const DEFAULT_SETTINGS = {
   aniListSync: false,
   syncThreshold: 80,
   watchOrInfo: 'Watch' as const,
-  titleLanguage: 'Romaji',
-  characterNameLanguage: 'Romaji',
+  titleLanguage: 'English',
+  characterNameLanguage: 'English',
 };
 
 /* ─── Section / Row definitions ─────────────────────────────────────────── */
@@ -733,7 +733,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
 
   const [preferences, setPreferences] = useState<Preferences>({
     defaultLanguage: settings.defaultLanguage ?? 'Sub',
-    titleLanguage: settings.titleLanguage ?? 'Romaji',
+    titleLanguage: settings.titleLanguage ?? 'English',
     characterNameLanguage: settings.characterNameLanguage ?? 'Romaji',
     ratingSource: 'Anilist',
     openKeyboardShortcuts: '',
