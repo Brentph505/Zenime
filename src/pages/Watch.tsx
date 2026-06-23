@@ -549,19 +549,21 @@ const Watch: React.FC = () => {
       const primaryId =
         resolvedProviders[primaryProvider]?.id || selected.id;
 
+      const parsedNumber = 
+        typeof selected.number === 'string'
+          ? parseInt(selected.number, 10)
+          : selected.number;
+      
       const nextEpisode: WatchEpisode = {
         id: primaryId,
-        number:
-          typeof selected.number === 'string'
-            ? parseInt(selected.number, 10)
-            : selected.number,
+        number: parsedNumber || 1,
         image: selected.image,
         title: selected.title,
         description: selected.description,
         imageHash: selected.imageHash,
         airDate: selected.airDate,
         provider: primaryProvider,
-        providers: resolvedProviders,
+        providers: resolvedProviders || EMPTY_PROVIDERS,
       };
 
       setCurrentEpisode(nextEpisode);
@@ -717,14 +719,14 @@ const Watch: React.FC = () => {
 
           return {
             id: primaryProviderData?.id || String(epNumber),
-            number: epNumber,
+            number: epNumber || 1,
             title: title || `Episode ${mergedEp.number}`,
             image: mergedEp.image,
             description: mergedEp.description,
             imageHash: mergedEp.imageHash,
             airDate: mergedEp.airDate,
             provider: primaryProviderKey,
-            providers: mergedEp.providers as Record<string, ProviderEpisodeData>,
+            providers: (mergedEp.providers as Record<string, ProviderEpisodeData>) || EMPTY_PROVIDERS,
           };
         });
 
@@ -848,8 +850,9 @@ const Watch: React.FC = () => {
 
     const fetchAvailableServers = async () => {
       const episodesByProvider: Record<string, string> = {};
-      if (currentEpisode.providers && Object.keys(currentEpisode.providers).length > 0) {
-        Object.entries(currentEpisode.providers).forEach(([provider, data]) => {
+      const providers = currentEpisode.providers || EMPTY_PROVIDERS;
+      if (providers && Object.keys(providers).length > 0) {
+        Object.entries(providers).forEach(([provider, data]) => {
           if (provider === 'animekai') return;
           if (data?.id) {
             episodesByProvider[provider] = data.id;
@@ -1018,13 +1021,14 @@ const Watch: React.FC = () => {
         setEmbeddedServerKeys(newEmbeddedServerKeys);
 
         if (hasEmbeddedPlayer && hasEmbeddedPlayer_) {
+          const episodeNum = currentEpisode.number ?? 1;
           setEmbeddedUrl(
-            buildEmbeddedPlayerUrl(animeId, currentEpisode.number.toString(), language),
+            buildEmbeddedPlayerUrl(animeId, episodeNum.toString(), language),
           );
           setEmbeddedServerName(getEmbeddedServerName(language));
         }
 
-        const serverNames = entries.map((s) => s.name);
+        const serverNames = entries.map((s) => s.name) || [];
         console.log('[Watch] Aggregated available servers:', serverNames);
         setAvailableServers(serverNames);
       };
