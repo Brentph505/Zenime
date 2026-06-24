@@ -75,7 +75,7 @@ export function useSyncAniListHistory() {
         }
 
         // Get current local data
-        const localWatchedEpisodes: Record<string, number> = (() => {
+        const localWatchedEpisodes: Record<string, unknown> = (() => {
           try {
             const data = localStorage.getItem('watched-episodes');
             return data ? JSON.parse(data) : {};
@@ -93,7 +93,30 @@ export function useSyncAniListHistory() {
           }
         })();
 
+        /**
+         * Read the local watched-episode count for an anime regardless of the
+         * stored shape (Episode[] | number | { number }[]).
+         */
+        const localCountFor = (animeId: string): number => {
+          const v = localWatchedEpisodes[animeId];
+          if (typeof v === 'number') return v;
+          if (Array.isArray(v)) {
+            let max = 0;
+            for (const ep of v) {
+              if (typeof ep === 'number') max = Math.max(max, ep);
+              else if (ep && typeof ep === 'object' && 'number' in ep) {
+                const n = Number((ep as any).number);
+                if (!Number.isNaN(n)) max = Math.max(max, n);
+              }
+            }
+            return max || v.length;
+          }
+          return 0;
+        };
+
         // Merge AniList data with local data (AniList takes precedence for progress)
+        let historyChanged = false;
+        let visitedChanged = false;
         for (const entry of allEntries) {
           const animeId = entry.media?.id?.toString();
 
@@ -105,36 +128,67 @@ export function useSyncAniListHistory() {
             continue;
           }
 
-          // Update progress from AniList if it has more progress than local
-          const localProgress = localWatchedEpisodes[animeId] || 0;
           const anilistProgress = entry.progress || 0;
 
+          // Only update local progress if AniList is ahead. CRITICAL: we must
+          // not overwrite the rich Episode[] history with a bare number — if
+          // the app stores an array, we leave it intact and let the player's
+          // normal watch tracking catch up. When the local value is a bare
+          // number (or missing), we can safely set it.
+          const localProgress = localCountFor(animeId);
           if (anilistProgress > localProgress) {
-            localWatchedEpisodes[animeId] = anilistProgress;
+            const current = localWatchedEpisodes[animeId];
+            if (Array.isArray(current)) {
+              // Preserve the array shape; the player reconciles real episodes
+              // as the user re-watches. We don't fabricate episode objects.
+            } else if (typeof current === 'number' || current === undefined) {
+              localWatchedEpisodes[animeId] = anilistProgress;
+              historyChanged = true;
+            }
           }
 
-          // Update metadata if not already set locally
-          if (!localLastVisited[animeId]) {
-            localLastVisited[animeId] = {
-              timestamp: Date.now(),
-              titleEnglish: entry.media?.title?.english || entry.media?.title?.romaji || 'Unknown',
-              titleRomaji: entry.media?.title?.romaji || entry.media?.title?.english || 'Unknown',
-              status: entry.status,
-              totalEpisodes: entry.media?.episodes || null,
-            };
-          } else {
-            // Update metadata with AniList data
-            localLastVisited[animeId] = {
-              ...localLastVisited[animeId],
-              status: entry.status,
-              totalEpisodes: entry.media?.episodes !== undefined ? entry.media.episodes : localLastVisited[animeId].totalEpisodes,
-            };
+          // Update / enrich metadata. We merge rather than replace so we never
+          // drop fields like totalEpisodes that other code has written.
+          const existing = localLastVisited[animeId] || {};
+          const merged = {
+            ...existing,
+            timestamp: existing.timestamp ?? Date.now(),
+            titleEnglish:
+              existing.titleEnglish ||
+              entry.media?.title?.english ||
+              entry.media?.title?.romaji ||
+              'Unknown',
+            titleRomaji:
+              existing.titleRomaji ||
+              entry.media?.title?.romaji ||
+              entry.media?.title?.english ||
+              'Unknown',
+            status: entry.status ?? existing.status,
+            totalEpisodes:
+              entry.media?.episodes !== undefined && entry.media.episodes !== null
+                ? entry.media.episodes
+                : existing.totalEpisodes ?? null,
+          };
+          if (JSON.stringify(merged) !== JSON.stringify(existing)) {
+            localLastVisited[animeId] = merged;
+            visitedChanged = true;
           }
         }
 
-        // Save synced data back to localStorage
-        localStorage.setItem('watched-episodes', JSON.stringify(localWatchedEpisodes));
-        localStorage.setItem('last-anime-visited', JSON.stringify(localLastVisited));
+        // Save synced data back to localStorage (only if something changed)
+        if (historyChanged) {
+          localStorage.setItem('watched-episodes', JSON.stringify(localWatchedEpisodes));
+        }
+        if (visitedChanged) {
+          localStorage.setItem('last-anime-visited', JSON.stringify(localLastVisited));
+        }
+
+        // Notify same-tab listeners (History page, EpisodeCard) that watch
+        // data may have changed — the native `storage` event only fires
+        // cross-tab, so they wouldn't otherwise refresh.
+        if (historyChanged) {
+          try { window.dispatchEvent(new Event('storage')); } catch { /* non-browser */ }
+        }
 
         // Mark as synced
         const syncMeta: SyncMeta = {

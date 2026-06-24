@@ -63,8 +63,9 @@ const DEFAULT_SETTINGS = {
   aniListSync: false,
   syncThreshold: 80,
   watchOrInfo: 'Watch' as const,
-  titleLanguage: 'English',
-  characterNameLanguage: 'English',
+  titleLanguage: 'Romaji (Shingeki no Kyojin)',
+  characterNameLanguage: 'Romaji (Zoldyck Killua)',
+  hideSpoilers: false,
 };
 
 /* ─── Section / Row definitions ─────────────────────────────────────────── */
@@ -744,7 +745,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
     defaultServers: 'Default',
     restoreDefaultPreferences: '',
     clearContinueWatching: '',
-    hideSpoilers: 'Disabled',
+    hideSpoilers: settings.hideSpoilers ? 'Enabled' : 'Disabled',
   });
 
   // Sync syncThreshold changes to settings context
@@ -779,6 +780,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       autoPlay: settings.autoPlay ? 'Enabled' : 'Disabled',
       autoNext: settings.autoNext ? 'Enabled' : 'Disabled',
       aniListSync: settings.aniListSync ? 'Enabled' : 'Disabled',
+      hideSpoilers: settings.hideSpoilers ? 'Enabled' : 'Disabled',
     }));
   }, [settings]);
 
@@ -861,7 +863,11 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
           'Native (進撃の巨人)',
         ];
       case 'characterNameLanguage':
-        return ['Romaji (Zoldyck Killua)', 'Native (キルア=ゾルディック)'];
+        return [
+          'Romaji (Zoldyck Killua)',
+          'Native (キルア=ゾルディック)',
+          'English (Killua Zoldyck)',
+        ];
       case 'ratingSource':
         return ['Anilist', 'IMDb', 'MyAnimeList'];
       case 'defaultServers':
@@ -879,6 +885,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       case 'autoPlay':           setSettings({ autoPlay: value === 'Enabled' }); break;
       case 'autoNext':           setSettings({ autoNext: value === 'Enabled' }); break;
       case 'aniListSync':        setSettings({ aniListSync: value === 'Enabled' }); break;
+      case 'hideSpoilers':       setSettings({ hideSpoilers: value === 'Enabled' }); break;
       case 'defaultLanguage':    setSettings({ defaultLanguage: value.toLowerCase() }); break;
       case 'defaultServers':     setSettings({ defaultServers: value.toLowerCase() }); break;
       case 'titleLanguage':      setSettings({ titleLanguage: value }); break;
@@ -892,10 +899,31 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
   };
 
   const handleRestoreDefaults = () => {
+    if (!window.confirm('Restore all preferences to their defaults? Your current settings will be overwritten.')) {
+      return;
+    }
+    // Setting the full defaults through the context persists every key via
+    // the provider's storage effect — no manual localStorage.removeItem race.
     setSettings(DEFAULT_SETTINGS);
-    ['autoSkip', 'autoPlay', 'autoNext', 'defaultLanguage', 'defaultServers', 'aniListSync', 'syncThreshold', 'watchOrInfo', 'titleLanguage', 'characterNameLanguage'].forEach(
-      (k) => localStorage.removeItem(k),
-    );
+    // Keep local form state in sync immediately (the settings effect below
+    // also reconciles, but this avoids a one-render flicker).
+    setSyncThreshold(DEFAULT_SETTINGS.syncThreshold);
+    setWatchOrInfo(DEFAULT_SETTINGS.watchOrInfo);
+    setPreferences({
+      defaultLanguage: 'Sub',
+      titleLanguage: DEFAULT_SETTINGS.titleLanguage,
+      characterNameLanguage: DEFAULT_SETTINGS.characterNameLanguage,
+      ratingSource: 'Anilist',
+      openKeyboardShortcuts: '',
+      autoskipIntroOutro: DEFAULT_SETTINGS.autoSkip ? 'Enabled' : 'Disabled',
+      autoPlay: DEFAULT_SETTINGS.autoPlay ? 'Enabled' : 'Disabled',
+      autoNext: DEFAULT_SETTINGS.autoNext ? 'Enabled' : 'Disabled',
+      aniListSync: DEFAULT_SETTINGS.aniListSync ? 'Enabled' : 'Disabled',
+      defaultServers: 'Default',
+      restoreDefaultPreferences: '',
+      clearContinueWatching: '',
+      hideSpoilers: DEFAULT_SETTINGS.hideSpoilers ? 'Enabled' : 'Disabled',
+    });
   };
 
   const handleClearContinueWatching = () => {
@@ -990,10 +1018,15 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
 
     const opts = getOptions(key);
     if (opts.length) {
+      // If the stored value doesn't exactly match an option (e.g. a legacy
+      // short form like 'Romaji'), fall back to the first option so the
+      // <select> is never in an uncontrolled/blank state.
+      const current = preferences[key as keyof Preferences];
+      const selected = opts.includes(current) ? current : opts[0];
       return (
         <SelectWrap>
           <StyledSelect
-            value={preferences[key as keyof Preferences]}
+            value={selected}
             onChange={(e) =>
               handlePreferenceChange(key as keyof Preferences, e.target.value)
             }

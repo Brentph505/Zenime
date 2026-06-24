@@ -317,134 +317,131 @@ const InfoMobileSubtitle = styled(BaseSkeleton)`
 `;
 
 // ─── Studio Page Skeletons ───────────────────────────────────────────────────
+// Mirrors the redesigned Studio page: a header card (avatar + name, no stats),
+// a single bottom-border tab row, then the grid. No hero/background image.
 
 const StudioPageLayout = styled.div`
-  gap: 1rem;
-  margin: 0 auto;
-  max-width: 125rem;
-  border-radius: var(--global-border-radius);
   display: flex;
   flex-direction: column;
-  width: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
+  gap: 1.5rem;
 `;
 
-const StudioHeroWrapper = styled(BaseSkeleton)`
-  position: relative;
-  background-color: var(--global-secondary-bg);
-  border-radius: var(--global-border-radius);
-  overflow: hidden;
-  height: 120px;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-`;
-
-const StudioHeroBody = styled.div`
+const StudioCardSkeleton = styled(BaseSkeleton)`
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 1.25rem;
   padding: 1.5rem;
-  flex-wrap: wrap;
+  height: 120px;
+  border-radius: 12px;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+  @media (max-width: 500px) { padding: 1rem; gap: 0.85rem; }
 `;
 
 const StudioAvatarSkeleton = styled(BaseSkeleton)`
-  width: 60px;
-  height: 60px;
-  border-radius: var(--global-border-radius);
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
   flex-shrink: 0;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
-  @media (max-width: 500px) {
-    width: 48px;
-    height: 48px;
-  }
+  @media (max-width: 500px) { width: 56px; height: 56px; }
 `;
 
-const StudioHeroInfo = styled.div`
+const StudioCardInfo = styled.div`
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
+`;
+
+const StudioEyebrowSkeleton = styled(BaseSkeleton)`
+  width: 110px;
+  height: 0.8rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
 `;
 
 const StudioNameSkeleton = styled(BaseSkeleton)`
-  width: 50%;
+  width: 45%;
   height: 2rem;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
-  @media (max-width: 500px) {
-    height: 1.5rem;
-  }
+  @media (max-width: 500px) { height: 1.5rem; }
 `;
 
-const StudioStatsRow = styled.div`
+const StudioLinkRowSkeleton = styled.div`
   display: flex;
-  gap: 1.5rem;
-  flex-wrap: wrap;
-  margin-top: 0.25rem;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
 `;
 
-const StudioStatSkeleton = styled(BaseSkeleton)`
-  width: 80px;
-  height: 2.5rem;
+const StudioLinkSkeleton = styled(BaseSkeleton)`
+  width: 120px;
+  height: 1.6rem;
+  border-radius: 6px;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const StudioCatalogSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 `;
 
 const StudioCatalogHeader = styled.div`
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.75rem;
 `;
 
-const StudioTitleSkeleton = styled(BaseSkeleton)`
-  width: 200px;
-  height: 1.5rem;
+const StudioLabelSkeleton = styled(BaseSkeleton)`
+  width: 130px;
+  height: 1rem;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
 `;
 
-const StudioTabsRow = styled.div`
+const StudioTabNavSkeleton = styled.div`
   display: flex;
+  border-bottom: 1px solid var(--global-border);
   gap: 0.5rem;
+  padding-bottom: 1px;
 `;
 
 const StudioTabSkeleton = styled(BaseSkeleton)`
   width: 60px;
   height: 2rem;
-  border-radius: var(--global-border-radius);
+  margin-bottom: -1px;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
 `;
 
 export const SkeletonStudio = React.memo(() => (
   <StudioPageLayout>
-    <StudioHeroWrapper>
-      <StudioHeroBody>
-        <StudioAvatarSkeleton />
-        <StudioHeroInfo>
-          <StudioNameSkeleton />
-          <StudioStatsRow>
-            <StudioStatSkeleton />
-            <StudioStatSkeleton />
-            <StudioStatSkeleton />
-          </StudioStatsRow>
-        </StudioHeroInfo>
-      </StudioHeroBody>
-    </StudioHeroWrapper>
-    <StudioCatalogHeader>
-      <StudioTitleSkeleton />
-      <StudioTabsRow>
+    <StudioCardSkeleton>
+      <StudioAvatarSkeleton />
+      <StudioCardInfo>
+        <StudioEyebrowSkeleton />
+        <StudioNameSkeleton />
+        <StudioLinkRowSkeleton>
+          <StudioLinkSkeleton />
+          <StudioLinkSkeleton />
+        </StudioLinkRowSkeleton>
+      </StudioCardInfo>
+    </StudioCardSkeleton>
+
+    <StudioCatalogSection>
+      <StudioCatalogHeader>
+        <StudioLabelSkeleton />
+      </StudioCatalogHeader>
+      <StudioTabNavSkeleton>
         <StudioTabSkeleton />
         <StudioTabSkeleton />
         <StudioTabSkeleton />
         <StudioTabSkeleton />
         <StudioTabSkeleton />
-      </StudioTabsRow>
-    </StudioCatalogHeader>
-    <SkeletonCardGrid>
-      {Array.from({ length: 17 }, (_, i) => (
-        <SkeletonCard key={i} />
-      ))}
-    </SkeletonCardGrid>
+      </StudioTabNavSkeleton>
+      <SkeletonCardGrid>
+        {Array.from({ length: 17 }, (_, i) => (
+          <SkeletonCard key={i} />
+        ))}
+      </SkeletonCardGrid>
+    </StudioCatalogSection>
   </StudioPageLayout>
 ));
 

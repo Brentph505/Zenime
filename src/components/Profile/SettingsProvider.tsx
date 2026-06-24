@@ -3,6 +3,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from 'react';
 
@@ -19,6 +20,7 @@ interface SettingsContextType {
     watchOrInfo: 'Watch' | 'Info';
     titleLanguage: string;
     characterNameLanguage: string;
+    hideSpoilers: boolean;
   };
   setSettings: (settings: Partial<SettingsContextType['settings']>) => void;
 }
@@ -54,6 +56,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
      watchOrInfo: (localStorage.getItem('watchOrInfo') as 'Watch' | 'Info') || 'Watch',
      titleLanguage: localStorage.getItem('titleLanguage') || 'Romaji',
      characterNameLanguage: localStorage.getItem('characterNameLanguage') || 'Romaji',
+     hideSpoilers: localStorage.getItem('hideSpoilers') === 'true',
    });
 
   useEffect(() => {
@@ -69,16 +72,19 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
     localStorage.setItem('watchOrInfo', settings.watchOrInfo);
     localStorage.setItem('titleLanguage', settings.titleLanguage);
     localStorage.setItem('characterNameLanguage', settings.characterNameLanguage);
+    localStorage.setItem('hideSpoilers', settings.hideSpoilers ? 'true' : 'false');
   }, [settings]);
 
-  const setSettings = (
-    newSettings: Partial<SettingsContextType['settings']>,
-  ) => {
-    setSettingsState((prev) => {
-      const updatedSettings = { ...prev, ...newSettings };
-      return updatedSettings;
-    });
-  };
+  // Memoised so consumers' callbacks/effects depending on setSettings don't
+  // churn every render. Previously this was an inline function recreated each
+  // render, which caused the autosync hooks to restart their intervals far
+  // more often than necessary.
+  const setSettings = useCallback(
+    (newSettings: Partial<SettingsContextType['settings']>) => {
+      setSettingsState((prev) => ({ ...prev, ...newSettings }));
+    },
+    [],
+  );
 
   return (
     <SettingsContext.Provider value={{ settings, setSettings }}>

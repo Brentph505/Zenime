@@ -738,10 +738,18 @@ const Watch: React.FC = () => {
           try {
             lvData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED) || '{}');
           } catch { /* ignore */ }
+          // Preserve any fields previously stored (e.g. AniList status, cover)
+          // so we don't clobber metadata written by the history sync hook.
+          const prev = lvData[animeId] || {};
           lvData[animeId] = {
+            ...prev,
             timestamp: Date.now(),
-            titleEnglish: animeInfo.title?.english,
-            titleRomaji: animeInfo.title?.romaji,
+            titleEnglish: animeInfo.title?.english ?? prev.titleEnglish,
+            titleRomaji: animeInfo.title?.romaji ?? prev.titleRomaji,
+            // Persist totalEpisodes so autosync can compute progress %,
+            // and so the History page can show episode counts.
+            totalEpisodes:
+              animeInfo.totalEpisodes ?? prev.totalEpisodes ?? null,
           };
           // Cap the last-visited map to 100 entries
           const lvKeys = Object.keys(lvData);

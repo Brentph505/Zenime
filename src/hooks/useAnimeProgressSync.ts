@@ -117,6 +117,32 @@ export function useAnimeProgressSync() {
   );
 
   /**
+   * Extract a numeric "episodes watched" count for an anime from any of the
+   * shapes the app stores under `watched-episodes`:
+   *   • Record<animeId, Episode[]>   — the canonical form used by the player
+   *   • Record<animeId, number>      — legacy / simplified form
+   *   • Record<animeId, { number }[]> — partial episode objects
+   * Returns the highest episode number seen, falling back to array length.
+   */
+  const getWatchedCount = (value: unknown): number => {
+    if (typeof value === 'number') return value;
+    if (Array.isArray(value)) {
+      let max = 0;
+      for (const ep of value) {
+        if (ep == null) continue;
+        if (typeof ep === 'number') {
+          max = Math.max(max, ep);
+        } else if (typeof ep === 'object' && 'number' in ep) {
+          const n = Number((ep as any).number);
+          if (!Number.isNaN(n)) max = Math.max(max, n);
+        }
+      }
+      return max || value.length;
+    }
+    return 0;
+  };
+
+  /**
    * Syncs all watched anime to AniList
    */
   const syncAllProgress = useCallback(async () => {
@@ -125,32 +151,34 @@ export function useAnimeProgressSync() {
     }
 
     try {
-      // Get watched episodes and anime metadata
+      // watched-episodes is Record<animeId, Episode[] | number>
       const watchedEpisodesData = localStorage.getItem('watched-episodes');
       const lastAnimeVisitedData = localStorage.getItem('last-anime-visited');
 
-      if (!watchedEpisodesData || !lastAnimeVisitedData) {
+      if (!watchedEpisodesData) {
         return;
       }
 
-      const watchedEpisodes: Record<string, number> = JSON.parse(
+      const watchedEpisodes: Record<string, unknown> = JSON.parse(
         watchedEpisodesData,
       );
-      const lastAnimeVisited: Record<string, any> = JSON.parse(
-        lastAnimeVisitedData,
-      );
+      const lastAnimeVisited: Record<string, any> = lastAnimeVisitedData
+        ? JSON.parse(lastAnimeVisitedData)
+        : {};
 
       // Sync each anime
       for (const animeId of Object.keys(watchedEpisodes)) {
-        const watchedCount = watchedEpisodes[animeId];
-        const animeInfo = lastAnimeVisited[animeId];
-        const totalEpisodes = animeInfo?.totalEpisodes;
+        const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
+        if (watchedCount <= 0) continue;
 
-        if (watchedCount > 0) {
-          // Rate limit: 500ms between requests
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          await syncProgressToAniList(animeId, watchedCount, totalEpisodes);
-        }
+        const totalEpisodes =
+          lastAnimeVisited[animeId]?.totalEpisodes ??
+          lastAnimeVisited[animeId]?.total_episodes ??
+          null;
+
+        // Rate limit: 500ms between requests
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await syncProgressToAniList(animeId, watchedCount, totalEpisodes);
       }
     } catch (error) {
       console.error('[AnimeSync] Failed to sync all progress:', error);

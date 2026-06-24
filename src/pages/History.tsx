@@ -1103,7 +1103,11 @@ const History: React.FC = () => {
 
   return (
     <Container>
-      <PageTitle>WATCH HISTORY</PageTitle>
+      <PageTitle>
+        {isManga
+          ? 'READING HISTORY'
+          : 'WATCH HISTORY'}
+      </PageTitle>
 
       <ControlBar>
         {/* ── Search ───────────────────────────────────────────────── */}
@@ -1288,3 +1292,4 @@ const History: React.FC = () => {
 };
 
 export default History;
+
