@@ -90,31 +90,6 @@ const CoverBanner = styled.div<{ $src: string }>`
     width: 100%;
     height: 120px;
     background: url(${({ $src }) => $src}) center/cover no-repeat;
-    position: relative;
-
-    /* Dark gradient at the bottom so the title is readable */
-    &::after {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.75) 100%);
-    }
-  }
-`;
-
-const BannerTitleRow = styled.div`
-  display: none;
-
-  @media (max-width: 600px) {
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 0.75rem;
-    position: absolute;
-    bottom: 0.75rem;
-    left: 0.75rem;
-    right: 0.75rem;
-    z-index: 1;
   }
 `;
 
@@ -140,17 +115,12 @@ const FormContainer = styled.div`
   }
 `;
 
-/* Desktop header (title + heart) inside FormContainer */
+/* Header (title + heart) inside FormContainer */
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
-
-  /* On mobile, the title/heart live in the BannerTitleRow overlay, not here */
-  @media (max-width: 600px) {
-    display: none;
-  }
 `;
 
 const Title = styled.h2`
@@ -162,8 +132,6 @@ const Title = styled.h2`
 
   @media (max-width: 600px) {
     font-size: 1rem;
-    color: #ffffff;
-    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
   }
 `;
 
@@ -200,10 +168,14 @@ const FormGrid = styled.div`
   }
 `;
 
-const FormGroup = styled.div`
+const FormGroup = styled.div<{ $mobileOrder?: number }>`
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+
+  @media (max-width: 600px) {
+    ${({ $mobileOrder }) => $mobileOrder !== undefined && `order: ${$mobileOrder};`}
+  }
 `;
 
 const Label = styled.label`
@@ -509,22 +481,10 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
         {/* Desktop: tall side cover */}
         <CoverImage src={anime.image} alt="Cover" />
 
-        {/* Mobile: top banner with title overlay */}
-        <CoverBanner $src={anime.image}>
-          <BannerTitleRow>
-            <Title>{anime.title.english || anime.title.romaji}</Title>
-            <HeartBtn
-              $active={isFavourite}
-              onClick={() => toggleFavourite(isManga ? 'MANGA' : 'ANIME')}
-              title={isFavourite ? 'Remove from favorites' : 'Add to favorites'}
-            >
-              {isFavourite ? <FaHeart /> : <FaRegHeart />}
-            </HeartBtn>
-          </BannerTitleRow>
-        </CoverBanner>
+        {/* Mobile: top banner */}
+        <CoverBanner $src={anime.image} />
 
         <FormContainer>
-          {/* Desktop header (hidden on mobile) */}
           <Header>
             <Title>{anime.title.english || anime.title.romaji}</Title>
             <HeartBtn
@@ -537,7 +497,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
           </Header>
 
           <FormGrid>
-            <FormGroup>
+            <FormGroup $mobileOrder={1}>
               <Label>Status</Label>
               <StatusSelectWrapper>
                 {status && STATUS_ICONS[status] && (
@@ -557,7 +517,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               </StatusSelectWrapper>
             </FormGroup>
 
-            <FormGroup>
+            <FormGroup $mobileOrder={2}>
               <Label>{progressLabel} {anime.totalEpisodes ? `/ ${anime.totalEpisodes}` : ''}</Label>
               <Input
                 type="number"
@@ -568,7 +528,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            <FormGroup>
+            <FormGroup $mobileOrder={3}>
               <Label>Score (0-100)</Label>
               <Input
                 type="number"
@@ -579,17 +539,17 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            <FormGroup>
+            <FormGroup $mobileOrder={5}>
               <Label>Start Date</Label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormGroup>
 
-            <FormGroup>
+            <FormGroup $mobileOrder={6}>
               <Label>End Date</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormGroup>
 
-            <FormGroup>
+            <FormGroup $mobileOrder={4}>
               <Label>{repeatLabel}</Label>
               <Input
                 type="number"
@@ -598,19 +558,29 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
                 onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
               />
             </FormGroup>
+
+            <FormGroup style={{ gridColumn: '1 / -1' }} $mobileOrder={7}>
+              <Label>Custom Lists</Label>
+              <Select value="" disabled>
+                <option value="" disabled>Add to custom lists</option>
+              </Select>
+            </FormGroup>
           </FormGrid>
 
-          <FormGroup style={{ flex: 1 }}>
+          <FormGroup style={{ gridColumn: '1 / -1' }} $mobileOrder={8}>
             <Label>Notes</Label>
             <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </FormGroup>
 
           <Footer>
-            {entry ? (
-              <DeleteBtn onClick={handleDelete} title="Delete from list">
-                <IoTrashOutline size={16} />
-              </DeleteBtn>
-            ) : <div />}
+            <DeleteBtn 
+              onClick={handleDelete} 
+              title={entry ? "Delete from list" : "Entry not in list yet"}
+              disabled={!entry || loading}
+              style={{ opacity: entry ? 1 : 0.3, cursor: entry ? 'pointer' : 'not-allowed' }}
+            >
+              <IoTrashOutline size={16} />
+            </DeleteBtn>
             <ActionButtons>
               <Btn $primary onClick={handleSave} disabled={loading || isSaving}>
                 <IoPencilOutline /> {isSaving ? 'Saving...' : 'Save Changes'}
