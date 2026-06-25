@@ -13,6 +13,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '../client/useAuth';
 import { fetchUserList } from '../client/authService';
+import { safeLocalStorageSet } from '../lib/safeStorage';
 
 const HISTORY_SYNCED_KEY = 'anilist-history-synced';
 
@@ -175,12 +176,14 @@ export function useSyncAniListHistory() {
           }
         }
 
-        // Save synced data back to localStorage (only if something changed)
+        // Save synced data back to localStorage (only if something changed).
+        // Use the quota-safe setter so a large history list can never throw an
+        // uncaught QuotaExceededError on login sync.
         if (historyChanged) {
-          localStorage.setItem('watched-episodes', JSON.stringify(localWatchedEpisodes));
+          safeLocalStorageSet('watched-episodes', JSON.stringify(localWatchedEpisodes));
         }
         if (visitedChanged) {
-          localStorage.setItem('last-anime-visited', JSON.stringify(localLastVisited));
+          safeLocalStorageSet('last-anime-visited', JSON.stringify(localLastVisited));
         }
 
         // Notify same-tab listeners (History page, EpisodeCard) that watch

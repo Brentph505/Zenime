@@ -6,6 +6,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import 'swiper/swiper-bundle.css';
 import { Episode } from '../../index';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
+import { safeLocalStorageSet } from '../../lib/safeStorage';
 
 const LOCAL_STORAGE_KEYS = {
   WATCHED_EPISODES: 'watched-episodes',
@@ -267,7 +268,7 @@ export const EpisodeCard: React.FC = () => {
           delete updatedEpisodes[animeId];
 
           const newWatchedEpisodesData = JSON.stringify(updatedEpisodes);
-          localStorage.setItem('watched-episodes', newWatchedEpisodesData);
+          safeLocalStorageSet('watched-episodes', newWatchedEpisodesData);
           setWatchedEpisodesData(newWatchedEpisodesData); // Trigger re-render
         };
 

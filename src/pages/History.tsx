@@ -9,6 +9,7 @@ import { MangaCard } from '../components/Home/MangaCard';
 import {
   getMangaBookmarks,
 } from '../lib/mangaHistory';
+import { safeLocalStorageSet } from '../lib/safeStorage';
 
 type AniListStatus =
   | 'CURRENT'
@@ -852,14 +853,14 @@ const History: React.FC = () => {
           localStorage.getItem('read-chapters') || '{}',
         );
         ids.forEach((id) => delete updated[id]);
-        localStorage.setItem('read-chapters', JSON.stringify(updated));
+        safeLocalStorageSet('read-chapters', JSON.stringify(updated));
         setMangaStorageData(JSON.stringify(updated));
       } else {
         const updated = JSON.parse(
           localStorage.getItem('watched-episodes') || '{}',
         );
         ids.forEach((id) => delete updated[id]);
-        localStorage.setItem('watched-episodes', JSON.stringify(updated));
+        safeLocalStorageSet('watched-episodes', JSON.stringify(updated));
         setAnimeStorageData(JSON.stringify(updated));
       }
     },

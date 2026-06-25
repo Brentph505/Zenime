@@ -15,6 +15,12 @@ import {
   faImage,
 } from '@fortawesome/free-solid-svg-icons';
 import { Episode } from '../../index';
+import { safeLocalStorageSet } from '../../lib/safeStorage';
+
+// Keep at most this many watched episodes per anime in localStorage so the
+// `watched-episodes` payload can't grow without bound and blow the quota.
+// (Matches MAX_CACHE_EPISODES_PER_ANIME in Watch.tsx.)
+const MAX_WATCHED_EPISODES_PER_ANIME = 30;
 
 interface Props {
   animeId: string | undefined;
@@ -304,9 +310,14 @@ export const EpisodeList: React.FC<Props> = ({
   // Update local storage when watched episodes change
   useEffect(() => {
     if (animeId && watchedEpisodes.length > 0) {
-      localStorage.setItem(
+      // Keep only the most recent N to bound the payload size.
+      const capped =
+        watchedEpisodes.length > MAX_WATCHED_EPISODES_PER_ANIME
+          ? watchedEpisodes.slice(-MAX_WATCHED_EPISODES_PER_ANIME)
+          : watchedEpisodes;
+      safeLocalStorageSet(
         `watched-episodes-${animeId}`,
-        JSON.stringify(watchedEpisodes),
+        JSON.stringify(capped),
       );
     }
   }, [animeId, watchedEpisodes]);
@@ -341,14 +352,19 @@ export const EpisodeList: React.FC<Props> = ({
             );
             if (selectedEpisode) {
               updatedWatchedEpisodes.push(selectedEpisode);
-              // Update the watched episodes object in local storage
-              localStorage.setItem(
+              // Bound per-anime growth so the aggregate object can't exceed quota.
+              const capped =
+                updatedWatchedEpisodes.length > MAX_WATCHED_EPISODES_PER_ANIME
+                  ? updatedWatchedEpisodes.slice(-MAX_WATCHED_EPISODES_PER_ANIME)
+                  : updatedWatchedEpisodes;
+              // Update the watched episodes object in local storage (quota-safe)
+              safeLocalStorageSet(
                 'watched-episodes',
                 JSON.stringify({
                   ...JSON.parse(
                     localStorage.getItem('watched-episodes') || '{}',
                   ),
-                  [animeId]: updatedWatchedEpisodes,
+                  [animeId]: capped,
                 }),
               );
               return updatedWatchedEpisodes;

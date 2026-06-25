@@ -1,9 +1,15 @@
+import { safeLocalStorageSet } from './safeStorage';
+
 export const LOCAL_STORAGE_KEYS = {
   READ_CHAPTERS: 'read-chapters',
   LAST_MANGA_VISITED: 'last-manga-visited',
   READING_PROGRESS: 'all_reading_times',
   MANGA_BOOKMARKS: 'manga-bookmarks',
 } as const;
+
+// Cap per-manga chapter history so `read-chapters` can't grow without bound
+// and blow the localStorage quota. Mirrors the anime side's per-anime cap.
+const MAX_CHAPTERS_PER_MANGA = 30;
 
 /**
  * Custom event dispatched whenever bookmarks change so in-tab listeners
@@ -67,7 +73,7 @@ export const saveLastMangaVisited = (
       entry.coverImage === undefined ? existing.coverImage : entry.coverImage,
   };
 
-  localStorage.setItem(
+  safeLocalStorageSet(
     LOCAL_STORAGE_KEYS.LAST_MANGA_VISITED,
     JSON.stringify(all),
   );
@@ -89,7 +95,12 @@ export const addReadChapterIfMissing = (
 
   if (!allChapters[animeId].some((ch) => ch.id === chapter.id)) {
     allChapters[animeId].push(chapter);
-    localStorage.setItem(
+    // Keep only the most recent N chapters for this manga so the aggregate
+    // payload can't grow without bound and exceed quota.
+    if (allChapters[animeId].length > MAX_CHAPTERS_PER_MANGA) {
+      allChapters[animeId] = allChapters[animeId].slice(-MAX_CHAPTERS_PER_MANGA);
+    }
+    safeLocalStorageSet(
       LOCAL_STORAGE_KEYS.READ_CHAPTERS,
       JSON.stringify(allChapters),
     );
@@ -114,7 +125,7 @@ export const setMangaBookmark = (mangaId: string, on: boolean): boolean => {
   } else {
     delete all[mangaId];
   }
-  localStorage.setItem(LOCAL_STORAGE_KEYS.MANGA_BOOKMARKS, JSON.stringify(all));
+  safeLocalStorageSet(LOCAL_STORAGE_KEYS.MANGA_BOOKMARKS, JSON.stringify(all));
   dispatchBookmarksChanged();
   return on;
 };

@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { FaBell } from 'react-icons/fa';
 import styled from 'styled-components';
 import Image404URL from '/src/assets/404.webp';
+import { safeLocalStorageSet } from '../lib/safeStorage';
 
 // ─── IndexedDB Helper for Large Storage ───────────────────────────────────────
 class WatchHistoryDB {
@@ -89,38 +90,9 @@ class WatchHistoryDB {
 
 const watchHistoryDB = new WatchHistoryDB();
 
-// ─── Safe localStorage helper ──────────────────────────────────────────────────
-// Wraps every setItem so QuotaExceededError never bubbles up as an uncaught
-// exception.  When the write fails we try once to evict the single largest
-// key and retry; if it still fails we silently give up.
-function safeLocalStorageSet(key: string, value: string): void {
-  const tryWrite = () => localStorage.setItem(key, value);
-  try {
-    tryWrite();
-  } catch (e) {
-    if (!(e instanceof DOMException && e.name === 'QuotaExceededError')) {
-      console.error('[localStorage] Unexpected write error:', e);
-      return;
-    }
-    // Evict the single largest key and retry once
-    try {
-      let largest = '';
-      let largestSize = 0;
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)!;
-        const size = (localStorage.getItem(k) || '').length;
-        if (size > largestSize) { largest = k; largestSize = size; }
-      }
-      if (largest) {
-        console.warn(`[localStorage] Quota exceeded — evicting largest key: "${largest}" (${largestSize} chars)`);
-        localStorage.removeItem(largest);
-      }
-      tryWrite();
-    } catch {
-      console.warn(`[localStorage] Could not write "${key}" even after eviction — skipping.`);
-    }
-  }
-}
+// safeLocalStorageSet (quota-safe wrapper) is imported from ../lib/safeStorage
+// and used for every growing localStorage key so QuotaExceededError never
+// crashes the app.
 
 import {
   EpisodeList,
