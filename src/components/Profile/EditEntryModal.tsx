@@ -52,8 +52,8 @@ const ModalContent = styled.div`
   border-radius: 14px;
   display: flex;
   align-items: stretch;
-  width: min(96%, 56rem);
-  height: min(85vh, 34rem);
+  width: min(96%, 54rem);
+  max-height: 90vh;
   overflow: hidden;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
   animation: ${scaleIn} 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -62,16 +62,16 @@ const ModalContent = styled.div`
   @media (max-width: 600px) {
     flex-direction: column;
     width: min(96%, 100%);
-    height: min(92vh, 600px);
+    max-height: 95vh;
   }
 `;
 
 /* Desktop: tall side image. Mobile: hidden (replaced by CoverBanner) */
 const CoverImage = styled.img`
-  width: 250px;
+  width: 280px;
   height: 100%;
   object-fit: cover;
-  object-position: center top;
+  object-position: center;
   flex-shrink: 0;
   align-self: stretch;
 
@@ -88,7 +88,7 @@ const CoverBanner = styled.div<{ $src: string }>`
     display: block;
     flex-shrink: 0;
     width: 100%;
-    height: 140px;
+    height: 120px;
     background: url(${({ $src }) => $src}) center/cover no-repeat;
     position: relative;
 
@@ -119,11 +119,11 @@ const BannerTitleRow = styled.div`
 `;
 
 const FormContainer = styled.div`
-  padding: 1.25rem 1.5rem;
+  padding: 1.1rem 1.3rem;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.85rem;
   overflow-y: auto;
   min-height: 0;
 
@@ -189,13 +189,13 @@ const HeartBtn = styled.button<{ $active?: boolean }>`
 `;
 
 /* 3-column on desktop to match the reference, 2-column on mobile */
-const GridRow = styled.div`
+const FormGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
 
   @media (max-width: 600px) {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, 1fr);
     gap: 0.75rem;
   }
 `;
@@ -272,7 +272,7 @@ const TextArea = styled.textarea`
   outline: none;
   width: 100%;
   box-sizing: border-box;
-  min-height: 80px;
+  min-height: 60px;
   resize: vertical;
   transition: border-color 0.15s;
 
@@ -536,7 +536,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
             </HeartBtn>
           </Header>
 
-          <GridRow>
+          <FormGrid>
             <FormGroup>
               <Label>Status</Label>
               <StatusSelectWrapper>
@@ -578,9 +578,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
                 onChange={(e) => setScore(e.target.value !== '' ? Number(e.target.value) : '')}
               />
             </FormGroup>
-          </GridRow>
 
-          <GridRow>
             <FormGroup>
               <Label>Start Date</Label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
@@ -600,7 +598,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
                 onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
               />
             </FormGroup>
-          </GridRow>
+          </FormGrid>
 
           <FormGroup style={{ flex: 1 }}>
             <Label>Notes</Label>
