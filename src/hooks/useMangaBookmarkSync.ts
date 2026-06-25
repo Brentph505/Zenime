@@ -28,7 +28,7 @@ interface SyncedBookmark {
  * all bookmarked manga to the user's AniList list.
  */
 export function useMangaBookmarkSync() {
-  const { isLoggedIn, saveEntry } = useAuth();
+  const { isLoggedIn, saveEntry, getUserMediaState } = useAuth();
   const { settings } = useSettings();
   const syncIntervalRef = useRef<NodeJS.Timeout>();
   const lastSyncRef = useRef<SyncedBookmark>((() => {
@@ -65,7 +65,13 @@ export function useMangaBookmarkSync() {
 
         console.log(`[MangaSync] syncBookmarkToAniList START: manga ${mangaId}`);
 
-        // Save to AniList with PLANNING status
+        const existing = await getUserMediaState(id);
+        if (existing?.entry) {
+          lastSyncRef.current[mangaId] = { syncedAt: Date.now() };
+          console.log(`[MangaSync] Skipped ${mangaId} — already on AniList (${existing.entry.status})`);
+          return;
+        }
+
         const result = await saveEntry({
           mediaId: id,
           status: 'PLANNING',
@@ -87,7 +93,7 @@ export function useMangaBookmarkSync() {
         console.error(`[MangaSync] ❌ ERROR in syncBookmarkToAniList (manga ${mangaId}):`, err instanceof Error ? err.message : err);
       }
     },
-    [isLoggedIn, saveEntry],
+    [isLoggedIn, saveEntry, getUserMediaState],
   );
 
   /**

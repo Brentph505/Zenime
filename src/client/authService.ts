@@ -659,12 +659,13 @@ export async function syncWatchProgress(
   totalEpisodes?: number | null,
 ): Promise<MediaListEntryResult | null> {
   try {
-    // Fetch current entry to determine status
     const existing = await fetchMediaListEntry(token, mediaId);
     const currentStatus = existing?.status;
+    // Never regress AniList progress when rewatching earlier episodes.
+    const effectiveProgress = Math.max(progress, existing?.progress ?? 0);
 
     let newStatus: MediaListStatus | undefined;
-    if (totalEpisodes && progress >= totalEpisodes) {
+    if (totalEpisodes && effectiveProgress >= totalEpisodes) {
       newStatus = 'COMPLETED';
     } else if (!currentStatus || currentStatus === 'PLANNING') {
       newStatus = 'CURRENT';
@@ -672,7 +673,7 @@ export async function syncWatchProgress(
 
     return await saveMediaListEntry(token, {
       mediaId,
-      progress,
+      progress: effectiveProgress,
       ...(newStatus ? { status: newStatus } : {}),
     });
   } catch (err) {
@@ -710,9 +711,10 @@ export async function syncMangaReadProgress(
   try {
     const existing = await fetchMediaListEntry(token, mediaId);
     const currentStatus = existing?.status;
+    const effectiveProgress = Math.max(progress, existing?.progress ?? 0);
 
     let newStatus: MediaListStatus | undefined;
-    if (totalChapters && progress >= totalChapters) {
+    if (totalChapters && effectiveProgress >= totalChapters) {
       newStatus = 'COMPLETED';
     } else if (!currentStatus || currentStatus === 'PLANNING') {
       newStatus = 'CURRENT';
@@ -720,7 +722,7 @@ export async function syncMangaReadProgress(
 
     return await saveMediaListEntry(token, {
       mediaId,
-      progress,
+      progress: effectiveProgress,
       ...(newStatus ? { status: newStatus } : {}),
     });
   } catch (err) {

@@ -16,6 +16,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { Episode } from '../../index';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
+import { dispatchWatchHistoryChanged } from '../../lib/watchHistory';
 
 // Keep at most this many watched episodes per anime in localStorage so the
 // `watched-episodes` payload can't grow without bound and blow the quota.
@@ -367,6 +368,7 @@ export const EpisodeList: React.FC<Props> = ({
                   [animeId]: capped,
                 }),
               );
+              dispatchWatchHistoryChanged();
               return updatedWatchedEpisodes;
             }
           }

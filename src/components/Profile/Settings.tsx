@@ -140,7 +140,7 @@ const ROW_META: Record<string, RowDef> = {
     icon: <IoSyncOutline />,
     label: 'Auto sync with AniList',
     description:
-      'Automatically sync to current episode progress with AniList if the entry status is set to "Watching". (Requires AniList login)',
+      'Automatically sync anime episode and manga chapter progress to your AniList account while you watch or read. (Requires AniList login)',
   },
   syncThreshold: {
     icon: <IoSyncOutline />,

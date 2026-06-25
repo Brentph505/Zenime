@@ -288,8 +288,11 @@ export function Player({
 
     const handlePlaybackEndedRef = {
       current: async () => {
-        if (!autoNextRef.current) return;
         try {
+          if (propEpisodeNumber) {
+            await saveAniListProgressRef.current?.(propEpisodeNumber);
+          }
+          if (!autoNextRef.current) return;
           player.current?.pause();
           await new Promise((resolve) => setTimeout(resolve, 200));
           await onEpisodeEndRef.current();
@@ -338,7 +341,7 @@ export function Player({
           (remainingTime < 2 || pct > 99)
         ) {
           iframeProgressRef.current.hasTriggeredEnd = true;
-          if (autoNextRef.current) handlePlaybackEndedRef.current();
+          void handlePlaybackEndedRef.current();
         }
       }
     };
@@ -394,7 +397,7 @@ export function Player({
       if (normalized.channel === 'megacloud') {
         switch (normalized.event) {
           case 'complete':
-            if (autoNextRef.current) handlePlaybackEndedRef.current();
+            void handlePlaybackEndedRef.current();
             break;
           case 'time':
             if (
@@ -430,7 +433,7 @@ export function Player({
           normalized.type === 'video:ended';
         if (artEnded) {
           console.log('[Player] ArtPlayer (flixcloud/ReAnime): video ended');
-          if (autoNextRef.current) handlePlaybackEndedRef.current();
+          void handlePlaybackEndedRef.current();
           return;
         }
         if (
@@ -449,7 +452,7 @@ export function Player({
           normalized.event === 'complete' ||
           normalized.type === 'ended';
         if (fcEnded) {
-          if (autoNextRef.current) handlePlaybackEndedRef.current();
+          void handlePlaybackEndedRef.current();
           return;
         }
         if (
@@ -480,7 +483,7 @@ export function Player({
         normalized.name === 'ended';
 
       if (isEnded) {
-        if (autoNextRef.current) handlePlaybackEndedRef.current();
+        void handlePlaybackEndedRef.current();
       }
     };
 
@@ -952,15 +955,13 @@ export function Player({
   const toggleAutoSkip = () => setSettings({ ...settings, autoSkip: !autoSkip });
 
   const handlePlaybackEnded = async () => {
-    if (!autoNextRef.current) return;
     try {
-      player.current?.pause();
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
       if (propEpisodeNumber) {
         await saveAniListProgress(propEpisodeNumber);
       }
-
+      if (!autoNextRef.current) return;
+      player.current?.pause();
+      await new Promise((resolve) => setTimeout(resolve, 200));
       await onEpisodeEndRef.current();
     } catch (error) {
       console.error('Error moving to the next episode:', error);

@@ -368,6 +368,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await fetch(endpoint);
       if (!res.ok) throw new Error(`CSRF fetch failed: ${res.status}`);
       const { csrfToken } = await res.json();
+      sessionStorage.setItem('anilist_csrf', csrfToken);
       window.location.href = buildAuthUrl(csrfToken);
     } catch (err) {
       console.error('[Auth] login() failed:', err);

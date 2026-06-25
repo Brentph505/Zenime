@@ -4,91 +4,11 @@ import { FaBell } from 'react-icons/fa';
 import styled from 'styled-components';
 import Image404URL from '/src/assets/404.webp';
 import { safeLocalStorageSet } from '../lib/safeStorage';
-
-// ─── IndexedDB Helper for Large Storage ───────────────────────────────────────
-class WatchHistoryDB {
-  private dbPromise: Promise<IDBDatabase>;
-  private readonly DB_NAME = 'ZenimeWatchDB';
-  private readonly STORE_NAME = 'watchedEpisodes';
-
-  constructor() {
-    this.dbPromise = this.initDB();
-  }
-
-  private initDB(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.DB_NAME, 1);
-      request.onerror = () => {
-        console.warn('[WatchHistoryDB] Failed to open IndexedDB');
-        reject(request.error);
-      };
-      request.onsuccess = () => {
-        resolve(request.result);
-      };
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(this.STORE_NAME)) {
-          db.createObjectStore(this.STORE_NAME, { keyPath: 'animeId' });
-        }
-      };
-    });
-  }
-
-  async saveWatchedEpisodes(animeId: string, episodes: any[]): Promise<void> {
-    try {
-      const db = await this.dbPromise;
-      const transaction = db.transaction(this.STORE_NAME, 'readwrite');
-      const store = transaction.objectStore(this.STORE_NAME);
-      await new Promise((resolve, reject) => {
-        const request = store.put({ animeId, episodes, timestamp: Date.now() });
-        request.onsuccess = () => resolve(undefined);
-        request.onerror = () => reject(request.error);
-      });
-    } catch (err) {
-      console.warn('[WatchHistoryDB] Failed to save:', err);
-    }
-  }
-
-  async getWatchedEpisodes(animeId: string): Promise<any[] | null> {
-    try {
-      const db = await this.dbPromise;
-      const transaction = db.transaction(this.STORE_NAME, 'readonly');
-      const store = transaction.objectStore(this.STORE_NAME);
-      return new Promise((resolve, reject) => {
-        const request = store.get(animeId);
-        request.onsuccess = () => resolve(request.result?.episodes || null);
-        request.onerror = () => reject(request.error);
-      });
-    } catch (err) {
-      console.warn('[WatchHistoryDB] Failed to get:', err);
-      return null;
-    }
-  }
-
-  async getAllWatchedAnime(): Promise<Record<string, any[]>> {
-    try {
-      const db = await this.dbPromise;
-      const transaction = db.transaction(this.STORE_NAME, 'readonly');
-      const store = transaction.objectStore(this.STORE_NAME);
-      return new Promise((resolve, reject) => {
-        const request = store.getAll();
-        request.onsuccess = () => {
-          const result: Record<string, any[]> = {};
-          request.result.forEach((item: any) => {
-            result[item.animeId] = item.episodes;
-          });
-          resolve(result);
-        };
-        request.onerror = () => reject(request.error);
-      });
-    } catch (err) {
-      console.warn('[WatchHistoryDB] Failed to get all:', err);
-      return {};
-    }
-  }
-}
-
-const watchHistoryDB = new WatchHistoryDB();
+import {
+  watchHistoryDB,
+  dispatchWatchHistoryChanged,
+  WATCHED_EPISODES_CACHE_KEY,
+} from '../lib/watchHistory';
 
 // safeLocalStorageSet (quota-safe wrapper) is imported from ../lib/safeStorage
 // and used for every growing localStorage key so QuotaExceededError never
@@ -438,15 +358,16 @@ const Watch: React.FC = () => {
         try {
           // 1. Full episode data → IndexedDB (unlimited quota)
           const existingEpisodes = await watchHistoryDB.getWatchedEpisodes(animeId);
-          const episodeList = existingEpisodes || [];
+          const episodeList: Episode[] = (existingEpisodes as Episode[] | null) || [];
 
           if (!episodeList.some((ep) => ep.id === episode.id)) {
             episodeList.push(episode);
             await watchHistoryDB.saveWatchedEpisodes(animeId, episodeList);
+            dispatchWatchHistoryChanged();
           }
 
           // 2. Minimal cache → localStorage (size-capped, non-critical)
-          const CACHE_KEY = 'watched-episodes-cache';
+          const CACHE_KEY = WATCHED_EPISODES_CACHE_KEY;
           let allWatchedEpisodes: Record<string, { id: string; number: number; title: string }[]>;
           try {
             allWatchedEpisodes = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
@@ -474,6 +395,7 @@ const Watch: React.FC = () => {
             }
 
             safeLocalStorageSet(CACHE_KEY, JSON.stringify(allWatchedEpisodes));
+            dispatchWatchHistoryChanged();
           }
         } catch (err) {
           console.error('[Watch] Error saving watched episode:', err);

@@ -60,6 +60,37 @@ function getChapterHeading(chapter: MangaChapter) {
   return 'Chapter';
 }
 
+/** Resolve AniList chapter progress from number, title, list index, or id slug. */
+function getChapterProgressForAniList(
+  chapter: MangaChapter,
+  chapterList: MangaChapter[],
+): number {
+  if (typeof chapter.number === 'number' && chapter.number > 0) {
+    return chapter.number;
+  }
+  const parsed = parseInt(String(chapter.number ?? ''), 10);
+  if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+
+  const titleMatch = chapter.title?.match(/(\d+(?:\.\d+)?)/);
+  if (titleMatch) {
+    const fromTitle = parseFloat(titleMatch[1]);
+    if (!Number.isNaN(fromTitle) && fromTitle > 0) return Math.floor(fromTitle);
+  }
+
+  const idx = chapterList.findIndex(
+    (c) => c.id === chapter.id || (c.url && c.url === chapter.url),
+  );
+  if (idx >= 0) return idx + 1;
+
+  if (chapter.id) {
+    const slug = chapter.id.split('/').filter(Boolean).pop() ?? '';
+    const fromSlug = parseFloat(slug.replace(/[^\d.]/g, ''));
+    if (!Number.isNaN(fromSlug) && fromSlug > 0) return Math.floor(fromSlug);
+  }
+
+  return 0;
+}
+
 /* ─── Animations ─────────────────────────────────────────── */
 const slideInRight = keyframes`
   from { transform: translateX(100%); }
@@ -958,10 +989,7 @@ function Read() {
       !syncedChaptersRef.current.has(selectedChapter.id)
     ) {
       const mediaId = parseInt(animeId, 10);
-      const chapterProgress =
-        typeof selectedChapter.number === 'number'
-          ? selectedChapter.number
-          : parseInt(String(selectedChapter.number ?? '0'), 10) || 0;
+      const chapterProgress = getChapterProgressForAniList(selectedChapter, chapters);
 
       if (!Number.isNaN(mediaId) && chapterProgress > 0) {
         syncedChaptersRef.current.add(selectedChapter.id);
@@ -981,7 +1009,7 @@ function Read() {
         }
       }
     }
-  }, [selectedChapter, currentPage, pageCount, animeId, mangaInfo, settings.aniListSync, isLoggedIn]);
+  }, [selectedChapter, currentPage, pageCount, animeId, mangaInfo, chapters, settings.aniListSync, isLoggedIn]);
 
   /* ── Fetch pages ── */
   useEffect(() => {
