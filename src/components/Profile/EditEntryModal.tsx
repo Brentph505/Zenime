@@ -40,36 +40,81 @@ const ModalContent = styled.div`
   border: 1px solid var(--global-border, rgba(255, 255, 255, 0.08));
   border-radius: 14px;
   display: flex;
-  width: min(96%, 55rem);
-  height: min(90vh, 38rem);
+  align-items: stretch;
+  width: min(96%, 52rem);
+  height: min(90vh, 42rem);
   overflow: hidden;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
   animation: ${scaleIn} 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 
+  /* Mobile: stack vertically */
   @media (max-width: 600px) {
     flex-direction: column;
-    height: min(90vh, 42rem);
+    width: min(96%, 100%);
+    height: min(95vh, 680px);
   }
 `;
 
+/* Desktop: tall side image. Mobile: hidden (replaced by CoverBanner) */
 const CoverImage = styled.img`
-  width: 260px;
+  width: 200px;
+  height: 100%;
   object-fit: cover;
+  object-position: center top;
   flex-shrink: 0;
+  align-self: stretch;
 
   @media (max-width: 600px) {
+    display: none;
+  }
+`;
+
+/* Mobile-only: full-width banner at the top with title overlay */
+const CoverBanner = styled.div<{ $src: string }>`
+  display: none;
+
+  @media (max-width: 600px) {
+    display: block;
+    flex-shrink: 0;
     width: 100%;
-    height: 180px;
+    height: 140px;
+    background: url(${({ $src }) => $src}) center/cover no-repeat;
+    position: relative;
+
+    /* Dark gradient at the bottom so the title is readable */
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.75) 100%);
+    }
+  }
+`;
+
+const BannerTitleRow = styled.div`
+  display: none;
+
+  @media (max-width: 600px) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.75rem;
+    position: absolute;
+    bottom: 0.75rem;
+    left: 0.75rem;
+    right: 0.75rem;
+    z-index: 1;
   }
 `;
 
 const FormContainer = styled.div`
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1rem;
   overflow-y: auto;
+  min-height: 0;
 
   &::-webkit-scrollbar { width: 5px; }
   &::-webkit-scrollbar-track { background: transparent; }
@@ -77,21 +122,38 @@ const FormContainer = styled.div`
     background: var(--global-div, #30363d);
     border-radius: 99px;
   }
+
+  @media (max-width: 600px) {
+    padding: 1rem;
+    gap: 0.85rem;
+  }
 `;
 
+/* Desktop header (title + heart) inside FormContainer */
 const Header = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
+
+  /* On mobile, the title/heart live in the BannerTitleRow overlay, not here */
+  @media (max-width: 600px) {
+    display: none;
+  }
 `;
 
 const Title = styled.h2`
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.15rem;
   color: var(--global-text, #c9d1d9);
   font-weight: 700;
   line-height: 1.3;
+
+  @media (max-width: 600px) {
+    font-size: 1rem;
+    color: #ffffff;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
 `;
 
 const HeartBtn = styled.button<{ $active?: boolean }>`
@@ -115,10 +177,16 @@ const HeartBtn = styled.button<{ $active?: boolean }>`
   }
 `;
 
+/* 2-column on mobile, auto-fill on desktop */
 const GridRow = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 1rem;
+  gap: 0.85rem;
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+  }
 `;
 
 const FormGroup = styled.div`
@@ -201,11 +269,18 @@ const TextArea = styled.textarea`
 `;
 
 const Footer = styled.div`
+  flex-shrink: 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--global-border, rgba(255,255,255,0.08));
   margin-top: auto;
-  padding-top: 1rem;
+
+  @media (max-width: 600px) {
+    padding-top: 0.75rem;
+    margin-top: 0.25rem;
+  }
 `;
 
 const DeleteBtn = styled.button`
@@ -378,8 +453,25 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
   return (
     <Overlay onClick={onClose}>
       <ModalContent onClick={(e) => e.stopPropagation()}>
+        {/* Desktop: tall side cover */}
         <CoverImage src={anime.image} alt="Cover" />
+
+        {/* Mobile: top banner with title overlay */}
+        <CoverBanner $src={anime.image}>
+          <BannerTitleRow>
+            <Title>{anime.title.english || anime.title.romaji}</Title>
+            <HeartBtn
+              $active={isFavourite}
+              onClick={() => toggleFavourite(isManga ? 'MANGA' : 'ANIME')}
+              title={isFavourite ? 'Remove from favorites' : 'Add to favorites'}
+            >
+              {isFavourite ? <FaHeart /> : <FaRegHeart />}
+            </HeartBtn>
+          </BannerTitleRow>
+        </CoverBanner>
+
         <FormContainer>
+          {/* Desktop header (hidden on mobile) */}
           <Header>
             <Title>{anime.title.english || anime.title.romaji}</Title>
             <HeartBtn
@@ -421,6 +513,16 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
                 onChange={(e) => setScore(e.target.value !== '' ? Number(e.target.value) : '')}
               />
             </FormGroup>
+
+            <FormGroup>
+              <Label>{repeatLabel}</Label>
+              <Input
+                type="number"
+                min="0"
+                value={repeat}
+                onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
+              />
+            </FormGroup>
           </GridRow>
 
           <GridRow>
@@ -432,16 +534,6 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
             <FormGroup>
               <Label>End Date</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-            </FormGroup>
-
-            <FormGroup>
-              <Label>{repeatLabel}</Label>
-              <Input
-                type="number"
-                min="0"
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
-              />
             </FormGroup>
           </GridRow>
 
@@ -457,10 +549,10 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               </DeleteBtn>
             ) : <div />}
             <ActionButtons>
-              <Btn onClick={onClose}>Cancel</Btn>
               <Btn $primary onClick={handleSave} disabled={loading || isSaving}>
                 {isSaving ? 'Saving...' : 'Save Changes'}
               </Btn>
+              <Btn onClick={onClose}>Cancel</Btn>
             </ActionButtons>
           </Footer>
         </FormContainer>
