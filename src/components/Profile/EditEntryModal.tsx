@@ -6,33 +6,49 @@ import { useAniListEntry } from '../../hooks/useAniListEntry';
 import type { Anime } from '../../index';
 import type { MediaListStatus, SaveEntryInput } from '../../client/authService';
 
+import { keyframes } from 'styled-components';
+
+const fadeIn = keyframes`
+  from { opacity: 0; }
+  to   { opacity: 1; }
+`;
+
+const scaleIn = keyframes`
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)    scale(1); }
+`;
+
 const Overlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(4px);
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
-  animation: fadeIn 0.2s ease;
+  padding: 1.5rem;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  animation: ${fadeIn} 0.18s ease both;
+
+  @media (max-width: 480px) {
+    padding: 0.5rem;
+  }
 `;
 
 const ModalContent = styled.div`
-  background: #0f0f11;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background: var(--global-primary-bg, #0d1117);
+  border: 1px solid var(--global-border, rgba(255, 255, 255, 0.08));
+  border-radius: 14px;
   display: flex;
-  width: 90vw;
-  max-width: 800px;
-  max-height: 90vh;
+  width: min(96%, 55rem);
+  height: min(90vh, 38rem);
   overflow: hidden;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  animation: popIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
+  animation: ${scaleIn} 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 
   @media (max-width: 600px) {
     flex-direction: column;
-    overflow-y: auto;
+    height: min(90vh, 42rem);
   }
 `;
 
@@ -54,6 +70,13 @@ const FormContainer = styled.div`
   flex-direction: column;
   gap: 1.25rem;
   overflow-y: auto;
+
+  &::-webkit-scrollbar { width: 5px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb {
+    background: var(--global-div, #30363d);
+    border-radius: 99px;
+  }
 `;
 
 const Header = styled.div`
@@ -66,15 +89,15 @@ const Header = styled.div`
 const Title = styled.h2`
   margin: 0;
   font-size: 1.2rem;
-  color: #fff;
+  color: var(--global-text, #c9d1d9);
   font-weight: 700;
   line-height: 1.3;
 `;
 
 const HeartBtn = styled.button<{ $active?: boolean }>`
-  background: #1a1a1c;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: ${({ $active }) => ($active ? '#f43f5e' : '#9ca3af')};
+  background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--global-border, rgba(255, 255, 255, 0.1));
+  color: ${({ $active }) => ($active ? '#f43f5e' : 'var(--global-text-muted, #8b949e)')};
   border-radius: 8px;
   width: 36px;
   height: 36px;
@@ -88,6 +111,7 @@ const HeartBtn = styled.button<{ $active?: boolean }>`
   &:hover {
     border-color: #f43f5e;
     color: #f43f5e;
+    background: rgba(244, 63, 94, 0.1);
   }
 `;
 
@@ -105,20 +129,21 @@ const FormGroup = styled.div`
 
 const Label = styled.label`
   font-size: 0.75rem;
-  color: #9ca3af;
+  color: var(--global-text-muted, #8b949e);
   font-weight: 600;
 `;
 
 const Input = styled.input`
-  background: #1a1a1c;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--global-border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
-  color: #fff;
+  color: var(--global-text, #c9d1d9);
   font-size: 0.85rem;
   outline: none;
   width: 100%;
   box-sizing: border-box;
+  transition: border-color 0.15s;
 
   &:focus {
     border-color: var(--primary-accent, #c084fc);
@@ -131,11 +156,11 @@ const Input = styled.input`
 `;
 
 const Select = styled.select`
-  background: #1a1a1c;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--global-border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
-  color: #fff;
+  color: var(--global-text, #c9d1d9);
   font-size: 0.85rem;
   outline: none;
   width: 100%;
@@ -144,24 +169,31 @@ const Select = styled.select`
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%239ca3af' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
+  transition: border-color 0.15s;
 
   &:focus {
     border-color: var(--primary-accent, #c084fc);
   }
+  
+  option {
+    background: var(--global-secondary-bg, #161b22);
+    color: var(--global-text, #c9d1d9);
+  }
 `;
 
 const TextArea = styled.textarea`
-  background: #1a1a1c;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--global-border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
   padding: 0.75rem;
-  color: #fff;
+  color: var(--global-text, #c9d1d9);
   font-size: 0.85rem;
   outline: none;
   width: 100%;
   box-sizing: border-box;
   min-height: 80px;
   resize: vertical;
+  transition: border-color 0.15s;
 
   &:focus {
     border-color: var(--primary-accent, #c084fc);
@@ -177,8 +209,8 @@ const Footer = styled.div`
 `;
 
 const DeleteBtn = styled.button`
-  background: #1a1a1c;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: transparent;
+  border: 1px solid rgba(239, 68, 68, 0.4);
   color: #ef4444;
   border-radius: 6px;
   width: 36px;
@@ -187,12 +219,13 @@ const DeleteBtn = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 
   &:hover {
     background: rgba(239, 68, 68, 0.1);
-    border-color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.6);
   }
+  &:active { transform: scale(0.97); }
 `;
 
 const ActionButtons = styled.div`
@@ -201,19 +234,21 @@ const ActionButtons = styled.div`
 `;
 
 const Btn = styled.button<{ $primary?: boolean }>`
-  background: ${({ $primary }) => ($primary ? 'var(--primary-accent, #c084fc)' : '#1a1a1c')};
-  color: ${({ $primary }) => ($primary ? '#fff' : '#e5e7eb')};
-  border: 1px solid ${({ $primary }) => ($primary ? 'transparent' : 'rgba(255, 255, 255, 0.1)')};
+  background: ${({ $primary }) => ($primary ? 'var(--primary-accent, #c084fc)' : 'transparent')};
+  color: ${({ $primary }) => ($primary ? '#ffffff' : 'var(--global-text, #c9d1d9)')};
+  border: 1px solid ${({ $primary }) => ($primary ? 'transparent' : 'var(--global-border, rgba(255, 255, 255, 0.1))')};
   padding: 0.5rem 1rem;
   border-radius: 6px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
 
   &:hover {
-    filter: brightness(1.1);
+    background: ${({ $primary }) => ($primary ? 'var(--primary-accent, #c084fc)' : 'var(--global-tertiary-bg, #21262d)')};
+    filter: ${({ $primary }) => ($primary ? 'brightness(1.1)' : 'none')};
   }
+  &:active { transform: scale(0.97); }
   &:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -253,12 +288,12 @@ function dateObjToYMD(obj?: { year?: number | null; month?: number | null; day?:
 }
 
 function ymdToDateObj(ymd: string) {
-  if (!ymd) return { year: null, month: null, day: null };
+  if (!ymd) return { year: undefined, month: undefined, day: undefined };
   const [y, m, d] = ymd.split('-');
   return {
-    year: parseInt(y, 10) || null,
-    month: parseInt(m, 10) || null,
-    day: parseInt(d, 10) || null,
+    year: parseInt(y, 10) || undefined,
+    month: parseInt(m, 10) || undefined,
+    day: parseInt(d, 10) || undefined,
   };
 }
 
@@ -290,6 +325,19 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
       // Not in list yet, set some defaults based on action? Or just leave blank.
     }
   }, [loading, entry]);
+
+  // Lock body scroll + close on ESC while open.
+  useEffect(() => {
+    if (!isOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen || !isLoggedIn) return null;
 
