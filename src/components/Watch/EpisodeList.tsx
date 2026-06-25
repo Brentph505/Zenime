@@ -16,7 +16,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { Episode } from '../../index';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
-import { dispatchWatchHistoryChanged } from '../../lib/watchHistory';
+import { dispatchWatchHistoryChanged, normalizeToEpisodeArray } from '../../lib/watchHistory';
 
 // Keep at most this many watched episodes per anime in localStorage so the
 // `watched-episodes` payload can't grow without bound and blow the quota.
@@ -329,9 +329,9 @@ export const EpisodeList: React.FC<Props> = ({
       const watched = localStorage.getItem('watched-episodes');
       if (watched) {
         const watchedEpisodesObject = JSON.parse(watched);
-        const watchedEpisodesForAnime = watchedEpisodesObject[animeId];
-        if (watchedEpisodesForAnime) {
-          setWatchedEpisodes(watchedEpisodesForAnime);
+        const raw = watchedEpisodesObject[animeId];
+        if (raw != null) {
+          setWatchedEpisodes(normalizeToEpisodeArray(animeId, raw) as Episode[]);
         }
       }
     }

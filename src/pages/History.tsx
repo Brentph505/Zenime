@@ -10,6 +10,14 @@ import {
   getMangaBookmarks,
 } from '../lib/mangaHistory';
 import { safeLocalStorageSet } from '../lib/safeStorage';
+import {
+  WATCH_HISTORY_CHANGED_EVENT,
+  WATCHED_EPISODES_KEY,
+  LAST_ANIME_VISITED_KEY,
+  getLastAnimeVisitedMap,
+  normalizeToEpisodeArray,
+  resolveLastEpisodeNumber,
+} from '../lib/watchHistory';
 
 type AniListStatus =
   | 'CURRENT'
@@ -31,6 +39,9 @@ interface LastVisitedData {
     titleRomaji?: string;
     status?: AniListStatus;
     coverImage?: string;
+    anilistProgress?: number;
+    lastEpisodeNumber?: number;
+    totalEpisodes?: number | null;
   };
 }
 
@@ -630,7 +641,7 @@ const EmptyState = styled.div`
 const History: React.FC = () => {
   // Separate state for anime and manga so each tab re-renders independently
   const [animeStorageData, setAnimeStorageData] = useState(
-    () => localStorage.getItem('watched-episodes'),
+    () => localStorage.getItem(WATCHED_EPISODES_KEY),
   );
   const [mangaStorageData, setMangaStorageData] = useState(
     () => localStorage.getItem('read-chapters'),
@@ -643,8 +654,11 @@ const History: React.FC = () => {
   const [contentType, setContentType] = useState<ContentType>('anime');
 
   const lastAnimeVisited = useMemo<LastVisitedData>(() => {
-    const data = localStorage.getItem('last-anime-visited');
-    return data ? JSON.parse(data) : {};
+    try {
+      return getLastAnimeVisitedMap() as LastVisitedData;
+    } catch {
+      return {};
+    }
   }, [animeStorageData]);
 
   const lastMangaVisited = useMemo<LastVisitedData>(() => {
@@ -654,9 +668,13 @@ const History: React.FC = () => {
 
   // Sync storage keys when any tab changes them (cross-tab via `storage`).
   useEffect(() => {
+    const refreshAnime = () => {
+      setAnimeStorageData(localStorage.getItem(WATCHED_EPISODES_KEY));
+    };
+
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'watched-episodes' || e.key === null) {
-        setAnimeStorageData(localStorage.getItem('watched-episodes'));
+      if (e.key === WATCHED_EPISODES_KEY || e.key === LAST_ANIME_VISITED_KEY || e.key === null) {
+        refreshAnime();
       }
       if (
         e.key === 'read-chapters' ||
@@ -668,40 +686,63 @@ const History: React.FC = () => {
     };
 
     window.addEventListener('storage', handleStorageChange);
+    window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshAnime);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshAnime);
     };
   }, []);
 
   // ── Build anime list ──────────────────────────────────────────────────────
 
   const animeList = useMemo<AnimeWatchData[]>(() => {
-    if (!animeStorageData) return [];
     try {
-      const allEpisodes: Record<string, Episode[]> =
-        JSON.parse(animeStorageData);
+      const allRaw: Record<string, unknown> = animeStorageData
+        ? JSON.parse(animeStorageData)
+        : {};
+
+      // Include AniList-synced entries that only exist in last-anime-visited.
+      for (const animeId of Object.keys(lastAnimeVisited)) {
+        const progress = resolveLastEpisodeNumber(
+          allRaw[animeId],
+          lastAnimeVisited[animeId]?.anilistProgress ??
+            lastAnimeVisited[animeId]?.lastEpisodeNumber,
+        );
+        if (progress > 0 && allRaw[animeId] === undefined) {
+          allRaw[animeId] = progress;
+        }
+      }
+
       const playbackInfo = JSON.parse(
         localStorage.getItem('all_episode_times') || '{}',
       ) as Record<string, { playbackPercentage: number }>;
 
-      return Object.entries(allEpisodes)
-        .map(([animeId, episodes]) => {
+      return Object.entries(allRaw)
+        .map(([animeId, rawValue]) => {
+          const visited = lastAnimeVisited[animeId];
+          const anilistProgress =
+            visited?.anilistProgress ?? visited?.lastEpisodeNumber ?? null;
+          const episodes = normalizeToEpisodeArray(animeId, rawValue, anilistProgress);
           const lastEpisode = episodes[episodes.length - 1];
+          const lastEpNum = resolveLastEpisodeNumber(rawValue, anilistProgress);
+
           return {
             animeId,
-            titleEnglish: lastAnimeVisited[animeId]?.titleEnglish,
-            titleRomaji: lastAnimeVisited[animeId]?.titleRomaji,
-            coverImage: lastEpisode?.image,
+            titleEnglish: visited?.titleEnglish,
+            titleRomaji: visited?.titleRomaji,
+            coverImage: lastEpisode?.image || visited?.coverImage,
             episodes,
-            timestamp: lastAnimeVisited[animeId]?.timestamp || 0,
+            timestamp: visited?.timestamp || 0,
             playbackPercentage:
-              playbackInfo[lastEpisode?.id]?.playbackPercentage || 0,
-            lastEpisodeNumber: lastEpisode?.number ?? '',
+              playbackInfo[lastEpisode?.id]?.playbackPercentage ||
+              (lastEpNum > 0 ? 100 : 0),
+            lastEpisodeNumber: lastEpNum > 0 ? lastEpNum : (lastEpisode?.number ?? 1),
             lastEpisodeTitle: lastEpisode?.title,
-            status: lastAnimeVisited[animeId]?.status,
+            status: visited?.status,
             type: 'anime' as ContentType,
           };
         })
+        .filter((item) => item.lastEpisodeNumber !== 0)
         .sort((a, b) => b.timestamp - a.timestamp);
     } catch {
       return [];
@@ -857,10 +898,10 @@ const History: React.FC = () => {
         setMangaStorageData(JSON.stringify(updated));
       } else {
         const updated = JSON.parse(
-          localStorage.getItem('watched-episodes') || '{}',
+          localStorage.getItem(WATCHED_EPISODES_KEY) || '{}',
         );
         ids.forEach((id) => delete updated[id]);
-        safeLocalStorageSet('watched-episodes', JSON.stringify(updated));
+        safeLocalStorageSet(WATCHED_EPISODES_KEY, JSON.stringify(updated));
         setAnimeStorageData(JSON.stringify(updated));
       }
     },
@@ -907,7 +948,7 @@ const History: React.FC = () => {
     const titleEng = safeTitle(anime.titleEnglish, 'english');
     const titleRom = safeTitle(anime.titleRomaji, 'romaji');
     const animeTitle = String(titleEng || titleRom || 'Unknown Anime');
-    const cleanEpisodeNumber = String(anime.lastEpisodeNumber).split('-')[0];
+    const cleanEpisodeNumber = String(anime.lastEpisodeNumber || 1).split('-')[0];
     const displayTitle = `${animeTitle}${
       anime.lastEpisodeTitle ? ` - ${anime.lastEpisodeTitle}` : ''
     }`;
@@ -915,7 +956,7 @@ const History: React.FC = () => {
     return (
       <AnimeCard
         key={anime.animeId}
-        to={`/watch/${anime.animeId}`}
+        to={`/watch/${anime.animeId}?ep=${cleanEpisodeNumber}`}
         title={`Continue watching ${animeTitle}`}
       >
         <img

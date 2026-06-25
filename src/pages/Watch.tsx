@@ -8,6 +8,7 @@ import {
   watchHistoryDB,
   dispatchWatchHistoryChanged,
   WATCHED_EPISODES_CACHE_KEY,
+  resolveLastEpisodeNumber,
 } from '../lib/watchHistory';
 
 // safeLocalStorageSet (quota-safe wrapper) is imported from ../lib/safeStorage
@@ -627,11 +628,12 @@ const Watch: React.FC = () => {
         setEpisodes(transformed);
 
         // Update last-visited (minimal data only)
+        let lvData: Record<string, any> = {};
+        try {
+          lvData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED) || '{}');
+        } catch { /* ignore */ }
+
         if (animeInfo && animeId) {
-          let lvData: Record<string, any> = {};
-          try {
-            lvData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED) || '{}');
-          } catch { /* ignore */ }
           // Preserve any fields previously stored (e.g. AniList status, cover)
           // so we don't clobber metadata written by the history sync hook.
           const prev = lvData[animeId] || {};
@@ -673,14 +675,34 @@ const Watch: React.FC = () => {
             const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_WATCHED_EPISODE + animeId);
             savedEp = saved ? JSON.parse(saved) : null;
           } catch { /* ignore */ }
-          return savedEp
-            ? transformed.find((ep) => String(ep.number) === String(savedEp!.number)) || transformed[0]
-            : transformed[0];
+
+          if (savedEp?.number != null) {
+            return (
+              transformed.find((ep) => String(ep.number) === String(savedEp!.number)) ||
+              transformed[0]
+            );
+          }
+
+          // Fall back to AniList-synced progress from last-anime-visited.
+          const visitedMeta = lvData[animeId];
+          const anilistEp = resolveLastEpisodeNumber(
+            null,
+            Number(visitedMeta?.anilistProgress ?? visitedMeta?.lastEpisodeNumber),
+          );
+          if (anilistEp > 0) {
+            return (
+              transformed.find((ep) => String(ep.number) === String(anilistEp)) ||
+              transformed[0]
+            );
+          }
+
+          return transformed[0];
         })();
 
         if (targetEp) {
-          if (String(targetEp.number) !== episodeNumber) {
-            navigate(`/watch/${animeId}?ep=${targetEp.number}`, { replace: true });
+          const epNum = targetEp.number;
+          if (epNum != null && String(epNum) !== episodeNumber) {
+            navigate(`/watch/${animeId}?ep=${epNum}`, { replace: true });
           }
           setCurrentEpisode(targetEp);
           setLanguageChanged(false);

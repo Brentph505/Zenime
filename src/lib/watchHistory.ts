@@ -149,3 +149,80 @@ export async function getAllWatchedAnimeMap(): Promise<Record<string, unknown>> 
 export function getLastAnimeVisitedMap(): Record<string, Record<string, unknown>> {
   return parseRecord(LAST_ANIME_VISITED_KEY) as Record<string, Record<string, unknown>>;
 }
+
+/** Minimal episode shape used across watch history + AniList sync. */
+export interface WatchHistoryEpisode {
+  id: string;
+  number: number;
+  title: string;
+  description: string | null;
+  image: string;
+  imageHash: string;
+  airDate: string | null;
+}
+
+/** Build a placeholder episode object from an AniList progress count. */
+export function buildSyntheticEpisode(
+  animeId: string,
+  progress: number,
+): WatchHistoryEpisode {
+  const ep = Math.max(1, Math.floor(progress));
+  return {
+    id: `anilist-sync-${animeId}-${ep}`,
+    number: ep,
+    title: `Episode ${ep}`,
+    description: null,
+    image: '',
+    imageHash: '',
+    airDate: null,
+  };
+}
+
+/**
+ * Normalize any stored watch-history value into an Episode[].
+ * Falls back to `anilistProgress` from last-anime-visited when the stored
+ * value is a bare number (legacy AniList sync shape).
+ */
+export function normalizeToEpisodeArray(
+  animeId: string,
+  value: unknown,
+  anilistProgress?: number | null,
+): WatchHistoryEpisode[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((ep) => ep && typeof ep === 'object')
+      .map((ep) => {
+        const obj = ep as Record<string, unknown>;
+        const num = Number(obj.number);
+        return {
+          id: String(obj.id ?? `ep-${num}`),
+          number: Number.isNaN(num) ? 1 : num,
+          title: String(obj.title ?? `Episode ${num}`),
+          description: (obj.description as string | null | undefined) ?? null,
+          image: String(obj.image ?? ''),
+          imageHash: String(obj.imageHash ?? ''),
+          airDate: (obj.airDate as string | null | undefined) ?? null,
+        };
+      });
+  }
+
+  const fromValue =
+    typeof value === 'number' ? value : getWatchedCount(value);
+  const progress = Math.max(fromValue, anilistProgress ?? 0);
+
+  if (progress > 0) {
+    return [buildSyntheticEpisode(animeId, progress)];
+  }
+
+  return [];
+}
+
+/** Resolve the last watched episode number from any storage shape. */
+export function resolveLastEpisodeNumber(
+  value: unknown,
+  anilistProgress?: number | null,
+): number {
+  const fromArray = getWatchedCount(value);
+  const fromAnilist = anilistProgress ?? 0;
+  return Math.max(fromArray, fromAnilist, 0);
+}
