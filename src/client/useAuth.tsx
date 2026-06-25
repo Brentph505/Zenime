@@ -73,6 +73,7 @@ export interface MediaListEntry {
     episodes: number | null;
     chapters: number | null;
     type: 'ANIME' | 'MANGA';
+    coverImage?: { large?: string; medium?: string } | null;
   };
 }
 

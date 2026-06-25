@@ -67,6 +67,7 @@ export interface MediaListEntryResult {
     episodes: number | null;
     chapters: number | null;
     type: 'ANIME' | 'MANGA';
+    coverImage?: { large?: string; medium?: string } | null;
   };
 }
 
@@ -442,6 +443,7 @@ const ENTRY_FIELDS = /* GraphQL */ `
   media {
     id episodes chapters type
     title { romaji english }
+    coverImage { large medium }
   }
 `;
 

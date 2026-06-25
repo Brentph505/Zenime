@@ -574,6 +574,7 @@ const AnimeCard = styled(Link)`
     object-fit: cover;
     transition: filter 0.2s ease-in-out;
     display: block;
+    background: linear-gradient(135deg, var(--global-secondary-bg, #161b22) 0%, var(--global-tertiary-bg, #21262d) 100%);
   }
 
   .episode-info {
@@ -953,6 +954,10 @@ const History: React.FC = () => {
       anime.lastEpisodeTitle ? ` - ${anime.lastEpisodeTitle}` : ''
     }`;
 
+    // coverImage: episode thumbnail (16:9, device-local) → AniList cover (portrait, synced)
+    // If neither is available we leave src empty and the CSS placeholder kicks in.
+    const imgSrc = anime.coverImage || '';
+
     return (
       <AnimeCard
         key={anime.animeId}
@@ -960,11 +965,16 @@ const History: React.FC = () => {
         title={`Continue watching ${animeTitle}`}
       >
         <img
-          src={anime.coverImage}
+          src={imgSrc}
           alt={`Cover for ${animeTitle}`}
+          data-title={animeTitle}
           onError={(e) => {
-            e.currentTarget.src =
-              'https://via.placeholder.com/480x270?text=No+Image';
+            // Hide broken image icon; CSS will show a dark placeholder
+            e.currentTarget.style.visibility = 'hidden';
+          }}
+          onLoad={(e) => {
+            // Restore if previously hidden on error
+            e.currentTarget.style.visibility = '';
           }}
         />
 

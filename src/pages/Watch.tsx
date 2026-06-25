@@ -646,6 +646,10 @@ const Watch: React.FC = () => {
             // and so the History page can show episode counts.
             totalEpisodes:
               animeInfo.totalEpisodes ?? prev.totalEpisodes ?? null,
+            // Store cover image so History can show thumbnails cross-device
+            // (episode thumbnails are device-local; the cover image comes from AniList/API)
+            coverImage:
+              animeInfo.image ?? animeInfo.cover ?? prev.coverImage ?? null,
           };
           // Cap the last-visited map to 100 entries
           const lvKeys = Object.keys(lvData);

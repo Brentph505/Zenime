@@ -8,7 +8,7 @@
  * and EpisodeList can read a consistent shape.
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../client/useAuth';
 import { fetchUserList } from '../client/authService';
 import { safeLocalStorageSet } from '../lib/safeStorage';
@@ -26,6 +26,18 @@ const HISTORY_SYNCED_KEY = 'anilist-history-synced';
 export function useSyncAniListHistory() {
   const { isLoggedIn, userData } = useAuth();
   const hasSyncedRef = useRef(false);
+  const [syncTrigger, setSyncTrigger] = useState(0);
+
+  // Re-run sync whenever an AniList entry is saved/deleted so the UI
+  // reflects the changes on any device without requiring a full re-login.
+  useEffect(() => {
+    const onEntryChanged = () => {
+      hasSyncedRef.current = false;
+      setSyncTrigger((n) => n + 1);
+    };
+    window.addEventListener('anilist-entry-changed', onEntryChanged);
+    return () => window.removeEventListener('anilist-entry-changed', onEntryChanged);
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn || !userData?.name) {
@@ -104,7 +116,7 @@ export function useSyncAniListHistory() {
           const localProgress = getWatchedCount(localWatchedEpisodes[animeId]);
           const effectiveProgress = Math.max(anilistProgress, localProgress, existingAnilistProgress);
 
-          // Always enrich last-anime-visited (titles, status, AniList progress).
+          // Always enrich last-anime-visited (titles, status, AniList progress, cover).
           const mergedVisited = {
             ...existingVisited,
             timestamp: existingVisited.timestamp ?? Date.now(),
@@ -125,6 +137,14 @@ export function useSyncAniListHistory() {
               entry.media?.episodes != null
                 ? entry.media.episodes
                 : existingVisited.totalEpisodes ?? null,
+            // Store AniList cover image so History works cross-device.
+            // Prefer any existing coverImage (e.g. episode thumbnail from local playback),
+            // but always fall back to the AniList cover when it's missing.
+            coverImage:
+              existingVisited.coverImage ||
+              entry.media?.coverImage?.large ||
+              entry.media?.coverImage?.medium ||
+              null,
           };
 
           if (JSON.stringify(mergedVisited) !== JSON.stringify(existingVisited)) {
@@ -193,5 +213,5 @@ export function useSyncAniListHistory() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, userData?.name]);
+  }, [isLoggedIn, userData?.name, syncTrigger]);
 }

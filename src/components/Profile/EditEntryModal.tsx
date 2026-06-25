@@ -456,20 +456,22 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
     const input: SaveEntryInput = { mediaId };
     if (status) input.status = status as MediaListStatus;
     if (progress !== '') input.progress = Number(progress);
+    // score 0 is valid (means "unscored"), so check for empty string specifically
     if (score !== '') input.score = Number(score);
     if (startDate) input.startedAt = ymdToDateObj(startDate);
     if (endDate) input.completedAt = ymdToDateObj(endDate);
     if (repeat !== '') input.repeat = Number(repeat);
-    if (notes !== undefined) input.notes = notes;
+    // Send notes always (even empty string) so the user can clear their notes
+    input.notes = notes;
 
     const res = await saveEntry(input);
     setIsSaving(false);
     if (res) {
-      // Successfully saved!
+      // Successfully saved — notify other views and close.
       window.dispatchEvent(new CustomEvent('anilist-entry-changed'));
       onClose();
     } else {
-      alert('Failed to save entry.');
+      alert('Failed to save entry. Make sure you are logged in and try again.');
     }
   };
 
