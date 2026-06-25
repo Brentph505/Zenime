@@ -286,8 +286,8 @@ const Footer = styled.div`
 `;
 
 const DeleteBtn = styled.button`
-  background: transparent;
-  border: 1px solid rgba(239, 68, 68, 0.4);
+  background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--global-border, rgba(255, 255, 255, 0.1));
   color: #ef4444;
   border-radius: 6px;
   width: 36px;
@@ -299,10 +299,15 @@ const DeleteBtn = styled.button`
   transition: all 0.15s;
 
   &:hover {
-    background: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.6);
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.4);
   }
   &:active { transform: scale(0.97); }
+  
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
 `;
 
 const ActionButtons = styled.div`
@@ -577,7 +582,6 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               onClick={handleDelete} 
               title={entry ? "Delete from list" : "Entry not in list yet"}
               disabled={!entry || loading}
-              style={{ opacity: entry ? 1 : 0.3, cursor: entry ? 'pointer' : 'not-allowed' }}
             >
               <IoTrashOutline size={16} />
             </DeleteBtn>
