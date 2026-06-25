@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import styled from 'styled-components';
-import { FaHeart, FaRegHeart, FaTrash } from 'react-icons/fa';
+import { FaHeart, FaRegHeart } from 'react-icons/fa';
+import { 
+  IoPencilOutline, 
+  IoBanOutline, 
+  IoTrashOutline, 
+  IoEyeOutline, 
+  IoCheckmarkCircleOutline, 
+  IoTimeOutline, 
+  IoCloseCircleOutline, 
+  IoBookOutline 
+} from 'react-icons/io5';
 import { useAuth } from '../../client/useAuth';
 import { useAniListEntry } from '../../hooks/useAniListEntry';
 import type { Anime } from '../../index';
@@ -42,8 +52,8 @@ const ModalContent = styled.div`
   border-radius: 14px;
   display: flex;
   align-items: stretch;
-  width: min(96%, 44rem);
-  height: min(88vh, 36rem);
+  width: min(96%, 56rem);
+  height: min(85vh, 34rem);
   overflow: hidden;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
   animation: ${scaleIn} 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
@@ -58,7 +68,7 @@ const ModalContent = styled.div`
 
 /* Desktop: tall side image. Mobile: hidden (replaced by CoverBanner) */
 const CoverImage = styled.img`
-  width: 200px;
+  width: 250px;
   height: 100%;
   object-fit: cover;
   object-position: center top;
@@ -178,11 +188,11 @@ const HeartBtn = styled.button<{ $active?: boolean }>`
   }
 `;
 
-/* 2-column on mobile, auto-fill on desktop */
+/* 3-column on desktop to match the reference, 2-column on mobile */
 const GridRow = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
 
   @media (max-width: 600px) {
     grid-template-columns: 1fr 1fr;
@@ -224,13 +234,15 @@ const Input = styled.input`
   }
 `;
 
-const Select = styled.select`
+const Select = styled.select<{ $hasIcon?: boolean; $statusColor?: string }>`
   background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--global-border, rgba(255, 255, 255, 0.1));
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
-  color: var(--global-text, #c9d1d9);
+  padding-left: ${({ $hasIcon }) => ($hasIcon ? '2.2rem' : '0.75rem')};
+  color: ${({ $statusColor }) => $statusColor || 'var(--global-text, #c9d1d9)'};
   font-size: 0.85rem;
+  font-weight: ${({ $statusColor }) => ($statusColor ? '700' : 'normal')};
   outline: none;
   width: 100%;
   box-sizing: border-box;
@@ -267,6 +279,23 @@ const TextArea = styled.textarea`
   &:focus {
     border-color: var(--primary-accent, #c084fc);
   }
+`;
+
+const StatusSelectWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+`;
+
+const StatusIconWrapper = styled.div<{ $color: string }>`
+  position: absolute;
+  left: 0.75rem;
+  color: ${({ $color }) => $color};
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  font-size: 1.1rem;
 `;
 
 const Footer = styled.div`
@@ -317,8 +346,13 @@ const Btn = styled.button<{ $primary?: boolean }>`
   border-radius: 6px;
   font-size: 0.85rem;
   font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   cursor: pointer;
   transition: all 0.15s;
+
+  svg { font-size: 1.1rem; }
 
   &:hover {
     background: ${({ $primary }) => ($primary ? 'var(--primary-accent, #c084fc)' : 'var(--global-tertiary-bg, #21262d)')};
@@ -348,6 +382,24 @@ const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
   { value: 'PAUSED',    label: 'Paused'        },
   { value: 'DROPPED',   label: 'Dropped'       },
 ];
+
+const STATUS_COLORS: Record<string, string> = {
+  CURRENT: '#84cc16', // bright green
+  COMPLETED: '#3b82f6', // blue
+  PAUSED: '#eab308', // yellow
+  DROPPED: '#ef4444', // red
+  PLANNING: '#c9d1d9', // white/gray
+  REPEATING: '#8b5cf6', // purple
+};
+
+const STATUS_ICONS: Record<string, React.ElementType> = {
+  CURRENT: IoEyeOutline,
+  COMPLETED: IoCheckmarkCircleOutline,
+  PAUSED: IoTimeOutline,
+  DROPPED: IoCloseCircleOutline,
+  PLANNING: IoBookOutline,
+  REPEATING: IoTimeOutline,
+};
 
 interface EditEntryModalProps {
   anime: Anime;
@@ -487,10 +539,22 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
           <GridRow>
             <FormGroup>
               <Label>Status</Label>
-              <Select value={status} onChange={(e) => setLocalStatus(e.target.value as MediaListStatus)}>
-                <option value="" disabled>Select status</option>
-                {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
+              <StatusSelectWrapper>
+                {status && STATUS_ICONS[status] && (
+                  <StatusIconWrapper $color={STATUS_COLORS[status]}>
+                    {React.createElement(STATUS_ICONS[status])}
+                  </StatusIconWrapper>
+                )}
+                <Select
+                  $hasIcon={!!status}
+                  $statusColor={status ? STATUS_COLORS[status] : undefined}
+                  value={status}
+                  onChange={(e) => setLocalStatus(e.target.value as MediaListStatus)}
+                >
+                  <option value="" disabled>Select status</option>
+                  {statusOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </Select>
+              </StatusSelectWrapper>
             </FormGroup>
 
             <FormGroup>
@@ -514,16 +578,6 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
                 onChange={(e) => setScore(e.target.value !== '' ? Number(e.target.value) : '')}
               />
             </FormGroup>
-
-            <FormGroup>
-              <Label>{repeatLabel}</Label>
-              <Input
-                type="number"
-                min="0"
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
-              />
-            </FormGroup>
           </GridRow>
 
           <GridRow>
@@ -536,6 +590,16 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               <Label>End Date</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormGroup>
+
+            <FormGroup>
+              <Label>{repeatLabel}</Label>
+              <Input
+                type="number"
+                min="0"
+                value={repeat}
+                onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
+              />
+            </FormGroup>
           </GridRow>
 
           <FormGroup style={{ flex: 1 }}>
@@ -546,14 +610,16 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
           <Footer>
             {entry ? (
               <DeleteBtn onClick={handleDelete} title="Delete from list">
-                <FaTrash size={14} />
+                <IoTrashOutline size={16} />
               </DeleteBtn>
             ) : <div />}
             <ActionButtons>
               <Btn $primary onClick={handleSave} disabled={loading || isSaving}>
-                {isSaving ? 'Saving...' : 'Save Changes'}
+                <IoPencilOutline /> {isSaving ? 'Saving...' : 'Save Changes'}
               </Btn>
-              <Btn onClick={onClose}>Cancel</Btn>
+              <Btn onClick={onClose}>
+                <IoBanOutline /> Cancel
+              </Btn>
             </ActionButtons>
           </Footer>
         </FormContainer>
