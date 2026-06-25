@@ -5,7 +5,7 @@ import { StatusIndicator, type Anime } from '../../index';
 import { useTitleWithSubtitle } from '../../hooks/useTitleWithSubtitle';
 import { FaPlay, FaInfoCircle } from 'react-icons/fa';
 import { TbCards } from 'react-icons/tb';
-import { FaStar, FaCalendarAlt } from 'react-icons/fa';
+import { FaStar, FaCalendarAlt, FaEdit } from 'react-icons/fa';
 
 // Types that are non-anime formats (manga, light novels, one-shots, etc.)
 const MANGA_FORMAT_TYPES = new Set([
@@ -192,7 +192,30 @@ const CardDetails = styled.div`
   }
 `;
 
-export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ anime, isLatestTab = false }) => {
+const EditButton = styled.button`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 6px;
+  padding: 6px;
+  cursor: pointer;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+
+  &:hover {
+    background: var(--primary-accent, #c084fc);
+    transform: scale(1.1);
+  }
+`;
+
+export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean; showEditButton?: boolean; onEdit?: (anime: Anime) => void }> = ({ anime, isLatestTab = false, showEditButton, onEdit }) => {
   // ✅ FIX: Removed the internal `loading` state that was gated by setTimeout(0).
   // That pattern caused every card to render <SkeletonCard /> on mount and
   // then flip to the real card after a microtask — on page 1 the flip raced
@@ -261,6 +284,18 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean }> = ({ an
                 )}
               </ImageWrapper>
               {isHovered && displayDetail}
+              {showEditButton && onEdit && (
+                <EditButton
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit(anime);
+                  }}
+                  title="Edit Entry"
+                >
+                  <FaEdit size={14} />
+                </EditButton>
+              )}
             </AnimeImage>
           </ImageDisplayWrapper>
         </PosterLink>

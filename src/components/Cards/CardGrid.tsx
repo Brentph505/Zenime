@@ -7,6 +7,8 @@ interface CardGridProps {
   hasNextPage: boolean;
   onLoadMore: () => void;
   isLatestTab?: boolean;
+  showEditButton?: boolean;
+  onEdit?: (anime: Anime) => void;
 }
 
 export const CardGrid: React.FC<CardGridProps> = ({
@@ -14,6 +16,8 @@ export const CardGrid: React.FC<CardGridProps> = ({
   hasNextPage,
   onLoadMore,
   isLatestTab = false,
+  showEditButton,
+  onEdit,
 }) => {
   const handleLoadMore = useCallback(() => {
     if (hasNextPage) {
@@ -48,7 +52,7 @@ export const CardGrid: React.FC<CardGridProps> = ({
   return (
     <StyledCardGrid>
       {animeData.map((anime) => (
-        <CardItem key={anime.id} anime={anime} isLatestTab={isLatestTab} />
+        <CardItem key={anime.id} anime={anime} isLatestTab={isLatestTab} showEditButton={showEditButton} onEdit={onEdit} />
       ))}
     </StyledCardGrid>
   );

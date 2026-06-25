@@ -18,7 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../client/useAuth';
-import type { MediaListStatus } from '../client/authService';
+import type { MediaListStatus, MediaListEntryResult } from '../client/authService';
 
 /**
  * Custom event dispatched whenever a list mutation succeeds, so other views
@@ -43,6 +43,10 @@ export interface AniListEntryState {
   isFavourite: boolean;
   /** A mutation is currently in flight (for button spinners). */
   saving: boolean;
+  /** The specific AniList entry ID, required for deletion. */
+  listEntryId: number | null;
+  /** The full list entry data from AniList (notes, dates, etc.) */
+  entry: MediaListEntryResult | null;
 }
 
 const IDLE: AniListEntryState = {
@@ -53,13 +57,15 @@ const IDLE: AniListEntryState = {
   progress: 0,
   isFavourite: false,
   saving: false,
+  listEntryId: null,
+  entry: null,
 };
 
 export function useAniListEntry(
   mediaId: number | null | undefined,
   enabled: boolean = true,
 ) {
-  const { isLoggedIn, getUserMediaState, saveEntry, toggleFav } = useAuth();
+  const { isLoggedIn, getUserMediaState, saveEntry, toggleFav, deleteEntry } = useAuth();
   const [state, setState] = useState<AniListEntryState>(IDLE);
 
   // Latest-state mirror so async mutation callbacks always read fresh values
@@ -89,6 +95,8 @@ export function useAniListEntry(
           progress: entry?.progress ?? 0,
           isFavourite: data?.isFavourite ?? false,
           saving: false,
+          listEntryId: entry?.id ?? null,
+          entry,
         });
       })
       .catch(() => {
@@ -127,6 +135,8 @@ export function useAniListEntry(
           score: result.score ?? s.score,
           progress: result.progress ?? s.progress,
           saving: false,
+          listEntryId: result.id ?? s.listEntryId,
+          entry: result,
         }));
         dispatchEntryChanged();
         return true;
@@ -173,6 +183,8 @@ export function useAniListEntry(
           status: result.status ?? s.status,
           progress: result.progress ?? s.progress,
           saving: false,
+          listEntryId: result.id ?? s.listEntryId,
+          entry: result,
         }));
         dispatchEntryChanged();
         return true;
@@ -221,5 +233,38 @@ export function useAniListEntry(
     [mediaId, toggleFav],
   );
 
-  return { ...state, setStatus, setScore, toggleFavourite };
+  // ── deleteFromList ────────────────────────────────────────────────────────
+  const deleteFromList = useCallback(async () => {
+    const prev = stateRef.current;
+    if (!prev.listEntryId) {
+      console.warn('[useAniListEntry] deleteFromList: no listEntryId');
+      return false;
+    }
+    console.log(`[useAniListEntry] deleteFromList OPTIMISTIC: id ${prev.listEntryId}`);
+    setState((s) => ({ ...s, saving: true }));
+
+    try {
+      const ok = await deleteEntry(prev.listEntryId);
+      if (!ok) {
+        console.warn('[useAniListEntry] deleteFromList mutation returned false, reverting');
+        setState((s) => ({ ...s, saving: false }));
+        return false;
+      }
+      console.log('[useAniListEntry] deleteFromList COMMITTED');
+      // On success, clear status and listEntryId but keep favourite state intact
+      setState((s) => ({
+        ...IDLE,
+        loading: false,
+        isFavourite: s.isFavourite,
+      }));
+      dispatchEntryChanged();
+      return true;
+    } catch (err) {
+      console.error('[useAniListEntry] deleteFromList caught error:', err instanceof Error ? err.message : err);
+      setState((s) => ({ ...s, saving: false }));
+      return false;
+    }
+  }, [deleteEntry]);
+
+  return { ...state, setStatus, setScore, toggleFavourite, deleteFromList };
 }

@@ -112,7 +112,7 @@ export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME
   const { isLoggedIn } = useAuth();
   const {
     loading, inList, status, isFavourite, saving,
-    setStatus, toggleFavourite,
+    setStatus, toggleFavourite, deleteFromList,
   } = useAniListEntry(mediaId, isLoggedIn);
 
   if (!isLoggedIn) return null;
@@ -140,8 +140,14 @@ export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME
           value={status ?? ''}
           disabled={loading || saving}
           onChange={(e) => {
-            const v = e.target.value as MediaListStatus;
-            if (v) setStatus(v);
+            const v = e.target.value;
+            if (v === 'DELETE') {
+              if (window.confirm('Are you sure you want to remove this from your list?')) {
+                deleteFromList();
+              }
+            } else if (v) {
+              setStatus(v as MediaListStatus);
+            }
           }}
           aria-label={`${isManga ? 'Reading' : 'Watch'} list status`}
         >
@@ -151,6 +157,7 @@ export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME
           {statusOptions.map(({ value, label }) => (
             <option key={value} value={value}>{label}</option>
           ))}
+          {inList && <option value='DELETE'>Remove from list</option>}
         </Select>
       </Row>
 

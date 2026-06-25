@@ -4,7 +4,8 @@ import { useAuth } from '../../client/useAuth';
 import { type AnimeListEntry, type MediaListStatus } from '../../client/authService';
 import { useUserAnimeList } from '../../hooks/useUserAnimeList';
 import { ANILIST_ENTRY_CHANGED_EVENT } from '../../hooks/useAniListEntry';
-import { CardGrid } from '../../index';
+import { CardGrid, EditEntryModal } from '../../index';
+import type { Anime } from '../../index';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,7 @@ export const WatchingAnilist = () => {
   const [selectedStatus, setSelectedStatus] = useState<MediaListStatus>(
     () => (localStorage.getItem('selectedStatus') as MediaListStatus) || 'CURRENT',
   );
+  const [editingAnime, setEditingAnime] = useState<Anime | null>(null);
   const { entries, loading, error, refresh } = useUserAnimeList(
     isLoggedIn ? userData?.name : undefined,
     selectedStatus,
@@ -169,9 +171,19 @@ export const WatchingAnilist = () => {
           animeData={animeData as any}
           hasNextPage={false}
           onLoadMore={() => {}}
+          showEditButton={true}
+          onEdit={(anime) => setEditingAnime(anime)}
         />
       ) : (
         <Message>No entries found.</Message>
+      )}
+
+      {editingAnime && (
+        <EditEntryModal
+          anime={editingAnime}
+          isOpen={true}
+          onClose={() => setEditingAnime(null)}
+        />
       )}
     </Container>
   );

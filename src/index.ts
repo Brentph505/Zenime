@@ -45,6 +45,7 @@ export {
   useSettings,
 } from './components/Profile/SettingsProvider';
 export { WatchingAnilist } from './components/Profile/WatchingAnilist';
+export { EditEntryModal } from './components/Profile/EditEntryModal';
 
 // * ==== Hooks ====
 // TODO Utilizing API and Other Functionalities
