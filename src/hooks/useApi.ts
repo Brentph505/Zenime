@@ -190,6 +190,61 @@ const isValidUrl = (url: string): boolean => {
   }
 };
 
+/** True when the URL points at direct HLS/MP4 media (not an embed HTML page). */
+export function isDirectMediaUrl(url: string): boolean {
+  if (!url) return false;
+  return (
+    /\.m3u8(\?|$|#)/i.test(url) ||
+    /\.mp4(\?|$|#)/i.test(url) ||
+    /\/manifest\//i.test(url)
+  );
+}
+
+/** Providers that return native m3u8 streams (HLS player), not iframe embeds. */
+export const HLS_FIRST_PROVIDERS = new Set(['kickassanime', 'animepahe']);
+
+/**
+ * Whether a server entry should open in the iframe player vs the HLS player.
+ * anikoto/reanime use sub/dub/hsub embed pages; kickassanime/animepahe use m3u8.
+ */
+export function isEmbeddedPlaybackServer(
+  url: string,
+  type?: string,
+  provider?: string,
+): boolean {
+  if (isDirectMediaUrl(url)) return false;
+
+  const normalizedType = (type || '').toLowerCase();
+  const p = (provider || '').toLowerCase();
+
+  if (HLS_FIRST_PROVIDERS.has(p)) {
+    return (
+      url.includes('iframe') ||
+      url.includes('kwik.cx') ||
+      normalizedType === 'iframe'
+    );
+  }
+
+  if (p === 'anikoto' || p === 'reanime') {
+    return (
+      url.includes('iframe') ||
+      url.includes('kwik.cx') ||
+      url.includes('flixcloud') ||
+      normalizedType === 'iframe' ||
+      normalizedType === 'sub' ||
+      normalizedType === 'dub' ||
+      normalizedType === 'hsub'
+    );
+  }
+
+  return (
+    url.includes('iframe') ||
+    url.includes('kwik.cx') ||
+    url.includes('flixcloud') ||
+    normalizedType === 'iframe'
+  );
+}
+
 /**
  * Builds a proxied m3u8 URL with spoofed Referer/Origin headers.
  */

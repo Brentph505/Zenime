@@ -343,7 +343,8 @@ export const EpisodeList: React.FC<Props> = ({
     (id: string) => {
       if (animeId) {
         setWatchedEpisodes((prevWatchedEpisodes) => {
-          const updatedWatchedEpisodes = [...prevWatchedEpisodes];
+          const prev = Array.isArray(prevWatchedEpisodes) ? prevWatchedEpisodes : [];
+          const updatedWatchedEpisodes = [...prev];
           const selectedEpisodeIndex = updatedWatchedEpisodes.findIndex(
             (episode) => episode.id === id,
           );
@@ -372,7 +373,7 @@ export const EpisodeList: React.FC<Props> = ({
               return updatedWatchedEpisodes;
             }
           }
-          return prevWatchedEpisodes;
+          return prev;
         });
       }
     },

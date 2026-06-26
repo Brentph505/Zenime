@@ -20,6 +20,7 @@ import {
   fetchSkipTimes,
   fetchAnimeStreamingLinksProxied,
   useSettings,
+  isDirectMediaUrl,
 } from '../../../index';
 import { useAuth } from '../../../client/useAuth';
 import { syncWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
@@ -772,7 +773,7 @@ export function Player({
 
     const isValidHlsDirectUrl =
       hlsDirectUrl &&
-      (/\.m3u8$/i.test(hlsDirectUrl) || /\/manifest\//i.test(hlsDirectUrl) || /\.mp4/i.test(hlsDirectUrl));
+      (isDirectMediaUrl(hlsDirectUrl) || /\.mp4/i.test(hlsDirectUrl));
 
     if (isValidHlsDirectUrl) {
       if (fetchToken !== fetchAbortRef.current) return;

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { FaBell } from 'react-icons/fa';
 import styled from 'styled-components';
@@ -29,6 +29,8 @@ import {
   SkeletonPlayer,
   useCountdown,
   useAuth,
+  isDirectMediaUrl,
+  isEmbeddedPlaybackServer,
 } from '../index';
 import { Episode } from '../index';
 
@@ -839,18 +841,8 @@ const Watch: React.FC = () => {
           return uniqueLabel;
         };
 
-        const isEmbeddedServer = (url: string, type?: string): boolean => {
-          const normalizedType = type?.toLowerCase();
-          return (
-            url.includes('iframe') ||
-            url.includes('kwik.cx') ||
-            url.includes('flixcloud') ||
-            normalizedType === 'iframe' ||
-            normalizedType === 'sub' ||
-            normalizedType === 'dub' ||
-            normalizedType === 'hsub'
-          );
-        };
+        const isEmbeddedServer = (url: string, type?: string, provider?: string) =>
+          isEmbeddedPlaybackServer(url, type, provider);
 
         const addServer = (
           name: string,
@@ -882,7 +874,7 @@ const Watch: React.FC = () => {
               if (!serverName || !serverUrl) return;
               if (provider === 'anikoto' && serverUrl.includes('.m3u8')) return;
               const type = server?.type || '';
-              const embedded = isEmbeddedServer(serverUrl, type);
+              const embedded = isEmbeddedServer(serverUrl, type, provider);
               addServer(serverName, serverUrl, provider, embedded ? 'iframe' : 'hls', embedded, server?.quality || '');
             });
           }
@@ -905,7 +897,7 @@ const Watch: React.FC = () => {
               seenProviderName.add(nameKey);
 
               const type = sLang || '';
-              const isEmb = isEmbeddedServer(sUrl, type);
+              const isEmb = isEmbeddedServer(sUrl, type, provider);
               addServer(sName, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb, sLang);
             });
           }
@@ -1019,7 +1011,10 @@ const Watch: React.FC = () => {
       });
 
       if (entry?.url) {
-        const isDirectMedia = /\.m3u8$/i.test(entry.url) || /\/manifest\//i.test(entry.url) || /\.mp4/i.test(entry.url) || entry.type === 'mp4';
+        const isDirectMedia =
+          isDirectMediaUrl(entry.url) ||
+          entry.type === 'mp4' ||
+          entry.type === 'hls';
         setEmbeddedUrl('');
         setServerUrl(entry.url);
         setHlsDirectUrl(isDirectMedia ? entry.url : '');
@@ -1028,7 +1023,10 @@ const Watch: React.FC = () => {
           e.name.toLowerCase().includes(baseName.toLowerCase()) && !e.name.includes('__EM')
         );
         if (fallbackEntry?.url) {
-          const isDirectMedia = /\.m3u8$/i.test(fallbackEntry.url) || /\.mp4/i.test(fallbackEntry.url) || fallbackEntry.type === 'mp4';
+          const isDirectMedia =
+            isDirectMediaUrl(fallbackEntry.url) ||
+            fallbackEntry.type === 'mp4' ||
+            fallbackEntry.type === 'hls';
           setEmbeddedUrl('');
           setServerUrl(fallbackEntry.url);
           setHlsDirectUrl(isDirectMedia ? fallbackEntry.url : '');
@@ -1055,6 +1053,16 @@ const Watch: React.FC = () => {
     if (saved && availableServers.includes(saved)) {
       console.log('[Watch] Restoring saved server:', saved);
       setSourceType(saved);
+      return;
+    }
+
+    // Prefer HLS/m3u8 servers (kickassanime, animepahe, etc.) over iframe embeds (anikoto).
+    const hlsServerCandidate = availableServers.find(
+      (server) => !embeddedServerKeys.has(server),
+    );
+    if (hlsServerCandidate) {
+      console.log('[Watch] Auto-selecting HLS server:', hlsServerCandidate);
+      setSourceType(hlsServerCandidate);
       return;
     }
 
@@ -1097,6 +1105,24 @@ const Watch: React.FC = () => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [episodes, currentEpisode, handleEpisodeSelect, lastKeypressTime]);
+
+  // Provider + episode id for the selected server (kickassanime vs anikoto differ).
+  const activeStream = useMemo(() => {
+    if (!sourceType) {
+      return {
+        provider: currentEpisode.provider || 'kickassanime',
+        episodeId: currentEpisode.id,
+      };
+    }
+    const baseName = sourceType.replace(/__EM$/, '');
+    const entry = serverEntries.find(
+      (s) => s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase(),
+    );
+    const provider = entry?.provider || currentEpisode.provider || 'kickassanime';
+    const providerEpisodeId =
+      currentEpisode.providers?.[provider]?.id || currentEpisode.id;
+    return { provider, episodeId: providerEpisodeId };
+  }, [sourceType, serverEntries, currentEpisode]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -1141,9 +1167,9 @@ const Watch: React.FC = () => {
                   <SkeletonPlayer />
                 ) : (
                   <Player
-                    episodeId={currentEpisode.id}
+                    episodeId={activeStream.episodeId}
                     episodeNumber={currentEpisode.number}
-                    episodeProvider={currentEpisode.provider}
+                    episodeProvider={activeStream.provider}
                     malId={animeInfo?.malId}
                     animeId={animeId}
                     totalEpisodes={animeInfo?.totalEpisodes}
