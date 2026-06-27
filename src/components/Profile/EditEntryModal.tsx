@@ -405,7 +405,14 @@ function ymdToDateObj(ymd: string) {
 export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, onClose }) => {
   const { isLoggedIn, saveEntry } = useAuth();
   const mediaId = Number(anime.id);
-  const { loading, entry, isFavourite, toggleFavourite, deleteFromList } = useAniListEntry(mediaId, isLoggedIn && isOpen);
+  const {
+    loading,
+    entry,
+    isFavourite,
+    toggleFavourite,
+    deleteFromList,
+    saving: entrySaving,
+  } = useAniListEntry(mediaId, isLoggedIn && isOpen);
 
   const [status, setLocalStatus] = useState<MediaListStatus | ''>('');
   const [progress, setProgress] = useState<number | ''>('');
@@ -479,6 +486,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
     if (window.confirm('Are you sure you want to remove this from your list?')) {
       const ok = await deleteFromList();
       if (ok) onClose();
+      else alert('Unable to remove the entry from AniList. Please try again.');
     }
   };
 
@@ -580,10 +588,11 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
           </FormGroup>
 
           <Footer>
-            <DeleteBtn 
-              onClick={handleDelete} 
-              title={entry ? "Delete from list" : "Entry not in list yet"}
-              disabled={!entry || loading}
+            <DeleteBtn
+              type="button"
+              onClick={handleDelete}
+              title={entry ? 'Delete from list' : 'Entry not in list yet'}
+              disabled={!entry || loading || entrySaving || isSaving}
             >
               <IoTrashOutline size={16} />
             </DeleteBtn>

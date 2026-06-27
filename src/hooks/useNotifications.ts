@@ -16,8 +16,12 @@
 import { useCallback, useRef, useState } from 'react';
 import { fetchNotifications, type AniListNotification } from '../client/authService';
 
+interface NotificationItem extends AniListNotification {
+  read: boolean;
+}
+
 interface UseNotificationsState {
-  items: AniListNotification[];
+  items: NotificationItem[];
   loading: boolean;
   loadingMore: boolean;
   error: string | null;
@@ -57,7 +61,7 @@ export function useNotifications(
     try {
       const { items, hasNextPage } = await fetchNotifications(token, 1, 25);
       setState({
-        items,
+        items: items.map((item) => ({ ...item, read: false })),
         loading: false,
         loadingMore: false,
         error: null,
@@ -77,6 +81,21 @@ export function useNotifications(
     }
   }, [isLoggedIn, getToken, markRead]);
 
+  const markAllRead = useCallback(() => {
+    setState((s) => ({
+      ...s,
+      items: s.items.map((item) => ({ ...item, read: true })),
+    }));
+    markRead();
+  }, [markRead]);
+
+  const markItemRead = useCallback((id: number) => {
+    setState((s) => ({
+      ...s,
+      items: s.items.map((item) => (item.id === id ? { ...item, read: true } : item)),
+    }));
+  }, []);
+
   const loadMore = useCallback(async () => {
     if (!isLoggedIn || state.loadingMore || !state.hasNextPage) return;
     const token = getToken();
@@ -89,7 +108,7 @@ export function useNotifications(
       const { items, hasNextPage } = await fetchNotifications(token, nextPage, 25);
       setState((s) => ({
         ...s,
-        items: [...s.items, ...items],
+        items: [...s.items, ...items.map((item) => ({ ...item, read: false }))],
         loadingMore: false,
         hasNextPage,
       }));
@@ -107,5 +126,5 @@ export function useNotifications(
     await load();
   }, [load]);
 
-  return { ...state, load, loadMore, refresh };
+  return { ...state, load, loadMore, refresh, markAllRead, markItemRead };
 }

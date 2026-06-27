@@ -841,6 +841,14 @@ const Watch: React.FC = () => {
           return uniqueLabel;
         };
 
+        const normalizeKickassanimeLabel = () => {
+          const label = 'KAA';
+          const count = providerNameCounters.get(label) || 0;
+          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
+          providerNameCounters.set(label, count + 1);
+          return uniqueLabel;
+        };
+
         const isEmbeddedServer = (url: string, type?: string, provider?: string) =>
           isEmbeddedPlaybackServer(url, type, provider);
 
@@ -857,7 +865,9 @@ const Watch: React.FC = () => {
 
           const finalName = provider === 'anikoto'
             ? normalizeAnikotoLabel(name, type, quality)
-            : name;
+            : provider === 'kickassanime'
+              ? normalizeKickassanimeLabel()
+              : name;
 
           urlSet.add(proxiedUrl);
           if (isEmbedded) hasEmbeddedPlayer_ = true;

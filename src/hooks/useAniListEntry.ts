@@ -251,7 +251,7 @@ export function useAniListEntry(
         return false;
       }
       console.log('[useAniListEntry] deleteFromList COMMITTED');
-      // On success, clear status and listEntryId but keep favourite state intact
+      // On success, clear list state while preserving favourite state.
       setState((s) => ({
         ...IDLE,
         loading: false,

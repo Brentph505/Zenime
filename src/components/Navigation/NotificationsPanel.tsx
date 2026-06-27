@@ -21,6 +21,8 @@ import {
 import { useNotifications } from '../../hooks/useNotifications';
 import type { AniListNotification } from '../../client/authService';
 
+type NotificationItem = AniListNotification & { read: boolean };
+
 // ─── Animations ───────────────────────────────────────────────────────────────
 const slideInRight = keyframes`
   from { transform: translateX(100%); }
@@ -102,6 +104,26 @@ const CloseBtn = styled.button`
   &:hover { background: var(--global-tertiary-bg, #21262d); color: var(--global-text); }
 `;
 
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const MarkAllBtn = styled.button`
+  border: 1px solid var(--global-border, rgba(255,255,255,0.12));
+  background: transparent;
+  color: var(--global-text-muted, #9ca3af);
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  &:hover { background: var(--global-tertiary-bg, #21262d); color: var(--global-text); }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+`;
+
 const ScrollArea = styled.div`
   flex: 1;
   overflow-y: auto;
@@ -122,15 +144,16 @@ const SectionLabel = styled.div`
   color: var(--global-text-muted, #9ca3af);
 `;
 
-const NotifRow = styled(Link)`
+const NotifRow = styled(Link)<{ $read?: boolean }>`
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
   padding: 0.6rem 1rem;
   text-decoration: none;
   color: var(--global-text, #c9d1d9);
-  transition: background 0.13s;
+  transition: background 0.13s, opacity 0.13s;
   border-left: 2px solid transparent;
+  opacity: ${({ $read }) => ($read ? 0.7 : 1)};
 
   &:hover {
     background: var(--global-tertiary-bg, #21262d);
@@ -138,15 +161,16 @@ const NotifRow = styled(Link)`
   }
 `;
 
-const NotifRowExternal = styled.a`
+const NotifRowExternal = styled.a<{ $read?: boolean }>`
   display: flex;
   align-items: flex-start;
   gap: 0.7rem;
   padding: 0.6rem 1rem;
   text-decoration: none;
   color: var(--global-text, #c9d1d9);
-  transition: background 0.13s;
+  transition: background 0.13s, opacity 0.13s;
   border-left: 2px solid transparent;
+  opacity: ${({ $read }) => ($read ? 0.7 : 1)};
 
   &:hover {
     background: var(--global-tertiary-bg, #21262d);
@@ -417,7 +441,8 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
   open, closing, onClose, isLoggedIn, getToken, markRead,
 }) => {
   const {
-    items, loading, loadingMore, error, hasNextPage, loaded, load, loadMore,
+    items, loading, loadingMore, error, hasNextPage, loaded,
+    load, loadMore, markAllRead, markItemRead,
   } = useNotifications(isLoggedIn, getToken, markRead);
 
   const bodyPrev = useRef<string>('');
@@ -437,7 +462,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
 
   // Group items into time buckets, preserving order within each.
   const grouped = useMemo(() => {
-    const buckets: Record<'Today' | 'This Week' | 'Earlier', AniListNotification[]> = {
+    const buckets: Record<'Today' | 'This Week' | 'Earlier', typeof items> = {
       'Today': [], 'This Week': [], 'Earlier': [],
     };
     items.forEach((n) => buckets[dayBucket(n.createdAt)].push(n));
@@ -446,7 +471,7 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
 
   const hasAny = items.length > 0;
 
-  const renderItem = (n: AniListNotification) => {
+  const renderItem = (n: NotificationItem) => {
     const r = renderNotification(n);
     const key = n.id;
     const thumb = r.cover
@@ -462,20 +487,38 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
     );
     if (r.to && r.external) {
       return (
-        <NotifRowExternal key={key} href={r.to} target='_blank' rel='noopener noreferrer'>
+        <NotifRowExternal
+          key={key}
+          href={r.to}
+          target='_blank'
+          rel='noopener noreferrer'
+          $read={n.read}
+          onClick={() => markItemRead(key)}
+        >
           {thumb}{content}
         </NotifRowExternal>
       );
     }
     if (r.to) {
       return (
-        <NotifRow key={key} to={r.to} onClick={onClose}>
+        <NotifRow
+          key={key}
+          to={r.to}
+          $read={n.read}
+          onClick={() => { markItemRead(key); onClose(); }}
+        >
           {thumb}{content}
         </NotifRow>
       );
     }
     return (
-      <NotifRowExternal key={key} as='div' href='#' onClick={(e) => e.preventDefault()}>
+      <NotifRowExternal
+        key={key}
+        as='div'
+        href='#'
+        $read={n.read}
+        onClick={(e) => { e.preventDefault(); markItemRead(key); }}
+      >
         {thumb}{content}
       </NotifRowExternal>
     );
@@ -490,9 +533,14 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
             <HeaderTitle>
               <FaBell size={14} /> Notifications
             </HeaderTitle>
-            <CloseBtn onClick={onClose} aria-label='Close notifications'>
-              <FaTimes />
-            </CloseBtn>
+            <HeaderActions>
+              <MarkAllBtn onClick={markAllRead} disabled={!hasAny}>
+                Mark all read
+              </MarkAllBtn>
+              <CloseBtn onClick={onClose} aria-label='Close notifications'>
+                <FaTimes />
+              </CloseBtn>
+            </HeaderActions>
           </Header>
 
           <ScrollArea>

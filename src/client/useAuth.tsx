@@ -439,8 +439,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const deleteEntry = useCallback(async (listEntryId: number): Promise<boolean> => {
     const token = getToken();
     if (!isValidToken(token)) return false;
-    try { await deleteMediaListEntry(token, listEntryId); return true; }
-    catch (err) { console.error('[Auth] deleteEntry failed:', err); return false; }
+    try {
+      const deleted = await deleteMediaListEntry(token, listEntryId);
+      if (!deleted) {
+        console.warn('[Auth] deleteEntry returned false for', listEntryId);
+      }
+      return deleted;
+    } catch (err) {
+      console.error('[Auth] deleteEntry failed:', err);
+      return false;
+    }
   }, []);
 
   const toggleFav = useCallback(async (params: {

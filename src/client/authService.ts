@@ -585,13 +585,18 @@ export async function saveMediaListEntry(
 export async function deleteMediaListEntry(
   token: string,
   listEntryId: number,
-): Promise<void> {
+): Promise<boolean> {
   const MUTATION = /* GraphQL */ `
     mutation DeleteEntry($id: Int!) {
       DeleteMediaListEntry(id: $id) { deleted }
     }
   `;
-  await gql(MUTATION, { id: listEntryId }, token);
+  const data = await gql<{ DeleteMediaListEntry: { deleted: boolean } }>(
+    MUTATION,
+    { id: listEntryId },
+    token,
+  );
+  return !!data?.DeleteMediaListEntry?.deleted;
 }
 
 // ─── Toggle favourite ─────────────────────────────────────────────────────────
