@@ -407,6 +407,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── List management ───────────────────────────────────────────────────────
 
+  const handleAuthFailure = useCallback((err: unknown) => {
+    const status =
+      typeof err === 'object' && err !== null && 'response' in err && (err as any).response?.status
+        ? (err as any).response.status
+        : undefined;
+
+    if (status === 401 || status === 403) {
+      console.warn('[Auth] auth token rejected during mutation, clearing session');
+      clearSession();
+      setIsLoggedIn(false);
+      setUserData(null);
+      return true;
+    }
+    return false;
+  }, []);
+
   const saveEntry = useCallback(async (
     input: SaveEntryInput,
   ): Promise<MediaListEntry | null> => {
@@ -431,10 +447,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       return result;
     } catch (err) {
-      console.error('[Auth] saveEntry FAILED:', err instanceof Error ? err.message : err);
+      if (handleAuthFailure(err)) {
+        console.warn('[Auth] saveEntry FAILED: invalid auth token');
+      } else {
+        console.error('[Auth] saveEntry FAILED:', err instanceof Error ? err.message : err);
+      }
       return null;
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   const deleteEntry = useCallback(async (listEntryId: number): Promise<boolean> => {
     const token = getToken();
@@ -446,10 +466,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return deleted;
     } catch (err) {
-      console.error('[Auth] deleteEntry failed:', err);
+      if (handleAuthFailure(err)) {
+        console.warn('[Auth] deleteEntry failed due to invalid token');
+      } else {
+        console.error('[Auth] deleteEntry failed:', err);
+      }
       return false;
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   const toggleFav = useCallback(async (params: {
     animeId?: number; mangaId?: number; characterId?: number;
@@ -466,10 +490,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[Auth] toggleFav SUCCESS:', params);
       return true;
     } catch (err) {
-      console.error('[Auth] toggleFav FAILED:', err instanceof Error ? err.message : err);
+      if (handleAuthFailure(err)) {
+        console.warn('[Auth] toggleFav FAILED: invalid auth token');
+      } else {
+        console.error('[Auth] toggleFav FAILED:', err instanceof Error ? err.message : err);
+      }
       return false;
     }
-  }, []);
+  }, [handleAuthFailure]);
 
   const getListEntry = useCallback(async (
     mediaId: number,
