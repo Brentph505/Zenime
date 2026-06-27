@@ -59,7 +59,12 @@ export function useNotifications(
     setState((s) => ({ ...s, loading: true, error: null }));
 
     try {
-      const { items, hasNextPage } = await fetchNotifications(token, 1, 25);
+      // FIX: pass `resetNotificationCount: true` so AniList's real unread
+      // counter is cleared here, not just our local React state. Previously
+      // this always sent `false`, so markRead() zeroed the badge for a
+      // moment but the next 5-minute poll (fetchNotificationCount) fetched
+      // the unchanged server count and the badge popped right back.
+      const { items, hasNextPage } = await fetchNotifications(token, 1, 25, true);
       setState({
         items: items.map((item) => ({ ...item, read: false })),
         loading: false,

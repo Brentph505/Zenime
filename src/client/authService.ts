@@ -299,23 +299,33 @@ export interface FetchNotificationsResult {
 
 /**
  * Fetch the signed-in viewer's notifications (most recent first).
- * Uses `resetNotificationCount: false` so viewing them here doesn't mutate the
- * server-side unread count (the UI clears the badge locally via useAuth).
+ * Pass `resetNotificationCount: true` (done by useNotifications on first
+ * load) to actually clear AniList's server-side unread count, not just the
+ * local in-app badge.
  */
 export async function fetchNotifications(
   token: string,
   page: number = 1,
   perPage: number = 25,
+  resetNotificationCount: boolean = false,
 ): Promise<FetchNotificationsResult> {
   // NotificationUnion is a GraphQL interface — common fields (id, createdAt,
   // type) must be selected *inside* each `... on <Type>` fragment, not at the
   // top level (querying them there returns "Cannot query field on
   // NotificationUnion").
+  //
+  // FIX: `resetNotificationCount` now actually gets threaded through instead
+  // of being hardcoded to `false`. Hardcoding it to false meant AniList's
+  // real server-side unread counter never moved — "Mark all read" only ever
+  // touched local React state, so the navbar badge would silently reappear
+  // (showing the old count again) on the very next 5-minute poll. We pass
+  // `true` from useNotifications.load() so opening the panel actually clears
+  // the count for good, the same way it does on anilist.co itself.
   const NOTIFICATIONS_QUERY = /* GraphQL */ `
-    query Notifications($page: Int, $perPage: Int) {
+    query Notifications($page: Int, $perPage: Int, $resetCount: Boolean) {
       Page(page: $page, perPage: $perPage) {
         pageInfo { hasNextPage currentPage }
-        notifications(resetNotificationCount: false) {
+        notifications(resetNotificationCount: $resetCount) {
           ... on AiringNotification {
             id type createdAt episode contexts
             media { id type title { userPreferred } coverImage { medium } }
@@ -398,7 +408,7 @@ export async function fetchNotifications(
       pageInfo: { hasNextPage: boolean };
       notifications: any[];
     } | null;
-  }>(NOTIFICATIONS_QUERY, { page, perPage }, token);
+  }>(NOTIFICATIONS_QUERY, { page, perPage, resetCount: resetNotificationCount }, token);
 
   const raw = data?.Page?.notifications ?? [];
   const hasNextPage = data?.Page?.pageInfo?.hasNextPage ?? false;
@@ -451,18 +461,32 @@ export async function fetchMediaListEntry(
   token: string,
   mediaId: number,
 ): Promise<MediaListEntryResult | null> {
+  // FIX: We previously queried the standalone `MediaList(mediaId: $mediaId)`
+  // field. Per AniList's own docs, the viewer is NOT inferred for that query
+  // shape — "even when making authenticated requests... if you only use the
+  // mediaId field, it is very unlikely that you will get the entry for the
+  // user you want." Without a userId/userName it can silently return the
+  // wrong user's entry (or null), which broke status/score/progress reads,
+  // delete-button enablement, and deletion (you can't delete an entry that
+  // isn't yours).
+  //
+  // `Media.mediaListEntry` is AniList's documented way to fetch "the list
+  // entry for the authenticated user" from a single media lookup, so we use
+  // that instead.
   const QUERY = /* GraphQL */ `
     query GetEntry($mediaId: Int!) {
-      MediaList(mediaId: $mediaId) { ${ENTRY_FIELDS} }
+      Media(id: $mediaId) {
+        mediaListEntry { ${ENTRY_FIELDS} }
+      }
     }
   `;
   try {
-    const data = await gql<{ MediaList: MediaListEntryResult | null }>(
+    const data = await gql<{ Media: { mediaListEntry: MediaListEntryResult | null } | null }>(
       QUERY, { mediaId }, token,
     );
-    return data?.MediaList ?? null;
+    return data?.Media?.mediaListEntry ?? null;
   } catch (err: any) {
-    // AniList returns a 404 GraphQL error when the entry doesn't exist
+    // AniList returns a 404 GraphQL error when the media itself doesn't exist
     if (err?.message?.includes('Not Found') || err?.message?.includes('404')) return null;
     throw err;
   }
@@ -483,22 +507,27 @@ export async function fetchUserMediaState(
   token: string,
   mediaId: number,
 ): Promise<UserMediaState> {
+  // FIX: same root cause as fetchMediaListEntry above — `MediaList(mediaId:
+  // $mediaId)` doesn't reliably scope to the authenticated viewer. Nesting
+  // `mediaListEntry` under `Media` does.
   const QUERY = /* GraphQL */ `
     query UserMediaState($mediaId: Int!) {
-      Media: Media(id: $mediaId) { isFavourite }
-      MediaList(mediaId: $mediaId) { ${ENTRY_FIELDS} }
+      Media(id: $mediaId) {
+        isFavourite
+        mediaListEntry { ${ENTRY_FIELDS} }
+      }
     }
   `;
   try {
-    const data = await gql<{ Media: { isFavourite: boolean } | null; MediaList: MediaListEntryResult | null }>(
-      QUERY, { mediaId }, token,
-    );
+    const data = await gql<{
+      Media: { isFavourite: boolean; mediaListEntry: MediaListEntryResult | null } | null;
+    }>(QUERY, { mediaId }, token);
     return {
       isFavourite: !!data?.Media?.isFavourite,
-      entry: data?.MediaList ?? null,
+      entry: data?.Media?.mediaListEntry ?? null,
     };
   } catch (err) {
-    // AniList returns a 404 GraphQL error when the list entry doesn't exist
+    // AniList returns a 404 GraphQL error when the media itself doesn't exist
     // — that's a valid "no entry" state, so swallow it. Other errors propagate.
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('Not Found') || msg.includes('404')) {
