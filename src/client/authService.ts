@@ -673,11 +673,28 @@ export async function syncWatchProgress(
       newStatus = 'CURRENT';
     }
 
-    return await saveMediaListEntry(token, {
+    // If no meaningful change is required, reuse the existing entry instead
+    // of sending a redundant save that could trigger unexpected AniList behavior.
+    if (
+      existing &&
+      effectiveProgress === existing.progress &&
+      (newStatus === undefined || newStatus === currentStatus)
+    ) {
+      return existing;
+    }
+
+    const saveInput: any = {
       mediaId,
       progress: effectiveProgress,
-      ...(newStatus ? { status: newStatus } : {}),
-    });
+    };
+
+    if (newStatus) {
+      saveInput.status = newStatus;
+    } else if (currentStatus) {
+      saveInput.status = currentStatus;
+    }
+
+    return await saveMediaListEntry(token, saveInput);
   } catch (err) {
     console.error('[authService] syncWatchProgress failed:', err);
     return null;
@@ -722,11 +739,26 @@ export async function syncMangaReadProgress(
       newStatus = 'CURRENT';
     }
 
-    return await saveMediaListEntry(token, {
+    if (
+      existing &&
+      effectiveProgress === existing.progress &&
+      (newStatus === undefined || newStatus === currentStatus)
+    ) {
+      return existing;
+    }
+
+    const saveInput: any = {
       mediaId,
       progress: effectiveProgress,
-      ...(newStatus ? { status: newStatus } : {}),
-    });
+    };
+
+    if (newStatus) {
+      saveInput.status = newStatus;
+    } else if (currentStatus) {
+      saveInput.status = currentStatus;
+    }
+
+    return await saveMediaListEntry(token, saveInput);
   } catch (err) {
     console.error('[authService] syncMangaReadProgress failed:', err);
     return null;
