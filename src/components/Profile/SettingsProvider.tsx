@@ -42,6 +42,32 @@ interface SettingsProviderProps {
   children: ReactNode;
 }
 
+const TITLE_LANGUAGE_OPTIONS = [
+  'English (Attack on Titan)',
+  'Romaji (Shingeki no Kyojin)',
+  'Native (進撃の巨人)',
+] as const;
+
+const CHARACTER_NAME_LANGUAGE_OPTIONS = [
+  'Romaji (Zoldyck Killua)',
+  'Native (キルア=ゾルディック)',
+  'English (Killua Zoldyck)',
+] as const;
+
+const normalizeTitleLanguage = (value: string | null): string => {
+  if (!value) return TITLE_LANGUAGE_OPTIONS[0];
+  if (value.includes('English')) return TITLE_LANGUAGE_OPTIONS[0];
+  if (value.includes('Native')) return TITLE_LANGUAGE_OPTIONS[2];
+  return TITLE_LANGUAGE_OPTIONS[1];
+};
+
+const normalizeCharacterNameLanguage = (value: string | null): string => {
+  if (!value) return CHARACTER_NAME_LANGUAGE_OPTIONS[0];
+  if (value.includes('English')) return CHARACTER_NAME_LANGUAGE_OPTIONS[2];
+  if (value.includes('Native')) return CHARACTER_NAME_LANGUAGE_OPTIONS[1];
+  return CHARACTER_NAME_LANGUAGE_OPTIONS[0];
+};
+
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({
   children,
 }) => {
@@ -54,8 +80,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
      aniListSync: localStorage.getItem('aniListSync') === 'true',
      syncThreshold: Number(localStorage.getItem('syncThreshold')) || 80,
      watchOrInfo: (localStorage.getItem('watchOrInfo') as 'Watch' | 'Info') || 'Watch',
-     titleLanguage: localStorage.getItem('titleLanguage') || 'Romaji',
-     characterNameLanguage: localStorage.getItem('characterNameLanguage') || 'Romaji',
+     titleLanguage: normalizeTitleLanguage(localStorage.getItem('titleLanguage')),
+     characterNameLanguage: normalizeCharacterNameLanguage(
+       localStorage.getItem('characterNameLanguage'),
+     ),
      hideSpoilers: localStorage.getItem('hideSpoilers') === 'true',
    });
 

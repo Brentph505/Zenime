@@ -63,7 +63,7 @@ const DEFAULT_SETTINGS = {
   aniListSync: false,
   syncThreshold: 80,
   watchOrInfo: 'Watch' as const,
-  titleLanguage: 'Romaji (Shingeki no Kyojin)',
+  titleLanguage: 'English (Attack on Titan)',
   characterNameLanguage: 'Romaji (Zoldyck Killua)',
   hideSpoilers: false,
 };
@@ -734,8 +734,8 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
 
   const [preferences, setPreferences] = useState<Preferences>({
     defaultLanguage: settings.defaultLanguage ?? 'Sub',
-    titleLanguage: settings.titleLanguage ?? 'English',
-    characterNameLanguage: settings.characterNameLanguage ?? 'Romaji',
+    titleLanguage: settings.titleLanguage ?? 'English (Attack on Titan)',
+    characterNameLanguage: settings.characterNameLanguage ?? 'Romaji (Zoldyck Killua)',
     ratingSource: 'Anilist',
     openKeyboardShortcuts: '',
     autoskipIntroOutro: settings.autoSkip ? 'Enabled' : 'Disabled',
