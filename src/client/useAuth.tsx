@@ -418,6 +418,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearSession();
       setIsLoggedIn(false);
       setUserData(null);
+      setUnreadNotifications(0);
+      window.dispatchEvent(new CustomEvent('authUpdate'));
       return true;
     }
     return false;
