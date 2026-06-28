@@ -782,8 +782,34 @@ export function Player({
       const type = /\.mp4/i.test(hlsDirectUrl) ? 'video/mp4' : 'application/vnd.apple.mpegurl';
       setSrc({ src: hlsDirectUrl, type });
       console.log('[Player] Using direct media url:', hlsDirectUrl);
+
+      // If the parent already supplied proxied subtitles, use them directly.
       if (externalSubtitles && externalSubtitles.length > 0) {
         setSubtitles(externalSubtitles);
+        return;
+      }
+
+      // Otherwise fetch subtitles from the API for this episode.
+      // For KAA sources the subtitles are proxied inside fetchAnimeStreamingLinksProxied
+      // so they will be CORS-accessible when set here.
+      const serverParam =
+        sourceType && sourceType !== 'default' && sourceType !== 'direct'
+          ? sourceType.toLowerCase()
+          : undefined;
+      try {
+        const subtitleResponse = await fetchAnimeStreamingLinksProxied(
+          episodeId,
+          episodeProvider || 'kickassanime',
+          serverParam,
+          serverUrl,
+        );
+        if (fetchToken !== fetchAbortRef.current) return; // stale
+        if (subtitleResponse?.subtitles?.length) {
+          console.log('[Player] KAA hlsDirectUrl: setting proxied subtitles from API:', subtitleResponse.subtitles.length);
+          setSubtitles(subtitleResponse.subtitles);
+        }
+      } catch (subErr) {
+        console.warn('[Player] KAA hlsDirectUrl: failed to fetch subtitles:', subErr);
       }
       return;
     }

@@ -24,6 +24,9 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
 const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
 
+// Kickassanime subtitle/SRT proxy (CORS workaround for KAA subtitle files)
+const KAA_SUBTITLE_PROXY_URL = import.meta.env.VITE_KICKASSANIME_SUBTITLE_PROXY as string;
+
 // Image Proxy configuration (Cloudflare Worker)
 const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
 
@@ -283,6 +286,43 @@ export function buildM3U8ProxyUrl(
   }
 
   return proxied;
+}
+
+/**
+ * Builds a proxied subtitle URL (VTT / SRT / ASS) for KAA subtitle files.
+ * Uses a simple `?url=` passthrough proxy to avoid CORS restrictions.
+ */
+export function buildKaaSubtitleProxyUrl(subtitleUrl: string): string {
+  const proxy = KAA_SUBTITLE_PROXY_URL;
+  if (!proxy) {
+    console.warn('⚠️ No KAA subtitle proxy configured (VITE_KICKASSANIME_SUBTITLE_PROXY). Returning original URL.');
+    return subtitleUrl;
+  }
+
+  if (!isValidUrl(subtitleUrl)) {
+    return subtitleUrl;
+  }
+
+  // Avoid double-proxying
+  if (subtitleUrl.includes(proxy)) {
+    return subtitleUrl;
+  }
+
+  const proxyBase = proxy.replace(/\/+$/, '');
+  return `${proxyBase}/subtitle?url=${encodeURIComponent(subtitleUrl)}`;
+}
+
+/**
+ * Rewrites all subtitle URLs in a subtitles array through the KAA subtitle proxy.
+ */
+export function proxyKaaSubtitles(
+  subtitles: Array<{ url: string; lang: string }>,
+): Array<{ url: string; lang: string }> {
+  if (!KAA_SUBTITLE_PROXY_URL) return subtitles;
+  return subtitles.map((sub) => ({
+    ...sub,
+    url: buildKaaSubtitleProxyUrl(sub.url),
+  }));
 }
 
 /**
@@ -1530,6 +1570,14 @@ export async function fetchAnimeStreamingLinksProxied(
       proxyUrl,
       true,
     );
+  }
+
+  // Proxy KAA subtitle URLs so the browser can fetch them without CORS errors.
+  // Only apply to kickassanime — other providers either don't return subtitles
+  // or serve them from CORS-accessible origins.
+  if (finalProvider === 'kickassanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
+    console.log('[fetchAnimeStreamingLinksProxied] Proxying KAA subtitles:', data.subtitles.length);
+    data.subtitles = proxyKaaSubtitles(data.subtitles);
   }
 
   return data;
