@@ -30,16 +30,29 @@ const Page = styled.div`
   @media (min-width: 768px) { padding: 0.5rem 0.5rem 2.5rem; }
 `;
 
-/* ── Cover ── */
+/* ── Header: cover + overlapping avatar in one continuous block ── */
+const Header = styled.div`
+  position: relative;
+`;
+
+/*
+  Cover now uses aspect-ratio instead of a short fixed pixel height.
+  A fixed height (e.g. 120px) ignores the image's natural proportions,
+  so wide banners get vertically crushed. A ~16:5 ratio gives banner
+  images real room while staying compact on mobile, and clamp() lets
+  it scale smoothly between breakpoints instead of jumping.
+*/
 const CoverWrapper = styled.div`
   position: relative;
   width: 100%;
-  height: 130px;
+  aspect-ratio: 16 / 5;
+  min-height: 140px;
+  max-height: clamp(140px, 26vw, 260px);
   overflow: hidden;
   border-radius: var(--global-border-radius);
 
-  @media (min-width: 600px) { height: 160px; }
-  @media (min-width: 900px) { height: 190px; }
+  @media (min-width: 600px) { aspect-ratio: 18 / 5; }
+  @media (min-width: 1100px) { aspect-ratio: 20 / 5; }
 `;
 
 const CoverBg = styled.div<{ $src: string | null }>`
@@ -52,7 +65,7 @@ const CoverBg = styled.div<{ $src: string | null }>`
       ? css`
           background-image: url(${$src});
           background-size: cover;
-          background-position: center 30%;
+          background-position: center 38%;
         `
       : css`
           background:
@@ -65,58 +78,28 @@ const CoverBg = styled.div<{ $src: string | null }>`
 const CoverScrim = styled.div`
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 25%, rgba(0,0,0,0.45) 100%);
+  background: linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.45) 100%);
 `;
 
-/* ── Accent line ── */
-const AccentLine = styled.div`
-  height: 1.5px;
-  background: linear-gradient(90deg, var(--primary-accent, #7c3aed), #db2777, #0891b2, var(--primary-accent, #7c3aed));
-  background-size: 300% auto;
-  border-radius: var(--global-border-radius);
-`;
-
-/* ── Profile header bar (opaque) ── */
-const ProfileBar = styled.div`
-  background: var(--global-secondary-bg);
-  border-radius: var(--global-border-radius);
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  overflow: visible;
-
-  @media (min-width: 600px) { padding: 1rem; }
-`;
-
-/* avatar row overlapping the cover */
-const AvatarRow = styled.div`
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-top: -32px;
-
-  @media (min-width: 600px) {
-    margin-top: -36px;
-    gap: 1rem;
-  }
-`;
-
-/* gradient ring */
+/* avatar sits half on the cover, half on the card below it */
 const AvatarRing = styled.div`
-  flex-shrink: 0;
-  width: 72px;
-  height: 72px;
+  position: absolute;
+  left: 1.25rem;
+  bottom: -34px;
+  z-index: 2;
+  width: 76px;
+  height: 76px;
   border-radius: 50%;
-  padding: 2.5px;
+  padding: 3px;
   background: linear-gradient(135deg, var(--primary-accent, #7c3aed), #db2777, #0891b2);
-  box-shadow: 0 0 0 3px var(--global-secondary-bg), 0 4px 16px rgba(0,0,0,0.4);
-  overflow: hidden;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.4);
   box-sizing: border-box;
 
   @media (min-width: 600px) {
-    width: 80px;
-    height: 80px;
+    left: 1.5rem;
+    bottom: -38px;
+    width: 92px;
+    height: 92px;
   }
 `;
 
@@ -126,30 +109,35 @@ const AvatarImg = styled.img`
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  border: 2.5px solid var(--global-secondary-bg);
+  border: 3px solid var(--global-secondary-bg);
   box-sizing: border-box;
 `;
 
-const MetaRow = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding-bottom: 0.3rem;
-  gap: 0.5rem;
-  min-width: 0;
+/* ── Identity + stats card, flows directly from the header ── */
+const InfoCard = styled.div`
+  background: var(--global-secondary-bg);
+  border: 1px solid var(--global-border);
+  border-radius: var(--global-border-radius);
+  margin-top: 0.5rem;
+  padding: 1.1rem 1.15rem 1rem;
 `;
 
-const NameStack = styled.div`
+const NameRow = styled.div`
+  padding-left: calc(76px + 1rem);
+  min-height: 34px;
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
+  justify-content: center;
+  gap: 0.2rem;
+
+  @media (min-width: 600px) {
+    padding-left: calc(92px + 1.15rem);
+  }
 `;
 
 const Username = styled.h1`
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--global-text);
   letter-spacing: -0.01em;
@@ -157,78 +145,79 @@ const Username = styled.h1`
   overflow: hidden;
   text-overflow: ellipsis;
 
-  @media (min-width: 600px) { font-size: 1.15rem; }
+  @media (min-width: 600px) { font-size: 1.35rem; }
 `;
 
 const SubLabel = styled.span`
-  font-size: 0.62rem;
-  color: var(--global-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-`;
-
-/* ── Stats row ── */
-const StatsRow = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
-  margin-top: 0.85rem;
-
-  @media (min-width: 480px) { grid-template-columns: repeat(4, 1fr); }
-`;
-
-const StatBox = styled.div<{ $delay?: string }>`
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: var(--global-border-radius);
-  background: var(--global-card-bg);
-  border: 1px solid var(--global-border);
-  transition: border-color 0.16s, transform 0.16s;
-  animation: ${popIn} 0.35s ease both;
-  animation-delay: ${({ $delay }) => $delay ?? '0s'};
-  cursor: default;
-
-  &:hover {
-    border-color: var(--primary-accent);
-    transform: translateY(-1px);
-  }
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--global-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
 `;
 
-const StatIcon = styled.div`
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: var(--global-tertiary-bg);
-  color: var(--primary-accent);
+/* ── Stats: a single flat strip with thin dividers — no boxed cards ── */
+const StatsStrip = styled.div`
+  display: flex;
+  align-items: stretch;
+  margin-top: 1.1rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--global-border);
+`;
+
+const Stat = styled.div<{ $delay?: string }>`
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  gap: 0.6rem;
+  padding: 0.2rem 0.4rem;
+  animation: ${popIn} 0.3s ease both;
+  animation-delay: ${({ $delay }) => $delay ?? '0s'};
+
+  & + & {
+    border-left: 1px solid var(--global-border);
+  }
+`;
+
+const StatIconWrap = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--global-tertiary-bg);
+  font-size: 0.95rem;
+  color: var(--primary-accent);
   flex-shrink: 0;
 `;
 
 const StatText = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.05rem;
+  gap: 0.1rem;
   min-width: 0;
+  line-height: 1;
 `;
 
 const StatValue = styled.span`
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--global-text);
   letter-spacing: -0.02em;
-  line-height: 1;
 `;
 
 const StatLabel = styled.span`
   font-size: 0.6rem;
+  font-weight: 600;
   color: var(--global-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 `;
 
 /* ── Guest state ── */
@@ -272,8 +261,9 @@ const GuestDesc = styled.p`
 const LoginBtn = styled.button`
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1.25rem;
+  gap: 0.45rem;
+  padding: 0.55rem 1.35rem;
+  margin-top: 0.25rem;
   border-radius: var(--global-border-radius);
   border: 1px solid var(--global-border);
   background: var(--global-tertiary-bg);
@@ -293,7 +283,7 @@ const LoginBtn = styled.button`
 /* ── Content section ── */
 const ContentWrap = styled.div`
   width: 100%;
-  margin-top: 1.5rem;
+  margin-top: 1.75rem;
   box-sizing: border-box;
 `;
 
@@ -320,76 +310,69 @@ export const Profile: React.FC = () => {
 
   return (
     <Page>
-      {/* Cover */}
-      <CoverWrapper>
-        <CoverBg $src={coverSrc} />
-        <CoverScrim />
-      </CoverWrapper>
+      {isLoggedIn && userData ? (
+        <>
+          {/* Cover + overlapping avatar, one continuous header */}
+          <Header>
+            <CoverWrapper>
+              <CoverBg $src={coverSrc} />
+              <CoverScrim />
+            </CoverWrapper>
 
-      <AccentLine />
+            <AvatarRing>
+              <AvatarImg src={userData.avatar.large} alt={userData.name} />
+            </AvatarRing>
+          </Header>
 
-      {/* Profile header */}
-      <ProfileBar>
-        {isLoggedIn && userData ? (
-          <>
-            <AvatarRow>
-              <AvatarRing>
-                <AvatarImg
-                  src={userData.avatar.large}
-                  alt={userData.name}
-                />
-              </AvatarRing>
+          <InfoCard>
+            <NameRow>
+              <Username>{userData.name}</Username>
+              <SubLabel><SiAnilist size={11} /> AniList Member</SubLabel>
+            </NameRow>
 
-              <MetaRow>
-                <NameStack>
-                  <Username>{userData.name}</Username>
-                  <SubLabel>AniList Member</SubLabel>
-                </NameStack>
-              </MetaRow>
-            </AvatarRow>
-
-            {/* Stats */}
             {userData.statistics && (
-              <StatsRow>
-                <StatBox $delay='0.04s'>
-                  <StatIcon><FiFilm /></StatIcon>
+              <StatsStrip>
+                <Stat $delay="0.02s">
+                  <StatIconWrap><FiFilm /></StatIconWrap>
                   <StatText>
                     <StatValue>{userData.statistics.anime.count}</StatValue>
                     <StatLabel>Anime</StatLabel>
                   </StatText>
-                </StatBox>
+                </Stat>
 
-                <StatBox $delay='0.08s'>
-                  <StatIcon><FiTv /></StatIcon>
+                <Stat $delay="0.06s">
+                  <StatIconWrap><FiTv /></StatIconWrap>
                   <StatText>
                     <StatValue>{userData.statistics.anime.episodesWatched}</StatValue>
                     <StatLabel>Episodes</StatLabel>
                   </StatText>
-                </StatBox>
+                </Stat>
 
-                <StatBox $delay='0.12s'>
-                  <StatIcon><FiClock /></StatIcon>
+                <Stat $delay="0.1s">
+                  <StatIconWrap><FiClock /></StatIconWrap>
                   <StatText>
                     <StatValue>
                       {Math.round(userData.statistics.anime.minutesWatched / 60)}h
                     </StatValue>
                     <StatLabel>Hours</StatLabel>
                   </StatText>
-                </StatBox>
+                </Stat>
 
-                <StatBox $delay='0.16s'>
-                  <StatIcon><FiStar /></StatIcon>
+                <Stat $delay="0.14s">
+                  <StatIconWrap><FiStar /></StatIconWrap>
                   <StatText>
                     <StatValue>
                       {userData.statistics.anime.meanScore.toFixed(1)}
                     </StatValue>
                     <StatLabel>Avg Score</StatLabel>
                   </StatText>
-                </StatBox>
-              </StatsRow>
+                </Stat>
+              </StatsStrip>
             )}
-          </>
-        ) : (
+          </InfoCard>
+        </>
+      ) : (
+        <InfoCard>
           <GuestWrap>
             <GuestCircle><CgProfile size={26} /></GuestCircle>
             <GuestTitle>Not logged in</GuestTitle>
@@ -400,8 +383,8 @@ export const Profile: React.FC = () => {
               <SiAnilist size={15} /> Log in with AniList
             </LoginBtn>
           </GuestWrap>
-        )}
-      </ProfileBar>
+        </InfoCard>
+      )}
 
       <ContentWrap>
         <EpisodeCard />
