@@ -435,11 +435,14 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
               title={title.english || title.romaji}
             >
               <SlideImageWrapper>
-                <SlideImage
-                  src={cover}
-                  alt={title.english || title.romaji + ' Banner Image'}
-                  loading='eager'
-                />
+                <picture>
+                  <source media="(max-width: 500px)" srcSet={anime.image || cover} />
+                  <SlideImage
+                    src={cover}
+                    alt={(title.english || title.romaji) + ' Banner Image'}
+                    loading='eager'
+                  />
+                </picture>
                 <ContentWrapper>
                   <SlideContent>
                     <SlideTitle>{truncateTitle(getTitleForCarousel(title))}</SlideTitle>
