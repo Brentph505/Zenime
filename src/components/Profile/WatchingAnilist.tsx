@@ -41,96 +41,57 @@ const ANILIST_STATUS_LABELS: Record<string, string> = {
 };
 
 const Container = styled.div`
-  width: 100%;
-  box-sizing: border-box;
-  overflow: hidden; /* Prevents extending past parent */
-  margin-top: 0.75rem;
+  margin-top: 1rem;
   margin-bottom: 1rem;
-
-  @media (max-width: 600px) {
-    margin-top: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
-`;
-
-const HeaderRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-  width: 100%;
-  box-sizing: border-box;
-  overflow: hidden; /* Key fix for flex wrapping cutoffs */
-
-  @media (max-width: 600px) {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
 `;
 
 const HeadingGroup = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  overflow: hidden;
-
-  @media (max-width: 600px) {
-    flex-direction: row;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
+  gap: 0.2rem;
+  margin-bottom: 1rem;
 `;
 
 const SectionTitle = styled.h3`
   margin: 0;
   font-size: 1rem;
   color: var(--global-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  @media (max-width: 600px) {
-    font-size: 0.9rem;
-  }
 `;
 
 const SectionSubtext = styled.p`
   margin: 0;
   font-size: 0.78rem;
   color: var(--global-text-muted);
-  flex: 1;
-  text-align: right;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0; /* Allows it to shrink */
-
-  @media (min-width: 601px) {
-    text-align: left;
-  }
-
-  @media (max-width: 400px) {
-    display: none;
-  }
 `;
 
+/* Single toolbar row: filters on the left, tabs on the right (desktop).
+   Stacks vertically on mobile, with tabs shown first. */
 const Toolbar = styled.div`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  box-sizing: border-box;
-  overflow: hidden; /* Key fix */
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 
   @media (max-width: 600px) {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+`;
+
+const FilterGroup = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+
+  @media (max-width: 600px) {
+    width: 100%;
     flex-direction: column;
-    gap: 0.4rem;
+    align-items: stretch;
   }
 `;
 
@@ -142,14 +103,10 @@ const TabGroup = styled.div`
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
   flex-shrink: 0;
-  align-self: flex-start;
-  width: 100%;
-  box-sizing: border-box;
-  overflow: hidden; /* Key fix */
 
   @media (max-width: 600px) {
+    width: 100%;
     justify-content: center;
-    align-self: stretch;
   }
 `;
 
@@ -163,82 +120,33 @@ const TabButton = styled.button<{ $active: boolean }>`
   color: ${({ $active }) => ($active ? '#fff' : 'var(--global-text-muted)')};
   background: ${({ $active }) => ($active ? 'var(--primary-accent)' : 'transparent')};
   min-width: 5.5rem;
-  transition: all 0.2s ease;
-  box-sizing: border-box; /* Key fix */
-
-  @media (max-width: 600px) {
-    flex: 1;
-    min-width: 0; /* Key fix: allows button to shrink */
-    padding: 0.4rem 0.6rem;
-  }
-`;
-
-const SearchAndStatusRow = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  width: 100%;
-  box-sizing: border-box;
-  min-width: 0; /* Key fix: allows flex row to shrink */
-  overflow: hidden; /* Key fix */
 `;
 
 const SearchInput = styled.input`
-  flex: 1;
-  min-width: 0; /* Key fix: allows input to shrink */
-  max-width: 100%;
-  padding: 0.6rem 0.75rem;
+  width: min(100%, 100%);
+  padding: 0.65rem 0.8rem;
   border-radius: var(--global-border-radius);
   border: 1px solid var(--global-border);
   background: var(--global-secondary-bg);
   color: var(--global-text);
   outline: none;
-  font-size: 0.85rem;
-  box-sizing: border-box; /* Key fix: padding included in width */
 
   @media (min-width: 601px) {
     width: 240px;
-    flex: none;
-  }
-
-  @media (max-width: 600px) {
-    padding: 0.5rem 0.65rem;
-    font-size: 0.8rem;
-  }
-
-  &::placeholder {
-    color: var(--global-text-muted);
-    font-size: 0.8rem;
-
-    @media (max-width: 600px) {
-      font-size: 0.75rem;
-    }
   }
 `;
 
 const StatusDropdown = styled.select`
-  padding: 0.6rem 0.75rem;
+  width: min(100%, 100%);
+  padding: 0.65rem 0.8rem;
   border-radius: var(--global-border-radius);
   background-color: var(--global-secondary-bg);
   color: var(--global-text);
   border: 1px solid var(--global-border);
   cursor: pointer;
-  font-size: 0.85rem;
-  box-sizing: border-box; /* Key fix */
-  flex-shrink: 0; /* Forces the input to shrink, not the dropdown */
 
   @media (min-width: 601px) {
     width: 160px;
-  }
-
-  @media (max-width: 600px) {
-    width: 130px;
-    padding: 0.5rem 0.5rem;
-    font-size: 0.8rem;
-  }
-
-  @media (max-width: 350px) {
-    width: 110px; /* Smaller on very tiny screens */
-    font-size: 0.75rem;
   }
 `;
 
@@ -250,17 +158,10 @@ const Message = styled.div`
   font-size: 1rem;
   font-weight: 600;
   color: var(--global-text-muted);
-  padding: 2rem 1rem;
-
-  @media (max-width: 600px) {
-    margin: 1rem 0;
-    font-size: 0.9rem;
-    padding: 1.5rem 0.75rem;
-  }
 `;
 
 const NotLoggedIn = styled.div`
-  margin: 5rem 1rem;
+  margin: 5rem;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -268,12 +169,10 @@ const NotLoggedIn = styled.div`
   font-size: 1.5rem;
   font-weight: bold;
   max-width: 100%;
-  box-sizing: border-box;
-  overflow: hidden;
 
   @media (max-width: 600px) {
-    margin: 2rem 0.5rem;
-    padding: 1.5rem 1rem;
+    margin: 1rem 0;
+    padding: 0.85rem;
     font-size: 0.95rem;
     font-weight: 600;
   }
@@ -307,6 +206,7 @@ export const WatchingAnilist = () => {
 
   const activeList = activeTab === 'anime' ? animeList : mangaList;
 
+  // Re-fetch the user's lists when an entry changes elsewhere.
   useEffect(() => {
     const handler = () => {
       void animeList.refresh();
@@ -388,43 +288,40 @@ export const WatchingAnilist = () => {
 
   return (
     <Container>
-      <HeaderRow>
-        <HeadingGroup>
-          <SectionTitle>AniList Library</SectionTitle>
-          <SectionSubtext>
-            Search your saved {activeTab === 'anime' ? 'anime' : 'manga'} and switch status.
-          </SectionSubtext>
-        </HeadingGroup>
+      <HeadingGroup>
+        <SectionTitle>AniList Library</SectionTitle>
+        <SectionSubtext>Search your saved {activeTab === 'anime' ? 'anime' : 'manga'} and switch list status instantly.</SectionSubtext>
+      </HeadingGroup>
 
-        <Toolbar>
-          <TabGroup>
-            {TAB_OPTIONS.map(({ value, label }) => (
-              <TabButton
-                key={value}
-                $active={activeTab === value}
-                onClick={() => handleTabChange(value)}
-              >
+      <Toolbar>
+        <FilterGroup>
+          <SearchInput
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder={`Search ${activeTab === 'anime' ? 'anime' : 'manga'} titles`}
+          />
+
+          <StatusDropdown value={selectedStatus} onChange={handleStatusChange}>
+            {(activeTab === 'anime' ? ANIME_STATUS_OPTIONS : MANGA_STATUS_OPTIONS).map(({ value, label }) => (
+              <option key={value} value={value}>
                 {label}
-              </TabButton>
+              </option>
             ))}
-          </TabGroup>
+          </StatusDropdown>
+        </FilterGroup>
 
-          <SearchAndStatusRow>
-            <SearchInput
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={`Search ${activeTab === 'anime' ? 'anime' : 'manga'}...`}
-            />
-            <StatusDropdown value={selectedStatus} onChange={handleStatusChange}>
-              {(activeTab === 'anime' ? ANIME_STATUS_OPTIONS : MANGA_STATUS_OPTIONS).map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </StatusDropdown>
-          </SearchAndStatusRow>
-        </Toolbar>
-      </HeaderRow>
+        <TabGroup>
+          {TAB_OPTIONS.map(({ value, label }) => (
+            <TabButton
+              key={value}
+              $active={activeTab === value}
+              onClick={() => handleTabChange(value)}
+            >
+              {label}
+            </TabButton>
+          ))}
+        </TabGroup>
+      </Toolbar>
 
       {activeList.loading ? (
         <Message>Loading…</Message>
