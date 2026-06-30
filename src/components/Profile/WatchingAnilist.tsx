@@ -76,7 +76,12 @@ const Toolbar = styled.div`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem;
+
+  @media (max-width: 600px) {
+    flex-direction: column;
+    align-items: stretch;
+  }
 `;
 
 const TabGroup = styled.div`
@@ -86,6 +91,12 @@ const TabGroup = styled.div`
   border-radius: 999px;
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
+  flex-shrink: 0;
+
+  @media (max-width: 600px) {
+    width: 100%;
+    justify-content: center;
+  }
 `;
 
 const TabButton = styled.button<{ $active: boolean }>`
@@ -97,25 +108,35 @@ const TabButton = styled.button<{ $active: boolean }>`
   cursor: pointer;
   color: ${({ $active }) => ($active ? '#fff' : 'var(--global-text-muted)')};
   background: ${({ $active }) => ($active ? 'var(--primary-accent)' : 'transparent')};
+  min-width: 5.5rem;
 `;
 
 const SearchInput = styled.input`
-  min-width: 180px;
+  width: min(100%, 100%);
   padding: 0.65rem 0.8rem;
   border-radius: var(--global-border-radius);
   border: 1px solid var(--global-border);
   background: var(--global-secondary-bg);
   color: var(--global-text);
   outline: none;
+
+  @media (min-width: 601px) {
+    width: 240px;
+  }
 `;
 
 const StatusDropdown = styled.select`
+  width: min(100%, 100%);
   padding: 0.65rem 0.8rem;
   border-radius: var(--global-border-radius);
   background-color: var(--global-secondary-bg);
   color: var(--global-text);
   border: 1px solid var(--global-border);
   cursor: pointer;
+
+  @media (min-width: 601px) {
+    width: 160px;
+  }
 `;
 
 const Message = styled.div`
