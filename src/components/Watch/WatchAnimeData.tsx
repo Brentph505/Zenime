@@ -4,11 +4,6 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Seasons, Anime, useTitleWithSubtitle } from '../../index';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import { FaExternalLinkAlt } from 'react-icons/fa';
-import { IoAddOutline } from 'react-icons/io5';
-import { useSettings } from '../Profile/SettingsProvider';
-import { useAuth } from '../../client/useAuth';
-import { EditEntryModal } from '../Profile/EditEntryModal';
-import { AddToListLoginModal } from './AddToListLoginModal';
 
 const AnimeDataContainer = styled.div`
   margin-bottom: 1.5rem;
@@ -245,37 +240,6 @@ const MalAnilistSvg = styled.div`
   }
 `;
 
-const AddToListButton = styled.button`
-  height: 2.5rem;
-  width: 2.5rem;
-  border-radius: var(--global-border-radius);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: var(--primary-accent, #c084fc);
-  color: white;
-  border: none;
-  cursor: pointer;
-  transition: all 0.2s ease-in-out;
-  font-size: 1.3rem;
-
-  &:hover,
-  &:active,
-  &:focus {
-    transform: scale(1.08);
-  }
-
-  &:active {
-    transform: scale(0.95);
-  }
-
-  @media (max-width: 500px) {
-    height: 2rem;
-    width: 2rem;
-    font-size: 1.1rem;
-  }
-`;
-
 const ShowMoreButton = styled.button`
   background-color: var(--global-div);
   color: #828181;
@@ -325,23 +289,6 @@ const ClickableText = styled.span`
   }
 `;
 
-const GenreTag = styled.span`
-  display: inline-block;
-  padding: 0.2rem 0.5rem;
-  margin: 0.15rem;
-  background-color: var(--global-div);
-  color: var(--global-text);
-  border-radius: var(--global-border-radius);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-
-  &:hover {
-    background-color: var(--primary-accent);
-    color: white;
-  }
-`;
-
 const TrailerOverlay = styled.div`
   position: fixed;
   top: 0;
@@ -375,14 +322,10 @@ const TrailerOverlayContent = styled.div`
 export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
   animeData,
 }) => {
-  const { settings } = useSettings();
   const navigate = useNavigate();
-  const { isLoggedIn } = useAuth();
   const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
   const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(animeData.title);
 
   const getAnimeIdFromUrl = () => {
@@ -419,11 +362,6 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [showTrailer]);
-
-  function capitalizeFirstLetter(str: string) {
-    if (!str) return str;
-    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-  }
 
   const isScreenUnder500px = () => window.innerWidth < 500;
 
