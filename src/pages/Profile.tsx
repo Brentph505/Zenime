@@ -26,7 +26,6 @@ const Page = styled.div`
   overflow-x: hidden;
   padding: 0.25rem 0.25rem 2.5rem;
   animation: ${fadeUp} 0.35s ease both;
-  isolation: isolate;
 
   @media (min-width: 768px) { padding: 0.5rem 0.5rem 2.5rem; }
 `;
@@ -83,8 +82,7 @@ const ProfileBar = styled.div`
   border-radius: var(--global-border-radius);
   margin-top: 0.5rem;
   padding: 0.75rem;
-  overflow: hidden;
-  min-width: 0;
+  overflow: visible;
 
   @media (min-width: 600px) { padding: 1rem; }
 `;
@@ -97,8 +95,6 @@ const AvatarRow = styled.div`
   align-items: flex-end;
   gap: 0.75rem;
   margin-top: -32px;
-  overflow: hidden;
-  min-width: 0;
 
   @media (min-width: 600px) {
     margin-top: -36px;
@@ -109,19 +105,14 @@ const AvatarRow = styled.div`
 /* gradient ring */
 const AvatarRing = styled.div`
   flex-shrink: 0;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
   padding: 2.5px;
   background: linear-gradient(135deg, var(--primary-accent, #7c3aed), #db2777, #0891b2);
   box-shadow: 0 0 0 3px var(--global-secondary-bg), 0 4px 16px rgba(0,0,0,0.4);
   overflow: hidden;
   box-sizing: border-box;
-
-  @media (min-width: 400px) {
-    width: 72px;
-    height: 72px;
-  }
 
   @media (min-width: 600px) {
     width: 80px;
@@ -141,13 +132,12 @@ const AvatarImg = styled.img`
 
 const MetaRow = styled.div`
   flex: 1;
-  min-width: 0;
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   padding-bottom: 0.3rem;
   gap: 0.5rem;
-  overflow: hidden;
+  min-width: 0;
 `;
 
 const NameStack = styled.div`
@@ -155,26 +145,23 @@ const NameStack = styled.div`
   flex-direction: column;
   gap: 0.1rem;
   min-width: 0;
-  overflow: hidden;
 `;
 
 const Username = styled.h1`
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
   color: var(--global-text);
   letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
 
-  @media (min-width: 400px) { font-size: 1.05rem; }
   @media (min-width: 600px) { font-size: 1.15rem; }
 `;
 
 const SubLabel = styled.span`
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   color: var(--global-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -184,21 +171,17 @@ const SubLabel = styled.span`
 const StatsRow = styled.div`
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.4rem;
+  gap: 0.5rem;
   margin-top: 0.85rem;
-  overflow: hidden;
 
-  @media (min-width: 480px) { 
-    grid-template-columns: repeat(4, 1fr); 
-    gap: 0.5rem;
-  }
+  @media (min-width: 480px) { grid-template-columns: repeat(4, 1fr); }
 `;
 
 const StatBox = styled.div<{ $delay?: string }>`
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
   border-radius: var(--global-border-radius);
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
@@ -206,38 +189,24 @@ const StatBox = styled.div<{ $delay?: string }>`
   animation: ${popIn} 0.35s ease both;
   animation-delay: ${({ $delay }) => $delay ?? '0s'};
   cursor: default;
-  overflow: hidden;
-  min-width: 0;
 
   &:hover {
     border-color: var(--primary-accent);
     transform: translateY(-1px);
   }
-
-  @media (min-width: 480px) {
-    padding: 0.6rem 0.75rem;
-    gap: 0.6rem;
-  }
 `;
 
 const StatIcon = styled.div`
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   background: var(--global-tertiary-bg);
   color: var(--primary-accent);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   flex-shrink: 0;
-
-  @media (min-width: 480px) {
-    width: 28px;
-    height: 28px;
-    border-radius: 7px;
-    font-size: 0.85rem;
-  }
 `;
 
 const StatText = styled.div`
@@ -245,36 +214,21 @@ const StatText = styled.div`
   flex-direction: column;
   gap: 0.05rem;
   min-width: 0;
-  overflow: hidden;
 `;
 
 const StatValue = styled.span`
-  font-size: 0.9rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--global-text);
   letter-spacing: -0.02em;
   line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  @media (min-width: 480px) {
-    font-size: 1rem;
-  }
 `;
 
 const StatLabel = styled.span`
-  font-size: 0.55rem;
+  font-size: 0.6rem;
   color: var(--global-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-
-  @media (min-width: 480px) {
-    font-size: 0.6rem;
-  }
 `;
 
 /* ── Guest state ── */
@@ -284,9 +238,8 @@ const GuestWrap = styled.div`
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
-  padding: 2rem 1rem 1.5rem;
+  padding: 2.5rem 1.5rem 2rem;
   text-align: center;
-  overflow: hidden;
 `;
 
 const GuestCircle = styled.div`
@@ -299,7 +252,6 @@ const GuestCircle = styled.div`
   align-items: center;
   justify-content: center;
   color: var(--global-text-muted);
-  flex-shrink: 0;
 `;
 
 const GuestTitle = styled.p`
@@ -315,7 +267,6 @@ const GuestDesc = styled.p`
   color: var(--global-text-muted);
   max-width: 260px;
   line-height: 1.65;
-  overflow-wrap: break-word;
 `;
 
 const LoginBtn = styled.button`
@@ -331,8 +282,6 @@ const LoginBtn = styled.button`
   font-weight: 700;
   cursor: pointer;
   transition: background 0.16s, border-color 0.16s, transform 0.16s;
-  white-space: nowrap;
-  flex-shrink: 0;
 
   &:hover {
     border-color: var(--primary-accent);
@@ -346,18 +295,14 @@ const ContentWrap = styled.div`
   width: 100%;
   margin-top: 1.5rem;
   box-sizing: border-box;
-  overflow: hidden;
-  min-width: 0;
-
-  @media (max-width: 400px) {
-    margin-top: 1rem;
-  }
 `;
 
 /* ─────────── Component ─────────── */
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, refreshUserData } = useAuth();
 
+  // Refresh stats (counts, mean score, …) when a list entry changes elsewhere
+  // (e.g. status/score set on the Info page) so the numbers don't go stale.
   useEffect(() => {
     if (!isLoggedIn) return;
     const handler = () => { void refreshUserData(); };
