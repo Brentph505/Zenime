@@ -13,11 +13,11 @@ const fadeUp = keyframes`
 `;
 
 const popIn = keyframes`
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
 
-/* ── Page ── */
+/* ── Page (matches Home/History: centered, max-width 125rem) ── */
 const Page = styled.div`
   width: 100%;
   max-width: 125rem;
@@ -30,29 +30,22 @@ const Page = styled.div`
   @media (min-width: 768px) { padding: 0.5rem 0.5rem 2.5rem; }
 `;
 
-/* ── Unified header card ── */
-const HeaderCard = styled.div`
-  position: relative;
-  border-radius: var(--global-border-radius);
-  overflow: hidden;
-  background: var(--global-secondary-bg);
-`;
-
 /* ── Cover ── */
-const CoverArea = styled.div`
+const CoverWrapper = styled.div`
   position: relative;
   width: 100%;
-  height: 120px;
+  height: 130px;
   overflow: hidden;
+  border-radius: var(--global-border-radius);
 
-  @media (min-width: 600px) { height: 150px; }
-  @media (min-width: 900px) { height: 180px; }
+  @media (min-width: 600px) { height: 160px; }
+  @media (min-width: 900px) { height: 190px; }
 `;
 
 const CoverBg = styled.div<{ $src: string | null }>`
   width: 100%;
   height: 100%;
-  background-color: var(--global-tertiary-bg);
+  background-color: var(--global-secondary-bg);
 
   ${({ $src }) =>
     $src
@@ -72,48 +65,58 @@ const CoverBg = styled.div<{ $src: string | null }>`
 const CoverScrim = styled.div`
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 25%, var(--global-secondary-bg) 100%);
+  background: linear-gradient(to bottom, transparent 25%, rgba(0,0,0,0.45) 100%);
 `;
 
-/* ── Info area (overlaps cover) ── */
-const InfoArea = styled.div`
+/* ── Accent line ── */
+const AccentLine = styled.div`
+  height: 1.5px;
+  background: linear-gradient(90deg, var(--primary-accent, #7c3aed), #db2777, #0891b2, var(--primary-accent, #7c3aed));
+  background-size: 300% auto;
+  border-radius: var(--global-border-radius);
+`;
+
+/* ── Profile header bar (opaque) ── */
+const ProfileBar = styled.div`
+  background: var(--global-secondary-bg);
+  border-radius: var(--global-border-radius);
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  overflow: visible;
+
+  @media (min-width: 600px) { padding: 1rem; }
+`;
+
+/* avatar row overlapping the cover */
+const AvatarRow = styled.div`
   position: relative;
   z-index: 2;
   display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0 0.85rem 0.85rem;
-  margin-top: -30px;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-top: -32px;
 
   @media (min-width: 600px) {
-    padding: 0 1rem 1rem;
-    margin-top: -34px;
-    gap: 0.7rem;
+    margin-top: -36px;
+    gap: 1rem;
   }
 `;
 
-const TopRow = styled.div`
-  display: flex;
-  align-items: flex-end;
-  gap: 0.7rem;
-
-  @media (min-width: 600px) { gap: 0.85rem; }
-`;
-
+/* gradient ring */
 const AvatarRing = styled.div`
   flex-shrink: 0;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
-  padding: 2px;
+  padding: 2.5px;
   background: linear-gradient(135deg, var(--primary-accent, #7c3aed), #db2777, #0891b2);
-  box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  box-shadow: 0 0 0 3px var(--global-secondary-bg), 0 4px 16px rgba(0,0,0,0.4);
   overflow: hidden;
   box-sizing: border-box;
 
   @media (min-width: 600px) {
-    width: 72px;
-    height: 72px;
+    width: 80px;
+    height: 80px;
   }
 `;
 
@@ -123,17 +126,25 @@ const AvatarImg = styled.img`
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  border: 2px solid var(--global-secondary-bg);
+  border: 2.5px solid var(--global-secondary-bg);
   box-sizing: border-box;
 `;
 
-const NameArea = styled.div`
+const MetaRow = styled.div`
   flex: 1;
-  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
   padding-bottom: 0.3rem;
+  gap: 0.5rem;
+  min-width: 0;
+`;
+
+const NameStack = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
+  min-width: 0;
 `;
 
 const Username = styled.h1`
@@ -146,7 +157,7 @@ const Username = styled.h1`
   overflow: hidden;
   text-overflow: ellipsis;
 
-  @media (min-width: 600px) { font-size: 1.2rem; }
+  @media (min-width: 600px) { font-size: 1.15rem; }
 `;
 
 const SubLabel = styled.span`
@@ -156,43 +167,68 @@ const SubLabel = styled.span`
   letter-spacing: 0.1em;
 `;
 
-/* ── Stats pills ── */
+/* ── Stats row ── */
 const StatsRow = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  animation: ${popIn} 0.35s ease both;
-  animation-delay: 0.08s;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+
+  @media (min-width: 480px) { grid-template-columns: repeat(4, 1fr); }
 `;
 
-const Pill = styled.span`
-  display: inline-flex;
+const StatBox = styled.div<{ $delay?: string }>`
+  display: flex;
   align-items: center;
-  gap: 0.3rem;
-  padding: 0.28rem 0.55rem;
-  border-radius: 999px;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--global-border-radius);
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
-  font-size: 0.72rem;
-  color: var(--global-text-muted);
-  white-space: nowrap;
-  transition: border-color 0.16s;
+  transition: border-color 0.16s, transform 0.16s;
+  animation: ${popIn} 0.35s ease both;
+  animation-delay: ${({ $delay }) => $delay ?? '0s'};
+  cursor: default;
 
   &:hover {
     border-color: var(--primary-accent);
+    transform: translateY(-1px);
   }
+`;
 
-  svg {
-    color: var(--primary-accent);
-    font-size: 0.68rem;
-    flex-shrink: 0;
-  }
+const StatIcon = styled.div`
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--global-tertiary-bg);
+  color: var(--primary-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+`;
 
-  strong {
-    color: var(--global-text);
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
+const StatText = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  min-width: 0;
+`;
+
+const StatValue = styled.span`
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--global-text);
+  letter-spacing: -0.02em;
+  line-height: 1;
+`;
+
+const StatLabel = styled.span`
+  font-size: 0.6rem;
+  color: var(--global-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 `;
 
 /* ── Guest state ── */
@@ -201,14 +237,14 @@ const GuestWrap = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  padding: 2rem 1.5rem 1.75rem;
+  gap: 0.75rem;
+  padding: 2.5rem 1.5rem 2rem;
   text-align: center;
 `;
 
 const GuestCircle = styled.div`
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
@@ -220,29 +256,29 @@ const GuestCircle = styled.div`
 
 const GuestTitle = styled.p`
   margin: 0;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--global-text);
 `;
 
 const GuestDesc = styled.p`
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--global-text-muted);
-  max-width: 250px;
-  line-height: 1.6;
+  max-width: 260px;
+  line-height: 1.65;
 `;
 
 const LoginBtn = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.45rem 1.1rem;
-  border-radius: 999px;
+  padding: 0.5rem 1.25rem;
+  border-radius: var(--global-border-radius);
   border: 1px solid var(--global-border);
   background: var(--global-tertiary-bg);
   color: var(--primary-accent);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.16s, border-color 0.16s, transform 0.16s;
@@ -257,7 +293,7 @@ const LoginBtn = styled.button`
 /* ── Content section ── */
 const ContentWrap = styled.div`
   width: 100%;
-  margin-top: 1.25rem;
+  margin-top: 1.5rem;
   box-sizing: border-box;
 `;
 
@@ -265,6 +301,8 @@ const ContentWrap = styled.div`
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, refreshUserData } = useAuth();
 
+  // Refresh stats (counts, mean score, …) when a list entry changes elsewhere
+  // (e.g. status/score set on the Info page) so the numbers don't go stale.
   useEffect(() => {
     if (!isLoggedIn) return;
     const handler = () => { void refreshUserData(); };
@@ -282,64 +320,88 @@ export const Profile: React.FC = () => {
 
   return (
     <Page>
-      <HeaderCard>
+      {/* Cover */}
+      <CoverWrapper>
+        <CoverBg $src={coverSrc} />
+        <CoverScrim />
+      </CoverWrapper>
+
+      <AccentLine />
+
+      {/* Profile header */}
+      <ProfileBar>
         {isLoggedIn && userData ? (
           <>
-            <CoverArea>
-              <CoverBg $src={coverSrc} />
-              <CoverScrim />
-            </CoverArea>
+            <AvatarRow>
+              <AvatarRing>
+                <AvatarImg
+                  src={userData.avatar.large}
+                  alt={userData.name}
+                />
+              </AvatarRing>
 
-            <InfoArea>
-              <TopRow>
-                <AvatarRing>
-                  <AvatarImg
-                    src={userData.avatar.large}
-                    alt={userData.name}
-                  />
-                </AvatarRing>
-
-                <NameArea>
+              <MetaRow>
+                <NameStack>
                   <Username>{userData.name}</Username>
                   <SubLabel>AniList Member</SubLabel>
-                </NameArea>
-              </TopRow>
+                </NameStack>
+              </MetaRow>
+            </AvatarRow>
 
-              {userData.statistics && (
-                <StatsRow>
-                  <Pill>
-                    <FiFilm />
-                    <strong>{userData.statistics.anime.count}</strong> Anime
-                  </Pill>
-                  <Pill>
-                    <FiTv />
-                    <strong>{userData.statistics.anime.episodesWatched}</strong> Episodes
-                  </Pill>
-                  <Pill>
-                    <FiClock />
-                    <strong>{Math.round(userData.statistics.anime.minutesWatched / 60)}h</strong> Watched
-                  </Pill>
-                  <Pill>
-                    <FiStar />
-                    <strong>{userData.statistics.anime.meanScore.toFixed(1)}</strong> Avg
-                  </Pill>
-                </StatsRow>
-              )}
-            </InfoArea>
+            {/* Stats */}
+            {userData.statistics && (
+              <StatsRow>
+                <StatBox $delay='0.04s'>
+                  <StatIcon><FiFilm /></StatIcon>
+                  <StatText>
+                    <StatValue>{userData.statistics.anime.count}</StatValue>
+                    <StatLabel>Anime</StatLabel>
+                  </StatText>
+                </StatBox>
+
+                <StatBox $delay='0.08s'>
+                  <StatIcon><FiTv /></StatIcon>
+                  <StatText>
+                    <StatValue>{userData.statistics.anime.episodesWatched}</StatValue>
+                    <StatLabel>Episodes</StatLabel>
+                  </StatText>
+                </StatBox>
+
+                <StatBox $delay='0.12s'>
+                  <StatIcon><FiClock /></StatIcon>
+                  <StatText>
+                    <StatValue>
+                      {Math.round(userData.statistics.anime.minutesWatched / 60)}h
+                    </StatValue>
+                    <StatLabel>Hours</StatLabel>
+                  </StatText>
+                </StatBox>
+
+                <StatBox $delay='0.16s'>
+                  <StatIcon><FiStar /></StatIcon>
+                  <StatText>
+                    <StatValue>
+                      {userData.statistics.anime.meanScore.toFixed(1)}
+                    </StatValue>
+                    <StatLabel>Avg Score</StatLabel>
+                  </StatText>
+                </StatBox>
+              </StatsRow>
+            )}
           </>
         ) : (
           <GuestWrap>
-            <GuestCircle><CgProfile size={22} /></GuestCircle>
+            <GuestCircle><CgProfile size={26} /></GuestCircle>
             <GuestTitle>Not logged in</GuestTitle>
             <GuestDesc>
               Connect your AniList account to track your anime and continue where you left off.
             </GuestDesc>
             <LoginBtn onClick={login}>
-              <SiAnilist size={14} /> Log in with AniList
+              <SiAnilist size={15} /> Log in with AniList
             </LoginBtn>
           </GuestWrap>
         )}
-      </HeaderCard>
+      </ProfileBar>
 
       <ContentWrap>
         <EpisodeCard />
