@@ -4,6 +4,11 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Seasons, Anime, useTitleWithSubtitle } from '../../index';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import { FaExternalLinkAlt } from 'react-icons/fa';
+import { IoAddOutline } from 'react-icons/io5';
+import { useSettings } from '../Profile/SettingsProvider';
+import { useAuth } from '../../client/useAuth';
+import { EditEntryModal } from '../Profile/EditEntryModal';
+import { AddToListLoginModal } from './AddToListLoginModal';
 
 const AnimeDataContainer = styled.div`
   margin-bottom: 1.5rem;
@@ -108,7 +113,6 @@ const AnimeInfoImage = styled.img`
   border-radius: var(--global-border-radius);
   max-height: 15rem;
   width: 10.5rem;
-  margin-right: 1rem;
   margin-bottom: 0.5rem;
   @media (max-width: 500px) {
     max-height: 12rem;
@@ -122,6 +126,8 @@ const ImageWrapper = styled.div`
   cursor: pointer;
   width: 10.5rem;
   max-height: 15rem;
+  margin-right: 1rem;
+  margin-bottom: 2px;
   @media (max-width: 500px) {
     width: 8.5rem;
     max-height: 12rem;
@@ -209,6 +215,7 @@ const MalAniContainer = styled.div`
   display: flex; /* or grid */
   gap: 0.5rem;
   margin-right: 1rem;
+  align-items: center;
 `;
 
 const MalAnilistSvg = styled.div`
@@ -235,6 +242,37 @@ const MalAnilistSvg = styled.div`
   @media (max-width: 500px) {
     width: 4rem;
     height: 2rem;
+  }
+`;
+
+const AddToListButton = styled.button`
+  height: 2.5rem;
+  width: 2.5rem;
+  border-radius: var(--global-border-radius);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: var(--primary-accent, #c084fc);
+  color: white;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  font-size: 1.3rem;
+
+  &:hover,
+  &:active,
+  &:focus {
+    transform: scale(1.08);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  @media (max-width: 500px) {
+    height: 2rem;
+    width: 2rem;
+    font-size: 1.1rem;
   }
 `;
 
@@ -337,10 +375,14 @@ const TrailerOverlayContent = styled.div`
 export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
   animeData,
 }) => {
+  const { settings } = useSettings();
   const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
   const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [showInfoOverlay, setShowInfoOverlay] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(animeData.title);
 
   const getAnimeIdFromUrl = () => {
@@ -405,7 +447,10 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                 }}
                 style={{ touchAction: 'manipulation' }}
               >
-                <AnimeInfoImage src={animeData.image} alt='Anime Title Image' />
+                <AnimeInfoImage
+                  src={animeData.image}
+                  alt='Anime Title Image'
+                />
                 <InfoIconOverlay
                   to={`/info/${animeData.id}`}
                   title="View Info"
