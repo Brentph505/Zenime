@@ -1,4 +1,4 @@
-import { FC } from 'react';
+import { FC, useRef } from 'react';
 import styled from 'styled-components';
 import { FaPlay } from 'react-icons/fa';
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -336,6 +336,25 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
 }) => {
   const navigate = useNavigate();
   const { settings } = useSettings();
+  const swiperRef = useRef<any>(null);
+
+  const handleMouseEnter = () => {
+    try {
+      if (typeof window !== 'undefined' && window.innerWidth > 500) {
+        swiperRef.current?.autoplay?.stop();
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  };
+
+  const handleMouseLeave = () => {
+    try {
+      swiperRef.current?.autoplay?.start();
+    } catch (e) {
+      /* ignore */
+    }
+  };
 
   const handlePlayButtonClick = (id: string) => {
     navigate(`/watch/${id}`);
@@ -384,6 +403,9 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
         spaceBetween={30}
         slidesPerView={1}
         speed={800}
+        onSwiper={(s) => (swiperRef.current = s)}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         loop={validData.length >= 3}
         autoplay={{
           delay: 8000,
