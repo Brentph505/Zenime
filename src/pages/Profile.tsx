@@ -402,10 +402,14 @@ const RailHint = styled.div`
 `;
 
 /* ── Guest state — same compact banner proportions as the logged-in
-   hero, content perfectly centered on both axes, sizing scales down
-   on small screens. ── */
+   hero. Centering is done with an absolute-fill inner layer rather
+   than flex-on-the-outer-box, so horizontal padding on the card can
+   never throw off the centering axis (this was the bug: width: 100%
+   + padding without border-box was pushing the flex box wider than
+   its parent, making "centered" content look shifted left). ── */
 const GuestHero = styled.div`
   position: relative;
+  box-sizing: border-box;
   width: 100%;
   aspect-ratio: 16 / 10;
   min-height: 220px;
@@ -416,18 +420,29 @@ const GuestHero = styled.div`
     radial-gradient(ellipse 70% 80% at 30% 30%, rgba(124,58,237,0.22) 0%, transparent 60%),
     radial-gradient(ellipse 60% 70% at 80% 70%, rgba(219,39,119,0.16) 0%, transparent 60%),
     var(--global-secondary-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.5rem 1.25rem;
   animation: ${fadeUp} 0.4s ease both;
 
   @media (min-width: 560px) {
     aspect-ratio: 21 / 9;
     min-height: 260px;
     max-height: 320px;
-    padding: 2.5rem 1.5rem;
   }
+`;
+
+/* absolute-fill layer: this is what actually centers GuestWrap. Using
+   inset:0 + flex here (instead of flex directly on GuestHero) means
+   the centering box's size is always exactly the parent's content
+   box, regardless of any padding rules on GuestHero itself. */
+const GuestCenterLayer = styled.div`
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1.25rem;
+
+  @media (min-width: 560px) { padding: 2.5rem 1.5rem; }
 `;
 
 const GuestWrap = styled.div`
@@ -436,6 +451,9 @@ const GuestWrap = styled.div`
   align-items: center;
   justify-content: center;
   gap: 0.65rem;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
   text-align: center;
   animation: ${riseIn} 0.45s ease 0.1s both;
 
@@ -608,16 +626,18 @@ export const Profile: React.FC = () => {
         </>
       ) : (
         <GuestHero>
-          <GuestWrap>
-            <GuestCircle><CgProfile size={24} /></GuestCircle>
-            <GuestTitle>Not logged in</GuestTitle>
-            <GuestDesc>
-              Connect your AniList account to track your anime and continue where you left off.
-            </GuestDesc>
-            <LoginBtn onClick={login}>
-              <SiAnilist size={14} /> Log in with AniList
-            </LoginBtn>
-          </GuestWrap>
+          <GuestCenterLayer>
+            <GuestWrap>
+              <GuestCircle><CgProfile size={24} /></GuestCircle>
+              <GuestTitle>Not logged in</GuestTitle>
+              <GuestDesc>
+                Connect your AniList account to track your anime and continue where you left off.
+              </GuestDesc>
+              <LoginBtn onClick={login}>
+                <SiAnilist size={14} /> Log in with AniList
+              </LoginBtn>
+            </GuestWrap>
+          </GuestCenterLayer>
         </GuestHero>
       )}
 
