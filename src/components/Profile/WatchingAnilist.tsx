@@ -1,745 +1,435 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import styled from 'styled-components';
-import { useNavigate, Link } from 'react-router-dom';
-import { Seasons, Anime, useTitleWithSubtitle } from '../../index';
-import { SiMyanimelist, SiAnilist } from 'react-icons/si';
-import { FaExternalLinkAlt } from 'react-icons/fa';
-import { useSettings } from '../Profile/SettingsProvider';
+import { useAuth } from '../../client/useAuth';
+import { type AnimeListEntry, type MediaListStatus } from '../../client/authService';
+import { useUserMediaList } from '../../hooks/useUserAnimeList';
+import { ANILIST_ENTRY_CHANGED_EVENT } from '../../hooks/useAniListEntry';
+import { CardGrid, EditEntryModal } from '../../index';
+import type { Anime } from '../../index';
 
-// Custom hook for responsive screen size detection
-const useWindowSize = () => {
-  const [windowSize, setWindowSize] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
+type MediaTab = 'anime' | 'manga';
 
-  useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
-    const handleResize = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        setWindowSize({
-          width: window.innerWidth,
-          height: window.innerHeight,
-        });
-      }, 100);
-    };
+const ANIME_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+  { value: 'CURRENT',   label: 'Watching' },
+  { value: 'PLANNING',  label: 'Plan to Watch' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'REPEATING', label: 'Re-watching' },
+  { value: 'PAUSED',    label: 'Paused' },
+  { value: 'DROPPED',    label: 'Dropped' },
+];
 
-    window.addEventListener('resize', handleResize);
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      clearTimeout(timeoutId);
-    };
-  }, []);
+const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+  { value: 'CURRENT',   label: 'Reading' },
+  { value: 'PLANNING',  label: 'Plan to Read' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'REPEATING', label: 'Re-reading' },
+  { value: 'PAUSED',    label: 'Paused' },
+  { value: 'DROPPED',    label: 'Dropped' },
+];
 
-  return windowSize;
+const TAB_OPTIONS: { value: MediaTab; label: string }[] = [
+  { value: 'anime', label: 'Anime' },
+  { value: 'manga', label: 'Manga' },
+];
+
+const ANILIST_STATUS_LABELS: Record<string, string> = {
+  FINISHED: 'Completed',
+  RELEASING: 'Ongoing',
+  NOT_YET_RELEASED: 'Not yet aired',
+  CANCELLED: 'Cancelled',
+  HIATUS: 'On hiatus',
 };
 
-const AnimeDataContainer = styled.div`
-  margin-bottom: 1.5rem;
+const Container = styled.div`
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
 
-  @media (max-width: 1000px) {
-    margin-bottom: 0rem;
+  @media (max-width: 600px) {
+    margin-top: 0.5rem;
+    margin-bottom: 0.75rem;
   }
 `;
 
-const AnimeDataContainerTop = styled.div`
-  border-radius: var(--global-border-radius);
-  background-color: var(--global-div-tr);
-  margin: 1rem 0;
-  padding: 0.75rem;
-  color: var(--global-text);
+const HeaderRow = styled.div`
   display: flex;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 1rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
 
-  @media (max-width: 750px) {
+  @media (max-width: 600px) {
     flex-direction: column;
-    align-items: center;
-    padding: 0.75rem;
-    gap: 0.75rem;
+    align-items: stretch;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
   }
+`;
 
-  @media (max-width: 500px) {
-    padding: 0.5rem;
+const HeadingGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+
+  @media (max-width: 600px) {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
     gap: 0.5rem;
   }
 `;
 
-const AnimeDataContainerMiddle = styled.div`
-  border-radius: var(--global-border-radius);
-  padding-top: 0.6rem;
+const SectionTitle = styled.h3`
+  margin: 0;
+  font-size: 1rem;
   color: var(--global-text);
-  display: flex;
-  flex-direction: row;
-  align-items: flex-start;
 
-  @media (max-width: 500px) {
-    padding-top: 0;
-  }
-`;
-
-const AnimeDataContainerBottom = styled.div`
-  margin-top: 0.6rem;
-
-  @media (max-width: 750px) {
-    margin-top: 0;
-  }
-`;
-
-const ParentContainer = styled.div`
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-
-  @media (min-width: 750px) {
-    grid-template-columns: 1.2fr 1fr;
-  }
-
-  @media (min-width: 1500px) {
-    grid-template-columns: 1.25fr 1fr;
-  }
-`;
-
-const AnimeDataText = styled.div`
-  text-align: left;
-  font-size: 0.8rem;
-  width: 100%;
-
-  .anime-title {
-    line-height: 1.6rem;
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: var(--global-text);
-    margin-bottom: 0.5rem;
-    text-align: center;
-
-    @media (min-width: 751px) {
-      text-align: left;
-    }
-
-    @media (max-width: 500px) {
-      font-size: 1.25rem;
-      margin-bottom: 0.2rem;
-      line-height: 1.4rem;
-    }
-  }
-
-  .anime-title-romaji {
-    font-style: italic;
-    margin-top: 0rem;
-    line-height: 0.6rem;
-    margin-bottom: 0.5rem;
-    text-align: center;
-
-    @media (min-width: 751px) {
-      text-align: left;
-    }
-
-    @media (max-width: 500px) {
-      line-height: 1rem;
-      margin-bottom: 0.25rem;
-    }
-  }
-
-  p {
-    color: #828181;
-    margin-top: 0rem;
-    margin-bottom: 0.2rem;
-    line-height: 1.3rem;
-
-    @media (max-width: 500px) {
-      line-height: 1.2rem;
-      font-size: 0.75rem;
-    }
-  }
-
-  .Description {
-    line-height: 1rem;
-    max-width: 50rem;
+  @media (max-width: 600px) {
     font-size: 0.9rem;
-
-    @media (max-width: 500px) {
-      font-size: 0.8rem;
-    }
-  }
-
-  strong {
-    color: var(--global-text);
-  }
-
-  .Seasons-Sections-Titles {
-    color: var(--global-text);
-    margin-top: 1rem;
-    font-size: 1.25rem;
-    font-weight: bold;
-
-    @media (max-width: 500px) {
-      font-size: 1rem;
-      margin-top: 0.75rem;
-    }
   }
 `;
 
-const AnimeInfoImage = styled.img`
-  border-radius: var(--global-border-radius);
-  max-height: 15rem;
-  width: 10.5rem;
-  object-fit: cover;
+const SectionSubtext = styled.p`
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--global-text-muted);
+  flex: 1;
+  text-align: right;
 
-  @media (max-width: 500px) {
-    max-height: 12rem;
-    width: 8.5rem;
+  @media (min-width: 601px) {
+    text-align: left;
+  }
+
+  @media (max-width: 400px) {
+    display: none;
   }
 `;
 
-const ImageWrapper = styled.div`
-  position: relative;
-  display: inline-block;
-  cursor: pointer;
-  width: 10.5rem;
-  max-height: 15rem;
-  flex-shrink: 0;
-
-  @media (max-width: 500px) {
-    width: 8.5rem;
-    max-height: 12rem;
-  }
-
-  @media (hover: none) and (pointer: coarse) {
-    cursor: default;
-  }
-`;
-
-const InfoIconOverlay = styled(Link)<{ $show: boolean }>`
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: var(--global-border-radius);
-  background: rgba(0, 0, 0, 0.5);
+const Toolbar = styled.div`
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  color: white;
+  gap: 0.5rem;
 
-  &:hover {
-    opacity: 1;
-  }
-
-  @media (hover: none) and (pointer: coarse) {
-    opacity: ${({ $show }) => ($show ? 0.7 : 0)};
-    &:hover {
-      opacity: ${({ $show }) => ($show ? 0.7 : 0)};
-    }
+  @media (max-width: 600px) {
+    flex-direction: column;
+    gap: 0.4rem;
   }
 `;
 
-const Button = styled.button`
-  padding: 0.5rem 0.6rem;
-  background-color: var(--primary-accent);
-  color: white;
+const TabGroup = styled.div`
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--global-card-bg);
+  border: 1px solid var(--global-border);
+  flex-shrink: 0;
+  align-self: flex-start;
+
+  @media (max-width: 600px) {
+    width: 100%;
+    justify-content: center;
+    align-self: stretch;
+  }
+`;
+
+const TabButton = styled.button<{ $active: boolean }>`
   border: none;
-  border-radius: var(--global-border-radius);
+  border-radius: 999px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.3s ease;
-  outline: none;
+  color: ${({ $active }) => ($active ? '#fff' : 'var(--global-text-muted)')};
+  background: ${({ $active }) => ($active ? 'var(--primary-accent)' : 'transparent')};
+  min-width: 5.5rem;
+  transition: all 0.2s ease;
 
-  &:hover,
-  &:active,
-  &:focus {
-    background-color: var(--primary-accent-bg);
-  }
-
-  @media (max-width: 1000px) {
-    display: block;
-    margin: 0 auto;
-    margin-bottom: 0.5rem;
+  @media (max-width: 600px) {
+    flex: 1;
+    min-width: 0;
+    padding: 0.4rem 0.6rem;
   }
 `;
 
-const ShowTrailerButton = styled(Button)`
-  padding: 0rem;
-  width: 10.5rem;
-  background-color: var(--global-div);
-  transition:
-    background-color 0.3s ease,
-    transform 0.2s ease-in-out;
-  color: var(--global-text);
-  font-size: 0.85rem;
-  margin-bottom: 0.5rem;
-
-  &:hover,
-  &:active,
-  &:focus {
-    background-color: var(--primary-accent);
-    z-index: 2;
-  }
-
-  @media (max-width: 500px) {
-    font-size: 0.8rem;
-    width: 8.5rem;
-  }
-`;
-
-const MalAniContainer = styled.div`
+const SearchAndStatusRow = styled.div`
   display: flex;
   gap: 0.5rem;
-  justify-content: center;
-
-  @media (min-width: 751px) {
-    justify-content: flex-start;
-  }
-`;
-
-const MalAnilistSvg = styled.div`
-  height: 2.5rem;
-  width: 5rem;
-  border-radius: var(--global-border-radius);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background-color: var(--global-div);
-  color: var(--global-text);
-  transition: 0.1s ease-in-out;
-
-  &:hover,
-  &:active,
-  &:focus {
-    transform: scale(1.05);
-  }
-
-  &:active {
-    transform: scale(0.975);
-  }
-
-  @media (max-width: 500px) {
-    width: 4rem;
-    height: 2rem;
-  }
-`;
-
-const ShowMoreButton = styled.button`
-  background-color: var(--global-div);
-  color: #828181;
-  display: flex;
-  border: none;
-  padding: 0.5rem;
-  border-radius: var(--global-border-radius);
-  margin: 0.5rem 0;
-  text-align: left;
   width: 100%;
-  transition:
-    color 0.3s ease,
-    transform 0.2s ease-in-out;
 
-  &:hover,
-  &:active,
-  &:focus {
-    background-color: var(--global-div);
-  }
-
-  @media (max-width: 500px) {
-    margin: 0.25rem 0;
-    font-size: 0.8rem;
-  }
-`;
-
-const IframeTrailer = styled.iframe`
-  aspect-ratio: 16/9;
-  position: relative;
-  border: none;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-`;
-
-const ClickableText = styled.span`
-  color: var(--global-text);
-  cursor: pointer;
-  transition: color 0.2s ease;
-
-  &:hover {
-    color: var(--primary-accent);
-  }
-`;
-
-const TrailerOverlay = styled.div`
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  animation: fadeIn 0.3s ease-in-out;
-  padding: 1rem;
-  box-sizing: border-box;
-`;
-
-const TrailerOverlayContent = styled.div`
-  width: 100%;
-  max-width: 60%;
-  aspect-ratio: 16 / 9;
-  background-color: var(--global-div);
-  border-radius: var(--global-border-radius);
-  overflow: hidden;
-
-  @media (max-width: 750px) {
-    max-width: 90%;
-  }
-
-  @media (max-width: 500px) {
-    max-width: 100%;
-  }
-`;
-
-const LeftColumnWrapper = styled.div`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-
-  @media (min-width: 751px) {
-    align-items: flex-start;
-    margin-right: 1rem;
-  }
-`;
-
-const DescriptionContainer = styled.div`
-  @media (max-width: 750px) {
+  @media (max-width: 600px) {
     width: 100%;
   }
 `;
 
-export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
-  animeData,
-}) => {
-  const { settings } = useSettings();
-  const navigate = useNavigate();
-  const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
-  const [showTrailer, setShowTrailer] = useState(false);
-  const [showInfoOverlay, setShowInfoOverlay] = useState(false);
-  const { width } = useWindowSize();
-  
-  const isMobile = width <= 750;
-  const isSmallMobile = width <= 500;
-  
-  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(animeData.title);
+const SearchInput = styled.input`
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--global-border-radius);
+  border: 1px solid var(--global-border);
+  background: var(--global-secondary-bg);
+  color: var(--global-text);
+  outline: none;
+  font-size: 0.85rem;
 
-  const getAnimeIdFromUrl = useCallback(() => {
-    const pathParts = window.location.pathname.split('/');
-    return pathParts[2];
-  }, []);
+  @media (min-width: 601px) {
+    width: 240px;
+    flex: none;
+  }
 
-  const toggleDescription = () => {
-    setDescriptionExpanded(!isDescriptionExpanded);
-  };
+  @media (max-width: 600px) {
+    padding: 0.5rem 0.65rem;
+    font-size: 0.8rem;
+  }
 
-  useEffect(() => {
-    setDescriptionExpanded(false);
-    setShowInfoOverlay(false);
-  }, [getAnimeIdFromUrl()]);
+  &::placeholder {
+    color: var(--global-text-muted);
+    font-size: 0.8rem;
 
-  const removeHTMLTags = (description: string): string => {
-    return description.replace(/<[^>]+>/g, '').replace(/\([^)]*\)/g, '');
-  };
-
-  const toggleTrailer = () => {
-    setShowTrailer(!showTrailer);
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && showTrailer) {
-        setShowTrailer(false);
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [showTrailer]);
-
-  // Reset info overlay when clicking outside on mobile
-  useEffect(() => {
-    if (!isSmallMobile) {
-      setShowInfoOverlay(false);
+    @media (max-width: 600px) {
+      font-size: 0.75rem;
     }
-  }, [isSmallMobile]);
+  }
+`;
+
+const StatusDropdown = styled.select`
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--global-border-radius);
+  background-color: var(--global-secondary-bg);
+  color: var(--global-text);
+  border: 1px solid var(--global-border);
+  cursor: pointer;
+  font-size: 0.85rem;
+
+  @media (min-width: 601px) {
+    width: 160px;
+  }
+
+  @media (max-width: 600px) {
+    width: 140px;
+    flex-shrink: 0;
+    padding: 0.5rem 0.65rem;
+    font-size: 0.8rem;
+  }
+
+  @media (max-width: 350px) {
+    width: 120px;
+    font-size: 0.75rem;
+  }
+`;
+
+const Message = styled.div`
+  margin: 1.5rem 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--global-text-muted);
+  padding: 2rem 1rem;
+
+  @media (max-width: 600px) {
+    margin: 1rem 0;
+    font-size: 0.9rem;
+    padding: 1.5rem 0.75rem;
+  }
+`;
+
+const NotLoggedIn = styled.div`
+  margin: 5rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  max-width: 100%;
+
+  @media (max-width: 600px) {
+    margin: 2rem 0.5rem;
+    padding: 1.5rem 1rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  @media (max-width: 400px) {
+    margin: 1.5rem 0.25rem;
+    font-size: 0.85rem;
+  }
+`;
+
+export const WatchingAnilist = () => {
+  const { isLoggedIn, userData } = useAuth();
+
+  const [activeTab, setActiveTab] = useState<MediaTab>('anime');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedStatusAnime, setSelectedStatusAnime] = useState<MediaListStatus>(
+    () => (localStorage.getItem('selectedStatusAnime') as MediaListStatus) || 'CURRENT',
+  );
+  const [selectedStatusManga, setSelectedStatusManga] = useState<MediaListStatus>(
+    () => (localStorage.getItem('selectedStatusManga') as MediaListStatus) || 'CURRENT',
+  );
+  const [editingAnime, setEditingAnime] = useState<Anime | null>(null);
+
+  const selectedStatus = activeTab === 'anime' ? selectedStatusAnime : selectedStatusManga;
+
+  const animeList = useUserMediaList(
+    isLoggedIn ? userData?.name : undefined,
+    selectedStatusAnime,
+    'ANIME',
+  );
+  const mangaList = useUserMediaList(
+    isLoggedIn ? userData?.name : undefined,
+    selectedStatusManga,
+    'MANGA',
+  );
+
+  const activeList = activeTab === 'anime' ? animeList : mangaList;
+
+  useEffect(() => {
+    const handler = () => {
+      void animeList.refresh();
+      void mangaList.refresh();
+    };
+    window.addEventListener(ANILIST_ENTRY_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(ANILIST_ENTRY_CHANGED_EVENT, handler);
+  }, [animeList.refresh, mangaList.refresh]);
+
+  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newStatus = e.target.value as MediaListStatus;
+    if (activeTab === 'anime') {
+      setSelectedStatusAnime(newStatus);
+      localStorage.setItem('selectedStatusAnime', newStatus);
+    } else {
+      setSelectedStatusManga(newStatus);
+      localStorage.setItem('selectedStatusManga', newStatus);
+    }
+  };
+
+  const handleTabChange = (tab: MediaTab) => {
+    setActiveTab(tab);
+    setSearchTerm('');
+  };
+
+  const mappedData = useMemo(() => {
+    const filteredEntries = activeList.entries.filter((entry: AnimeListEntry) => {
+      const search = searchTerm.trim().toLowerCase();
+      if (!search) return true;
+      const title = `${entry.media.title.english ?? ''} ${entry.media.title.romaji ?? ''}`.toLowerCase();
+      return title.includes(search);
+    });
+
+    return filteredEntries.map((entry: AnimeListEntry) => ({
+      id: String(entry.media.id),
+      malId: null,
+      image: entry.media.coverImage.large,
+      color: entry.media.coverImage.color ?? undefined,
+      title: {
+        romaji: entry.media.title.romaji,
+        english: entry.media.title.english ?? entry.media.title.romaji,
+        native: '',
+        userPreferred: entry.media.title.english ?? entry.media.title.romaji,
+      },
+      status: ANILIST_STATUS_LABELS[entry.media.status] ?? entry.media.status,
+      rating: entry.media.averageScore ?? 0,
+      releaseDate: entry.media.startDate.year ?? 0,
+      totalEpisodes: entry.media.episodes ?? entry.media.chapters ?? 0,
+      currentEpisode: entry.progress,
+      type: entry.media.type === 'MANGA' ? 'MANGA' : entry.media.format,
+      description: '',
+      cover: entry.media.coverImage.large,
+      coverHash: '',
+      imageHash: '',
+      popularity: 0,
+      duration: 0,
+      season: '',
+      studios: [],
+      studioIds: [],
+      synonyms: [],
+      isLicensed: false,
+      isAdult: false,
+      countryOfOrigin: '',
+      trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
+      startDate: {
+        year: entry.media.startDate.year ?? 0,
+        month: entry.media.startDate.month ?? 0,
+        day: entry.media.startDate.day ?? 0,
+      },
+      endDate: { year: 0, month: 0, day: 0 },
+      recommendations: [],
+      characters: [],
+      relations: [],
+      mappings: [],
+      artwork: [],
+      episodes: [],
+    }));
+  }, [activeList.entries, searchTerm]);
 
   return (
-    <>
-      {animeData && (
-        <AnimeDataContainer>
-          <AnimeDataContainerTop>
-            <LeftColumnWrapper>
-              <ImageWrapper
-                onClick={() => {
-                  if (window.matchMedia('(hover: none) and (pointer: coarse)').matches) {
-                    navigate(`/info/${animeData.id}`);
-                  }
-                }}
-                style={{ touchAction: 'manipulation' }}
+    <Container>
+      <HeaderRow>
+        <HeadingGroup>
+          <SectionTitle>AniList Library</SectionTitle>
+          <SectionSubtext>
+            Search your saved {activeTab === 'anime' ? 'anime' : 'manga'} and switch list status.
+          </SectionSubtext>
+        </HeadingGroup>
+
+        <Toolbar>
+          <TabGroup>
+            {TAB_OPTIONS.map(({ value, label }) => (
+              <TabButton
+                key={value}
+                $active={activeTab === value}
+                onClick={() => handleTabChange(value)}
               >
-                <AnimeInfoImage
-                  src={animeData.image}
-                  alt='Anime Title Image'
-                />
-                <InfoIconOverlay
-                  to={`/info/${animeData.id}`}
-                  title="View Info"
-                  $show={showInfoOverlay}
-                  onClick={e => {
-                    if (window.matchMedia('(hover: none) and (pointer: coarse)').matches && !showInfoOverlay) {
-                      e.preventDefault();
-                      setShowInfoOverlay(true);
-                    }
-                  }}
-                >
-                  <FaExternalLinkAlt size={24} />
-                </InfoIconOverlay>
-              </ImageWrapper>
-              {animeData.trailer && animeData.status !== 'Not yet aired' && (
-                <ShowTrailerButton onClick={toggleTrailer}>
-                  <p>
-                    <strong>TRAILER</strong>
-                  </p>
-                </ShowTrailerButton>
-              )}
-              <MalAniContainer>
-                {animeData.id && (
-                  <a
-                    href={`https://anilist.co/${!animeData.type ? 'anime' : animeData.type.toLowerCase() === 'manga' || animeData.type.toLowerCase() === 'novel' ? 'manga' : 'anime'}/${animeData.id}`}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                  >
-                    <MalAnilistSvg>
-                      <SiAnilist size={'1.5rem'} />
-                    </MalAnilistSvg>
-                  </a>
-                )}
-                {animeData.malId && (
-                  <a
-                    href={`https://myanimelist.net/${!animeData.type ? 'anime' : animeData.type.toLowerCase() === 'manga' || animeData.type.toLowerCase() === 'novel' ? 'manga' : 'anime'}/${animeData.malId}`}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                  >
-                    <MalAnilistSvg>
-                      <SiMyanimelist size={'2.75rem'} />
-                    </MalAnilistSvg>
-                  </a>
-                )}
-              </MalAniContainer>
-            </LeftColumnWrapper>
-            
-            <AnimeDataText>
-              <p className='anime-title'>
-                {displayTitle}
-              </p>
-              {displaySubtitle && (
-                <p
-                  className='anime-title-romaji'
-                  style={{ color: animeData.color }}
-                >
-                  {displaySubtitle}
-                </p>
-              )}
-              
-              {animeData.description && (
-                <DescriptionContainer>
-                  <p className='Description'>
-                    <ShowMoreButton onClick={toggleDescription}>
-                      {isDescriptionExpanded
-                        ? removeHTMLTags(animeData.description)
-                        : `${removeHTMLTags(animeData.description).substring(isSmallMobile ? 80 : 100)}...`}
-                      {isDescriptionExpanded ? ' [Show Less]' : ' [Show More]'}
-                    </ShowMoreButton>
-                  </p>
-                </DescriptionContainer>
-              )}
-              
-              <ParentContainer>
-                <AnimeDataContainerMiddle>
-                  <AnimeDataText>
-                    {animeData.type ? (
-                      <p>
-                        Type: <ClickableText onClick={() => navigate(`/search?query=&format=${encodeURIComponent(animeData.type!)}`)}><strong>{animeData.type}</strong></ClickableText>
-                      </p>
-                    ) : (
-                      <p>
-                        Type: <strong>Unknown</strong>
-                      </p>
-                    )}
-                    {animeData.releaseDate ? (
-                      <p>
-                        Year: <ClickableText onClick={() => navigate(`/search?year=${animeData.releaseDate}`)}><strong>{animeData.releaseDate}</strong></ClickableText>
-                      </p>
-                    ) : (
-                      <p>
-                        Year: <strong>Unknown</strong>
-                      </p>
-                    )}
-                    {animeData.status && (
-                      <p>
-                        Status:{' '}
-                        <strong>
-                          {animeData.status === 'Completed'
-                            ? 'Finished'
-                            : animeData.status === 'Ongoing'
-                              ? 'Airing'
-                              : animeData.status}
-                        </strong>
-                      </p>
-                    )}
-                    {animeData.rating ? (
-                      <p>
-                        Rating: <strong>{animeData.rating}</strong>
-                      </p>
-                    ) : (
-                      <p>
-                        Rating: <strong>Unknown</strong>
-                      </p>
-                    )}
-                    {animeData.studios && animeData.studios.length > 0 ? (
-                      <p>
-                        Studios:{' '}
-                        <strong>
-                          {animeData.studios.map((studio, index) => (
-                            <React.Fragment key={studio}>
-                              <ClickableText
-                                onClick={() =>
-                                  navigate(
-                                    `/studio/${
-                                      animeData.studioIds?.[index] || studio
-                                    }`,
-                                  )
-                                }
-                              >
-                                {studio}
-                              </ClickableText>
-                              {index < animeData.studios.length - 1 && ', '}
-                            </React.Fragment>
-                          ))}
-                        </strong>
-                      </p>
-                    ) : (
-                      <p>
-                        Studios: <strong>Unknown</strong>
-                      </p>
-                    )}
-                  </AnimeDataText>
-                </AnimeDataContainerMiddle>
-                <AnimeDataContainerBottom>
-                  <AnimeDataText>
-                    {animeData.totalEpisodes !== null ? (
-                      <p>
-                        Episodes: <strong>{animeData.totalEpisodes}</strong>
-                      </p>
-                    ) : (
-                      <p>
-                        Episodes: <strong>Unknown</strong>
-                      </p>
-                    )}
-                    {animeData.duration ? (
-                      <p>
-                        Duration: <strong>{animeData.duration} min</strong>
-                      </p>
-                    ) : (
-                      <p>
-                        Duration: <strong>Unknown</strong>
-                      </p>
-                    )}
-                    {animeData.season ? (
-                      <p>
-                        Season:{' '}
-                        <ClickableText onClick={() => navigate(`/search?season=${animeData.season?.toUpperCase()}`)}>
-                          <strong>
-                            {animeData.season.toUpperCase()}
-                          </strong>
-                        </ClickableText>
-                      </p>
-                    ) : (
-                      <p>
-                        Season: <strong>Unknown</strong>
-                      </p>
-                    )}
-                    {animeData.countryOfOrigin && (
-                      <p>
-                        Country: <strong>{animeData.countryOfOrigin}</strong>
-                      </p>
-                    )}
-                    {animeData.genres && animeData.genres.length > 0 ? (
-                      <p>
-                        Genres:{' '}
-                        <strong>
-                          {animeData.genres.map((genre, index) => (
-                            <React.Fragment key={genre}>
-                              <ClickableText
-                                onClick={() =>
-                                  navigate(`/search?genres=${encodeURIComponent(genre)}`)
-                                }
-                              >
-                                {genre}
-                              </ClickableText>
-                              {index < animeData.genres.length - 1 && ', '}
-                            </React.Fragment>
-                          ))}
-                        </strong>
-                      </p>
-                    ) : (
-                      <p>
-                        Genres: <strong>Unknown</strong>
-                      </p>
-                    )}
-                  </AnimeDataText>
-                </AnimeDataContainerBottom>
-              </ParentContainer>
-            </AnimeDataText>
-          </AnimeDataContainerTop>
-        </AnimeDataContainer>
-      )}
-      {animeData.relations &&
-        animeData.relations.some(
-          (relation: any) =>
-            relation.relationType.toUpperCase() === 'PREQUEL' ||
-            relation.relationType.toUpperCase() === 'SEQUEL',
-        ) && (
-          <>
-            <AnimeDataText>
-              <p className='Seasons-Sections-Titles'>SEASONS</p>
-              <Seasons
-                relations={animeData.relations.filter(
-                  (relation: any) =>
-                    relation.relationType.toUpperCase() === 'PREQUEL' ||
-                    relation.relationType.toUpperCase() === 'SEQUEL',
-                )}
-              />
-            </AnimeDataText>
-          </>
-        )}
-      {showTrailer && (
-        <TrailerOverlay onClick={toggleTrailer}>
-          <TrailerOverlayContent onClick={(e) => e.stopPropagation()}>
-            <IframeTrailer
-              src={`https://www.youtube.com/embed/${animeData.trailer.id}`}
-              allowFullScreen
+                {label}
+              </TabButton>
+            ))}
+          </TabGroup>
+
+          <SearchAndStatusRow>
+            <SearchInput
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder={`Search ${activeTab === 'anime' ? 'anime' : 'manga'}...`}
             />
-          </TrailerOverlayContent>
-        </TrailerOverlay>
+            <StatusDropdown value={selectedStatus} onChange={handleStatusChange}>
+              {(activeTab === 'anime' ? ANIME_STATUS_OPTIONS : MANGA_STATUS_OPTIONS).map(({ value, label }) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </StatusDropdown>
+          </SearchAndStatusRow>
+        </Toolbar>
+      </HeaderRow>
+
+      {activeList.loading ? (
+        <Message>Loading…</Message>
+      ) : activeList.error ? (
+        <Message>Error: {activeList.error}</Message>
+      ) : mappedData.length > 0 ? (
+        <CardGrid
+          animeData={mappedData as any}
+          hasNextPage={false}
+          onLoadMore={() => {}}
+          showEditButton={true}
+          onEdit={(anime) => setEditingAnime(anime)}
+        />
+      ) : (
+        <Message>No {activeTab === 'anime' === 'anime' ? 'anime' : 'manga'} entries found.</Message>
       )}
-    </>
+
+      {editingAnime && (
+        <EditEntryModal
+          anime={editingAnime}
+          isOpen={true}
+          onClose={() => setEditingAnime(null)}
+        />
+      )}
+    </Container>
   );
 };
