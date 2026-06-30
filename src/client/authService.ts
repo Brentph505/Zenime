@@ -831,7 +831,7 @@ export async function getAniListIdFromMalId(malId: number): Promise<number | nul
   return malIdToAniListId(malId);
 }
 
-// ─── Full-card anime list fetch (used by WatchingAnilist) ────────────────────
+// ─── Full-card media list fetch (used by the AniList profile section) ─────
 
 export interface AnimeListEntry {
   id: number;
@@ -843,26 +843,29 @@ export interface AnimeListEntry {
     format: string;
     status: string;
     episodes: number | null;
+    chapters: number | null;
     averageScore: number | null;
     startDate: { year: number | null; month: number | null; day: number | null };
     title: { romaji: string; english: string | null };
     coverImage: { large: string; color: string | null };
+    type: 'ANIME' | 'MANGA';
   };
 }
 
 /**
- * Fetch a user's anime list for a given status with full card-ready fields.
+ * Fetch a user's list for a given media type and status with full card-ready fields.
  * Does NOT require an auth token — AniList public lists are readable without one.
  */
-export async function fetchUserAnimeList(
+export async function fetchUserMediaList(
   username: string,
   status: MediaListStatus,
+  type: 'ANIME' | 'MANGA',
 ): Promise<AnimeListEntry[]> {
   const QUERY = `
-    query GetUserAnimeList($username: String!, $status: MediaListStatus!) {
+    query GetUserMediaList($username: String!, $status: MediaListStatus!, $type: MediaType!) {
       MediaListCollection(
         userName: $username
-        type: ANIME
+        type: $type
         status: $status
         sort: UPDATED_TIME_DESC
       ) {
@@ -870,10 +873,11 @@ export async function fetchUserAnimeList(
           entries {
             id progress score status
             media {
-              id format status episodes averageScore
+              id format status episodes chapters averageScore
               startDate { year month day }
               title     { romaji english }
               coverImage { large color }
+              type
             }
           }
         }
@@ -884,7 +888,7 @@ export async function fetchUserAnimeList(
   const res = await fetch('https://graphql.anilist.co', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: QUERY, variables: { username, status } }),
+    body: JSON.stringify({ query: QUERY, variables: { username, status, type } }),
   });
 
   if (!res.ok) throw new Error(`AniList request failed: ${res.status}`);
@@ -897,4 +901,18 @@ export async function fetchUserAnimeList(
   return json.data?.MediaListCollection?.lists?.flatMap(
     (l: { entries: AnimeListEntry[] }) => l.entries,
   ) ?? [];
+}
+
+export async function fetchUserAnimeList(
+  username: string,
+  status: MediaListStatus,
+): Promise<AnimeListEntry[]> {
+  return fetchUserMediaList(username, status, 'ANIME');
+}
+
+export async function fetchUserMangaList(
+  username: string,
+  status: MediaListStatus,
+): Promise<AnimeListEntry[]> {
+  return fetchUserMediaList(username, status, 'MANGA');
 }

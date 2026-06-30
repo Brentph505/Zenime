@@ -416,6 +416,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
 
   const [status, setLocalStatus] = useState<MediaListStatus | ''>('');
   const [progress, setProgress] = useState<number | ''>('');
+  const [progressVolumes, setProgressVolumes] = useState<number | ''>('');
   const [score, setScore] = useState<number | ''>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -428,6 +429,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
     if (!loading && entry) {
       setLocalStatus(entry.status || '');
       setProgress(entry.progress || '');
+      setProgressVolumes(entry.progressVolumes || '');
       setScore(entry.score || '');
       setStartDate(dateObjToYMD(entry.startedAt));
       setEndDate(dateObjToYMD(entry.completedAt));
@@ -463,6 +465,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
     const input: SaveEntryInput = { mediaId };
     if (status) input.status = status as MediaListStatus;
     if (progress !== '') input.progress = Number(progress);
+    if (isManga && progressVolumes !== '') input.progressVolumes = Number(progressVolumes);
     // score 0 is valid (means "unscored"), so check for empty string specifically
     if (score !== '') input.score = Number(score);
     if (startDate) input.startedAt = ymdToDateObj(startDate);
@@ -543,7 +546,19 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            <FormGroup $mobileOrder={3}>
+            {isManga && (
+              <FormGroup $mobileOrder={3}>
+                <Label>Volumes Read</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={progressVolumes}
+                  onChange={(e) => setProgressVolumes(e.target.value !== '' ? Number(e.target.value) : '')}
+                />
+              </FormGroup>
+            )}
+
+            <FormGroup $mobileOrder={isManga ? 4 : 3}>
               <Label>Score (0-100)</Label>
               <Input
                 type="number"
@@ -554,7 +569,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            <FormGroup $mobileOrder={5}>
+            <FormGroup $mobileOrder={isManga ? 5 : 5}>
               <Label>Start Date</Label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormGroup>
@@ -564,7 +579,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormGroup>
 
-            <FormGroup $mobileOrder={4}>
+            <FormGroup $mobileOrder={isManga ? 4 : 4}>
               <Label>{repeatLabel}</Label>
               <Input
                 type="number"

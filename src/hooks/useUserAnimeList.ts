@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  fetchUserAnimeList,
+  fetchUserMediaList,
   type AnimeListEntry,
   type MediaListStatus,
 } from '../client/authService';
 
-export function useUserAnimeList(
+export function useUserMediaList(
   username?: string,
   status: MediaListStatus = 'CURRENT',
+  mediaType: 'ANIME' | 'MANGA' = 'ANIME',
 ) {
   const [entries, setEntries] = useState<AnimeListEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -24,19 +25,26 @@ export function useUserAnimeList(
     setError(null);
 
     try {
-      const result = await fetchUserAnimeList(username, status);
+      const result = await fetchUserMediaList(username, status, mediaType);
       setEntries(result);
     } catch (err) {
       setEntries([]);
-      setError(err instanceof Error ? err.message : 'Failed to load anime list');
+      setError(err instanceof Error ? err.message : `Failed to load ${mediaType.toLowerCase()} list`);
     } finally {
       setLoading(false);
     }
-  }, [username, status]);
+  }, [username, status, mediaType]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   return { entries, loading, error, refresh };
+}
+
+export function useUserAnimeList(
+  username?: string,
+  status: MediaListStatus = 'CURRENT',
+) {
+  return useUserMediaList(username, status, 'ANIME');
 }
