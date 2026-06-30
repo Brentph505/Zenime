@@ -30,16 +30,20 @@ const Page = styled.div`
   @media (min-width: 768px) { padding: 0.5rem 0.5rem 2.5rem; }
 `;
 
-/* ── Cover ── */
+/* ── Header: cover + overlapping avatar in one continuous block ── */
+const Header = styled.div`
+  position: relative;
+`;
+
 const CoverWrapper = styled.div`
   position: relative;
   width: 100%;
-  height: 130px;
+  height: 120px;
   overflow: hidden;
   border-radius: var(--global-border-radius);
 
-  @media (min-width: 600px) { height: 160px; }
-  @media (min-width: 900px) { height: 190px; }
+  @media (min-width: 600px) { height: 150px; }
+  @media (min-width: 900px) { height: 180px; }
 `;
 
 const CoverBg = styled.div<{ $src: string | null }>`
@@ -65,58 +69,28 @@ const CoverBg = styled.div<{ $src: string | null }>`
 const CoverScrim = styled.div`
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 25%, rgba(0,0,0,0.45) 100%);
+  background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.4) 100%);
 `;
 
-/* ── Accent line ── */
-const AccentLine = styled.div`
-  height: 1.5px;
-  background: linear-gradient(90deg, var(--primary-accent, #7c3aed), #db2777, #0891b2, var(--primary-accent, #7c3aed));
-  background-size: 300% auto;
-  border-radius: var(--global-border-radius);
-`;
-
-/* ── Profile header bar (opaque) ── */
-const ProfileBar = styled.div`
-  background: var(--global-secondary-bg);
-  border-radius: var(--global-border-radius);
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  overflow: visible;
-
-  @media (min-width: 600px) { padding: 1rem; }
-`;
-
-/* avatar row overlapping the cover */
-const AvatarRow = styled.div`
-  position: relative;
-  z-index: 2;
-  display: flex;
-  align-items: flex-end;
-  gap: 0.75rem;
-  margin-top: -32px;
-
-  @media (min-width: 600px) {
-    margin-top: -36px;
-    gap: 1rem;
-  }
-`;
-
-/* gradient ring */
+/* avatar sits half on the cover, half on the card below it */
 const AvatarRing = styled.div`
-  flex-shrink: 0;
-  width: 72px;
-  height: 72px;
+  position: absolute;
+  left: 1rem;
+  bottom: -28px;
+  z-index: 2;
+  width: 64px;
+  height: 64px;
   border-radius: 50%;
   padding: 2.5px;
   background: linear-gradient(135deg, var(--primary-accent, #7c3aed), #db2777, #0891b2);
-  box-shadow: 0 0 0 3px var(--global-secondary-bg), 0 4px 16px rgba(0,0,0,0.4);
-  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
   box-sizing: border-box;
 
   @media (min-width: 600px) {
-    width: 80px;
-    height: 80px;
+    left: 1.25rem;
+    bottom: -32px;
+    width: 76px;
+    height: 76px;
   }
 `;
 
@@ -126,25 +100,29 @@ const AvatarImg = styled.img`
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  border: 2.5px solid var(--global-secondary-bg);
+  border: 3px solid var(--global-secondary-bg);
   box-sizing: border-box;
 `;
 
-const MetaRow = styled.div`
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  padding-bottom: 0.3rem;
-  gap: 0.5rem;
-  min-width: 0;
+/* ── Identity + stats card, flows directly from the header ── */
+const InfoCard = styled.div`
+  background: var(--global-secondary-bg);
+  border-radius: var(--global-border-radius);
+  margin-top: 0.5rem;
+  padding: 0.85rem 0.9rem 0.75rem;
 `;
 
-const NameStack = styled.div`
+const NameRow = styled.div`
+  padding-left: calc(64px + 0.85rem);
+  min-height: 28px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 0.1rem;
-  min-width: 0;
+
+  @media (min-width: 600px) {
+    padding-left: calc(76px + 1rem);
+  }
 `;
 
 const Username = styled.h1`
@@ -157,55 +135,49 @@ const Username = styled.h1`
   overflow: hidden;
   text-overflow: ellipsis;
 
-  @media (min-width: 600px) { font-size: 1.15rem; }
+  @media (min-width: 600px) { font-size: 1.2rem; }
 `;
 
 const SubLabel = styled.span`
-  font-size: 0.62rem;
-  color: var(--global-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-`;
-
-/* ── Stats row ── */
-const StatsRow = styled.div`
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
-  margin-top: 0.85rem;
-
-  @media (min-width: 480px) { grid-template-columns: repeat(4, 1fr); }
-`;
-
-const StatBox = styled.div<{ $delay?: string }>`
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.75rem;
-  border-radius: var(--global-border-radius);
-  background: var(--global-card-bg);
-  border: 1px solid var(--global-border);
-  transition: border-color 0.16s, transform 0.16s;
-  animation: ${popIn} 0.35s ease both;
-  animation-delay: ${({ $delay }) => $delay ?? '0s'};
-  cursor: default;
-
-  &:hover {
-    border-color: var(--primary-accent);
-    transform: translateY(-1px);
-  }
+  gap: 0.3rem;
+  font-size: 0.66rem;
+  color: var(--global-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 `;
 
-const StatIcon = styled.div`
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
-  background: var(--global-tertiary-bg);
-  color: var(--primary-accent);
+/* ── Stats: a single flat strip with thin dividers — no boxed cards ── */
+const StatsStrip = styled.div`
+  display: flex;
+  align-items: stretch;
+  margin-top: 0.9rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--global-border);
+`;
+
+const Stat = styled.div<{ $delay?: string }>`
+  flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  gap: 0.5rem;
+  padding: 0.15rem 0.4rem;
+  animation: ${popIn} 0.3s ease both;
+  animation-delay: ${({ $delay }) => $delay ?? '0s'};
+
+  & + & {
+    border-left: 1px solid var(--global-border);
+  }
+`;
+
+const StatIcon = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  color: var(--primary-accent);
   flex-shrink: 0;
 `;
 
@@ -214,21 +186,22 @@ const StatText = styled.div`
   flex-direction: column;
   gap: 0.05rem;
   min-width: 0;
-`;
-
-const StatValue = styled.span`
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--global-text);
-  letter-spacing: -0.02em;
   line-height: 1;
 `;
 
+const StatValue = styled.span`
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--global-text);
+  letter-spacing: -0.02em;
+`;
+
 const StatLabel = styled.span`
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   color: var(--global-text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 `;
 
 /* ── Guest state ── */
@@ -237,14 +210,14 @@ const GuestWrap = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 2.5rem 1.5rem 2rem;
+  gap: 0.7rem;
+  padding: 2.25rem 1.5rem 1.75rem;
   text-align: center;
 `;
 
 const GuestCircle = styled.div`
-  width: 52px;
-  height: 52px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
@@ -256,17 +229,17 @@ const GuestCircle = styled.div`
 
 const GuestTitle = styled.p`
   margin: 0;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   font-weight: 700;
   color: var(--global-text);
 `;
 
 const GuestDesc = styled.p`
   margin: 0;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   color: var(--global-text-muted);
-  max-width: 260px;
-  line-height: 1.65;
+  max-width: 250px;
+  line-height: 1.6;
 `;
 
 const LoginBtn = styled.button`
@@ -278,7 +251,7 @@ const LoginBtn = styled.button`
   border: 1px solid var(--global-border);
   background: var(--global-tertiary-bg);
   color: var(--primary-accent);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.16s, border-color 0.16s, transform 0.16s;
@@ -320,54 +293,45 @@ export const Profile: React.FC = () => {
 
   return (
     <Page>
-      {/* Cover */}
-      <CoverWrapper>
-        <CoverBg $src={coverSrc} />
-        <CoverScrim />
-      </CoverWrapper>
+      {isLoggedIn && userData ? (
+        <>
+          {/* Cover + overlapping avatar, one continuous header */}
+          <Header>
+            <CoverWrapper>
+              <CoverBg $src={coverSrc} />
+              <CoverScrim />
+            </CoverWrapper>
 
-      <AccentLine />
+            <AvatarRing>
+              <AvatarImg src={userData.avatar.large} alt={userData.name} />
+            </AvatarRing>
+          </Header>
 
-      {/* Profile header */}
-      <ProfileBar>
-        {isLoggedIn && userData ? (
-          <>
-            <AvatarRow>
-              <AvatarRing>
-                <AvatarImg
-                  src={userData.avatar.large}
-                  alt={userData.name}
-                />
-              </AvatarRing>
+          <InfoCard>
+            <NameRow>
+              <Username>{userData.name}</Username>
+              <SubLabel><SiAnilist size={10} /> AniList Member</SubLabel>
+            </NameRow>
 
-              <MetaRow>
-                <NameStack>
-                  <Username>{userData.name}</Username>
-                  <SubLabel>AniList Member</SubLabel>
-                </NameStack>
-              </MetaRow>
-            </AvatarRow>
-
-            {/* Stats */}
             {userData.statistics && (
-              <StatsRow>
-                <StatBox $delay='0.04s'>
+              <StatsStrip>
+                <Stat $delay="0.02s">
                   <StatIcon><FiFilm /></StatIcon>
                   <StatText>
                     <StatValue>{userData.statistics.anime.count}</StatValue>
                     <StatLabel>Anime</StatLabel>
                   </StatText>
-                </StatBox>
+                </Stat>
 
-                <StatBox $delay='0.08s'>
+                <Stat $delay="0.06s">
                   <StatIcon><FiTv /></StatIcon>
                   <StatText>
                     <StatValue>{userData.statistics.anime.episodesWatched}</StatValue>
                     <StatLabel>Episodes</StatLabel>
                   </StatText>
-                </StatBox>
+                </Stat>
 
-                <StatBox $delay='0.12s'>
+                <Stat $delay="0.1s">
                   <StatIcon><FiClock /></StatIcon>
                   <StatText>
                     <StatValue>
@@ -375,9 +339,9 @@ export const Profile: React.FC = () => {
                     </StatValue>
                     <StatLabel>Hours</StatLabel>
                   </StatText>
-                </StatBox>
+                </Stat>
 
-                <StatBox $delay='0.16s'>
+                <Stat $delay="0.14s">
                   <StatIcon><FiStar /></StatIcon>
                   <StatText>
                     <StatValue>
@@ -385,13 +349,15 @@ export const Profile: React.FC = () => {
                     </StatValue>
                     <StatLabel>Avg Score</StatLabel>
                   </StatText>
-                </StatBox>
-              </StatsRow>
+                </Stat>
+              </StatsStrip>
             )}
-          </>
-        ) : (
+          </InfoCard>
+        </>
+      ) : (
+        <InfoCard>
           <GuestWrap>
-            <GuestCircle><CgProfile size={26} /></GuestCircle>
+            <GuestCircle><CgProfile size={24} /></GuestCircle>
             <GuestTitle>Not logged in</GuestTitle>
             <GuestDesc>
               Connect your AniList account to track your anime and continue where you left off.
@@ -400,8 +366,8 @@ export const Profile: React.FC = () => {
               <SiAnilist size={15} /> Log in with AniList
             </LoginBtn>
           </GuestWrap>
-        )}
-      </ProfileBar>
+        </InfoCard>
+      )}
 
       <ContentWrap>
         <EpisodeCard />
