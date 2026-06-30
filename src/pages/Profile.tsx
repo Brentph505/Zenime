@@ -13,11 +13,11 @@ const fadeUp = keyframes`
 `;
 
 const popIn = keyframes`
-  from { opacity: 0; transform: translateY(6px); }
+  from { opacity: 0; transform: translateY(5px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
 
-/* ── Page (matches Home/History: centered, max-width 125rem) ── */
+/* ── Page ── */
 const Page = styled.div`
   width: 100%;
   max-width: 125rem;
@@ -30,17 +30,20 @@ const Page = styled.div`
   @media (min-width: 768px) { padding: 0.5rem 0.5rem 2.5rem; }
 `;
 
-/* ── Header: cover + overlapping avatar in one continuous block ── */
-const Header = styled.div`
+/* ── Unified header card ── */
+const HeaderCard = styled.div`
   position: relative;
+  border-radius: var(--global-border-radius);
+  overflow: hidden;
+  background: var(--global-secondary-bg);
 `;
 
-const CoverWrapper = styled.div`
+/* ── Cover ── */
+const CoverArea = styled.div`
   position: relative;
   width: 100%;
   height: 120px;
   overflow: hidden;
-  border-radius: var(--global-border-radius);
 
   @media (min-width: 600px) { height: 150px; }
   @media (min-width: 900px) { height: 180px; }
@@ -49,7 +52,7 @@ const CoverWrapper = styled.div`
 const CoverBg = styled.div<{ $src: string | null }>`
   width: 100%;
   height: 100%;
-  background-color: var(--global-secondary-bg);
+  background-color: var(--global-tertiary-bg);
 
   ${({ $src }) =>
     $src
@@ -69,28 +72,48 @@ const CoverBg = styled.div<{ $src: string | null }>`
 const CoverScrim = styled.div`
   position: absolute;
   inset: 0;
-  background: linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.4) 100%);
+  background: linear-gradient(to bottom, transparent 25%, var(--global-secondary-bg) 100%);
 `;
 
-/* avatar sits half on the cover, half on the card below it */
-const AvatarRing = styled.div`
-  position: absolute;
-  left: 1rem;
-  bottom: -28px;
+/* ── Info area (overlaps cover) ── */
+const InfoArea = styled.div`
+  position: relative;
   z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 0.85rem 0.85rem;
+  margin-top: -30px;
+
+  @media (min-width: 600px) {
+    padding: 0 1rem 1rem;
+    margin-top: -34px;
+    gap: 0.7rem;
+  }
+`;
+
+const TopRow = styled.div`
+  display: flex;
+  align-items: flex-end;
+  gap: 0.7rem;
+
+  @media (min-width: 600px) { gap: 0.85rem; }
+`;
+
+const AvatarRing = styled.div`
+  flex-shrink: 0;
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  padding: 2.5px;
+  padding: 2px;
   background: linear-gradient(135deg, var(--primary-accent, #7c3aed), #db2777, #0891b2);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  overflow: hidden;
   box-sizing: border-box;
 
   @media (min-width: 600px) {
-    left: 1.25rem;
-    bottom: -32px;
-    width: 76px;
-    height: 76px;
+    width: 72px;
+    height: 72px;
   }
 `;
 
@@ -100,29 +123,17 @@ const AvatarImg = styled.img`
   border-radius: 50%;
   object-fit: cover;
   display: block;
-  border: 3px solid var(--global-secondary-bg);
+  border: 2px solid var(--global-secondary-bg);
   box-sizing: border-box;
 `;
 
-/* ── Identity + stats card, flows directly from the header ── */
-const InfoCard = styled.div`
-  background: var(--global-secondary-bg);
-  border-radius: var(--global-border-radius);
-  margin-top: 0.5rem;
-  padding: 0.85rem 0.9rem 0.75rem;
-`;
-
-const NameRow = styled.div`
-  padding-left: calc(64px + 0.85rem);
-  min-height: 28px;
+const NameArea = styled.div`
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 0.3rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
   gap: 0.1rem;
-
-  @media (min-width: 600px) {
-    padding-left: calc(76px + 1rem);
-  }
 `;
 
 const Username = styled.h1`
@@ -139,69 +150,49 @@ const Username = styled.h1`
 `;
 
 const SubLabel = styled.span`
+  font-size: 0.62rem;
+  color: var(--global-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+`;
+
+/* ── Stats pills ── */
+const StatsRow = styled.div`
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  animation: ${popIn} 0.35s ease both;
+  animation-delay: 0.08s;
+`;
+
+const Pill = styled.span`
+  display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  font-size: 0.66rem;
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: var(--global-card-bg);
+  border: 1px solid var(--global-border);
+  font-size: 0.72rem;
   color: var(--global-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-`;
-
-/* ── Stats: a single flat strip with thin dividers — no boxed cards ── */
-const StatsStrip = styled.div`
-  display: flex;
-  align-items: stretch;
-  margin-top: 0.9rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--global-border);
-`;
-
-const Stat = styled.div<{ $delay?: string }>`
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.15rem 0.4rem;
-  animation: ${popIn} 0.3s ease both;
-  animation-delay: ${({ $delay }) => $delay ?? '0s'};
-
-  & + & {
-    border-left: 1px solid var(--global-border);
-  }
-`;
-
-const StatIcon = styled.span`
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.95rem;
-  color: var(--primary-accent);
-  flex-shrink: 0;
-`;
-
-const StatText = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.05rem;
-  min-width: 0;
-  line-height: 1;
-`;
-
-const StatValue = styled.span`
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--global-text);
-  letter-spacing: -0.02em;
-`;
-
-const StatLabel = styled.span`
-  font-size: 0.58rem;
-  color: var(--global-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
   white-space: nowrap;
+  transition: border-color 0.16s;
+
+  &:hover {
+    border-color: var(--primary-accent);
+  }
+
+  svg {
+    color: var(--primary-accent);
+    font-size: 0.68rem;
+    flex-shrink: 0;
+  }
+
+  strong {
+    color: var(--global-text);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
 `;
 
 /* ── Guest state ── */
@@ -210,14 +201,14 @@ const GuestWrap = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.7rem;
-  padding: 2.25rem 1.5rem 1.75rem;
+  gap: 0.6rem;
+  padding: 2rem 1.5rem 1.75rem;
   text-align: center;
 `;
 
 const GuestCircle = styled.div`
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--global-card-bg);
   border: 1px solid var(--global-border);
@@ -246,8 +237,8 @@ const LoginBtn = styled.button`
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.5rem 1.25rem;
-  border-radius: var(--global-border-radius);
+  padding: 0.45rem 1.1rem;
+  border-radius: 999px;
   border: 1px solid var(--global-border);
   background: var(--global-tertiary-bg);
   color: var(--primary-accent);
@@ -266,7 +257,7 @@ const LoginBtn = styled.button`
 /* ── Content section ── */
 const ContentWrap = styled.div`
   width: 100%;
-  margin-top: 1.5rem;
+  margin-top: 1.25rem;
   box-sizing: border-box;
 `;
 
@@ -274,8 +265,6 @@ const ContentWrap = styled.div`
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, refreshUserData } = useAuth();
 
-  // Refresh stats (counts, mean score, …) when a list entry changes elsewhere
-  // (e.g. status/score set on the Info page) so the numbers don't go stale.
   useEffect(() => {
     if (!isLoggedIn) return;
     const handler = () => { void refreshUserData(); };
@@ -293,81 +282,64 @@ export const Profile: React.FC = () => {
 
   return (
     <Page>
-      {isLoggedIn && userData ? (
-        <>
-          {/* Cover + overlapping avatar, one continuous header */}
-          <Header>
-            <CoverWrapper>
+      <HeaderCard>
+        {isLoggedIn && userData ? (
+          <>
+            <CoverArea>
               <CoverBg $src={coverSrc} />
               <CoverScrim />
-            </CoverWrapper>
+            </CoverArea>
 
-            <AvatarRing>
-              <AvatarImg src={userData.avatar.large} alt={userData.name} />
-            </AvatarRing>
-          </Header>
+            <InfoArea>
+              <TopRow>
+                <AvatarRing>
+                  <AvatarImg
+                    src={userData.avatar.large}
+                    alt={userData.name}
+                  />
+                </AvatarRing>
 
-          <InfoCard>
-            <NameRow>
-              <Username>{userData.name}</Username>
-              <SubLabel><SiAnilist size={10} /> AniList Member</SubLabel>
-            </NameRow>
+                <NameArea>
+                  <Username>{userData.name}</Username>
+                  <SubLabel>AniList Member</SubLabel>
+                </NameArea>
+              </TopRow>
 
-            {userData.statistics && (
-              <StatsStrip>
-                <Stat $delay="0.02s">
-                  <StatIcon><FiFilm /></StatIcon>
-                  <StatText>
-                    <StatValue>{userData.statistics.anime.count}</StatValue>
-                    <StatLabel>Anime</StatLabel>
-                  </StatText>
-                </Stat>
-
-                <Stat $delay="0.06s">
-                  <StatIcon><FiTv /></StatIcon>
-                  <StatText>
-                    <StatValue>{userData.statistics.anime.episodesWatched}</StatValue>
-                    <StatLabel>Episodes</StatLabel>
-                  </StatText>
-                </Stat>
-
-                <Stat $delay="0.1s">
-                  <StatIcon><FiClock /></StatIcon>
-                  <StatText>
-                    <StatValue>
-                      {Math.round(userData.statistics.anime.minutesWatched / 60)}h
-                    </StatValue>
-                    <StatLabel>Hours</StatLabel>
-                  </StatText>
-                </Stat>
-
-                <Stat $delay="0.14s">
-                  <StatIcon><FiStar /></StatIcon>
-                  <StatText>
-                    <StatValue>
-                      {userData.statistics.anime.meanScore.toFixed(1)}
-                    </StatValue>
-                    <StatLabel>Avg Score</StatLabel>
-                  </StatText>
-                </Stat>
-              </StatsStrip>
-            )}
-          </InfoCard>
-        </>
-      ) : (
-        <InfoCard>
+              {userData.statistics && (
+                <StatsRow>
+                  <Pill>
+                    <FiFilm />
+                    <strong>{userData.statistics.anime.count}</strong> Anime
+                  </Pill>
+                  <Pill>
+                    <FiTv />
+                    <strong>{userData.statistics.anime.episodesWatched}</strong> Episodes
+                  </Pill>
+                  <Pill>
+                    <FiClock />
+                    <strong>{Math.round(userData.statistics.anime.minutesWatched / 60)}h</strong> Watched
+                  </Pill>
+                  <Pill>
+                    <FiStar />
+                    <strong>{userData.statistics.anime.meanScore.toFixed(1)}</strong> Avg
+                  </Pill>
+                </StatsRow>
+              )}
+            </InfoArea>
+          </>
+        ) : (
           <GuestWrap>
-            <GuestCircle><CgProfile size={24} /></GuestCircle>
+            <GuestCircle><CgProfile size={22} /></GuestCircle>
             <GuestTitle>Not logged in</GuestTitle>
             <GuestDesc>
               Connect your AniList account to track your anime and continue where you left off.
             </GuestDesc>
             <LoginBtn onClick={login}>
-              <SiAnilist size={15} /> Log in with AniList
+              <SiAnilist size={14} /> Log in with AniList
             </LoginBtn>
           </GuestWrap>
-        </InfoCard>
-      )}
+        )}
+      </HeaderCard>
 
       <ContentWrap>
         <EpisodeCard />
