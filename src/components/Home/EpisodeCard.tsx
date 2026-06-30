@@ -18,15 +18,16 @@ interface LastEpisodes {
   [key: string]: Episode;
 }
 
-interface LastVisitedData {
-  [key: string]: {
-    timestamp?: number;
-    titleEnglish?: string;
-    titleRomaji?: string;
-    genres?: string[];
-    isAdult?: boolean;
-  };
+interface LastVisitedEntry {
+  timestamp?: number;
+  titleEnglish?: string;
+  titleRomaji?: string;
+  coverImage?: string;
+  genres?: string[];
+  isAdult?: boolean;
 }
+
+type LastVisitedData = Record<string, LastVisitedEntry>;
 
 const StyledSwiperContainer = styled(Swiper)`
   position: relative;
@@ -310,6 +311,8 @@ export const EpisodeCard: React.FC = () => {
 
         // Extract clean episode number from formats like "1-737" or just "1"
         const cleanEpisodeNumber = String(episode.number).split('-')[0];
+        const thumbnailSrc =
+          episode.image || lastVisitedData[animeId]?.coverImage || '';
 
         const handleRemoveAllEpisodes = (animeId: string) => {
           const updatedEpisodes = JSON.parse(watchedEpisodesData || '{}');
@@ -339,7 +342,7 @@ export const EpisodeCard: React.FC = () => {
               title={`Continue Watching ${displayTitle}`}
             >
               <EpisodeCardImage
-                src={episode.image}
+                src={thumbnailSrc}
                 alt={`Cover for ${animeTitle}`}
                 $blurred={shouldBlur}
               />
