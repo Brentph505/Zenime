@@ -109,7 +109,8 @@ const HeroBg = styled.div<{ $src: string | null }>`
       ? css`
           background-image: url(${$src});
           background-size: cover;
-          background-position: center 32%;
+          background-position: center center;
+          background-repeat: no-repeat;
         `
       : css`
           background:
