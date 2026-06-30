@@ -17,6 +17,7 @@ import {
 import { Episode } from '../../index';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
 import { dispatchWatchHistoryChanged, normalizeToEpisodeArray } from '../../lib/watchHistory';
+import { useSettings } from '../Profile/SettingsProvider';
 
 // Keep at most this many watched episodes per anime in localStorage so the
 // `watched-episodes` payload can't grow without bound and blow the quota.
@@ -29,6 +30,8 @@ interface Props {
   selectedEpisodeId: string;
   onEpisodeSelect: (id: string) => void;
   maxListHeight: string;
+  animeGenres?: string[];
+  animeIsAdult?: boolean;
 }
 
 // Styled components for the episode list
@@ -99,13 +102,14 @@ const EpisodeImageSkeleton = styled.div`
   animation: ${imagePulse} 1.6s ease-in-out infinite;
 `;
 
-const EpisodeImage = styled.img<{ $loaded: boolean }>`
+const EpisodeImage = styled.img<{ $loaded: boolean; $blurred?: boolean }>`
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   opacity: ${({ $loaded }) => ($loaded ? 1 : 0)};
   transition: opacity 0.2s ease-in-out;
+  filter: ${({ $blurred }) => ($blurred ? 'blur(12px) brightness(0.65)' : 'none')};
 `;
 
 const ListItem = styled.button<{
@@ -278,6 +282,8 @@ export const EpisodeList: React.FC<Props> = ({
   selectedEpisodeId,
   onEpisodeSelect,
   maxListHeight,
+  animeGenres = [],
+  animeIsAdult = false,
 }) => {
   // State for interval, layout, user layout preference, search term, and watched episodes
   const episodeGridRef = useRef<HTMLDivElement>(null);
@@ -304,6 +310,18 @@ export const EpisodeList: React.FC<Props> = ({
 
   const [selectionInitiatedByUser, setSelectionInitiatedByUser] =
     useState(false);
+  const { settings } = useSettings();
+
+  const isHentai = animeGenres.some((genre) => genre?.toLowerCase() === 'hentai');
+  const isNsfw =
+    animeIsAdult || animeGenres.some((genre) => genre?.toLowerCase() === 'ecchi');
+  const shouldSaveWatchedHistory = Boolean(
+    !(isHentai && !settings.saveHentaiHistory) &&
+      !(!isHentai && isNsfw && !settings.saveNSFWHistory),
+  );
+  const shouldBlurEpisodes = Boolean(
+    (isHentai && settings.blurHentai) || (!isHentai && isNsfw && settings.blurNSFW),
+  );
 
   const handleImageLoad = useCallback((id: string) => {
     setLoadedImages((prev) => ({ ...prev, [id]: true }));
@@ -322,6 +340,23 @@ export const EpisodeList: React.FC<Props> = ({
       );
     }
   }, [animeId, watchedEpisodes]);
+
+  useEffect(() => {
+    if (!animeId || shouldSaveWatchedHistory) return;
+
+    try {
+      const allWatched = JSON.parse(
+        localStorage.getItem('watched-episodes') || '{}',
+      );
+      if (allWatched[animeId] !== undefined) {
+        delete allWatched[animeId];
+        safeLocalStorageSet('watched-episodes', JSON.stringify(allWatched));
+        dispatchWatchHistoryChanged();
+      }
+    } catch {
+      // ignore malformed storage
+    }
+  }, [animeId, shouldSaveWatchedHistory]);
   // Load watched episodes from local storage when animeId changes
   useEffect(() => {
     if (animeId) {
@@ -341,24 +376,25 @@ export const EpisodeList: React.FC<Props> = ({
   // Function to mark an episode as watched
   const markEpisodeAsWatched = useCallback(
     (id: string) => {
-      if (animeId) {
-        setWatchedEpisodes((prevWatchedEpisodes) => {
-          const prev = Array.isArray(prevWatchedEpisodes) ? prevWatchedEpisodes : [];
-          const updatedWatchedEpisodes = [...prev];
-          const selectedEpisodeIndex = updatedWatchedEpisodes.findIndex(
+      if (!animeId) return;
+      setWatchedEpisodes((prevWatchedEpisodes) => {
+        const prev = Array.isArray(prevWatchedEpisodes) ? prevWatchedEpisodes : [];
+        const updatedWatchedEpisodes = [...prev];
+        const selectedEpisodeIndex = updatedWatchedEpisodes.findIndex(
+          (episode) => episode.id === id,
+        );
+        if (selectedEpisodeIndex === -1) {
+          const selectedEpisode = episodes.find(
             (episode) => episode.id === id,
           );
-          if (selectedEpisodeIndex === -1) {
-            const selectedEpisode = episodes.find(
-              (episode) => episode.id === id,
-            );
-            if (selectedEpisode) {
-              updatedWatchedEpisodes.push(selectedEpisode);
-              // Bound per-anime growth so the aggregate object can't exceed quota.
-              const capped =
-                updatedWatchedEpisodes.length > MAX_WATCHED_EPISODES_PER_ANIME
-                  ? updatedWatchedEpisodes.slice(-MAX_WATCHED_EPISODES_PER_ANIME)
-                  : updatedWatchedEpisodes;
+          if (selectedEpisode) {
+            updatedWatchedEpisodes.push(selectedEpisode);
+            // Bound per-anime growth so the aggregate object can't exceed quota.
+            const capped =
+              updatedWatchedEpisodes.length > MAX_WATCHED_EPISODES_PER_ANIME
+                ? updatedWatchedEpisodes.slice(-MAX_WATCHED_EPISODES_PER_ANIME)
+                : updatedWatchedEpisodes;
+            if (shouldSaveWatchedHistory) {
               // Update the watched episodes object in local storage (quota-safe)
               safeLocalStorageSet(
                 'watched-episodes',
@@ -370,14 +406,14 @@ export const EpisodeList: React.FC<Props> = ({
                 }),
               );
               dispatchWatchHistoryChanged();
-              return updatedWatchedEpisodes;
             }
+            return updatedWatchedEpisodes;
           }
-          return prev;
-        });
-      }
+        }
+        return prev;
+      });
     },
-    [episodes, animeId],
+    [episodes, animeId, shouldSaveWatchedHistory],
   );
   const handleEpisodeSelect = useCallback(
     (id: string) => {
@@ -597,6 +633,7 @@ export const EpisodeList: React.FC<Props> = ({
                         src={episode.image}
                         alt={`Episode ${episode.number} - ${episode.title}`}
                         $loaded={!!loadedImages[episode.id]}
+                        $blurred={shouldBlurEpisodes}
                         onLoad={() => handleImageLoad(episode.id)}
                         onError={() => handleImageLoad(episode.id)}
                       />

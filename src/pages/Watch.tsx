@@ -9,6 +9,8 @@ import {
   dispatchWatchHistoryChanged,
   WATCHED_EPISODES_CACHE_KEY,
   resolveLastEpisodeNumber,
+  saveLastAnimeVisited,
+  removeLastAnimeVisited,
 } from '../lib/watchHistory';
 
 // safeLocalStorageSet (quota-safe wrapper) is imported from ../lib/safeStorage
@@ -33,6 +35,7 @@ import {
   isEmbeddedPlaybackServer,
 } from '../index';
 import { Episode } from '../index';
+import { useSettings } from '../components/Profile/SettingsProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -217,6 +220,7 @@ function makeEmptyEpisode(): WatchEpisode {
 
 const Watch: React.FC = () => {
   useAuth();
+  const { settings } = useSettings();
 
   // ── Refs ──────────────────────────────────────────────────────────────────
   const videoPlayerContainerRef = useRef<HTMLDivElement>(null);
@@ -355,7 +359,16 @@ const Watch: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
   const updateWatchedEpisodes = useCallback(
     (episode: Episode) => {
-      if (!animeId) return;
+      if (!animeId || !animeInfo) return;
+
+      // ── NSFW / Hentai history guard ─────────────────────────────────────
+      const genres: string[] = animeInfo?.genres ?? [];
+      const isHentaiContent = genres.some((g: string) => g.toLowerCase() === 'hentai');
+      const isNsfwContent = animeInfo?.isAdult || genres.some((g: string) => g.toLowerCase() === 'ecchi');
+
+      if (isHentaiContent && !settings.saveHentaiHistory) return;
+      if (!isHentaiContent && isNsfwContent && !settings.saveNSFWHistory) return;
+      // ────────────────────────────────────────────────────────────────────
 
       const saveToStorage = async () => {
         try {
@@ -392,7 +405,6 @@ const Watch: React.FC = () => {
             // Cap total anime entries by evicting the oldest
             const animeKeys = Object.keys(allWatchedEpisodes);
             if (animeKeys.length > MAX_CACHE_ANIME_ENTRIES) {
-              // Remove oldest entries (first keys) until within limit
               const toRemove = animeKeys.slice(0, animeKeys.length - MAX_CACHE_ANIME_ENTRIES);
               toRemove.forEach((k) => delete allWatchedEpisodes[k]);
             }
@@ -407,7 +419,7 @@ const Watch: React.FC = () => {
 
       saveToStorage();
     },
-    [animeId],
+    [animeId, animeInfo, settings.saveHentaiHistory, settings.saveNSFWHistory],
   );
 
   useEffect(() => {
@@ -635,33 +647,27 @@ const Watch: React.FC = () => {
           lvData = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED) || '{}');
         } catch { /* ignore */ }
 
+        // ── NSFW / Hentai last-visited guard ───────────────────────────────
+        const lvGenres: string[] = animeInfo?.genres ?? [];
+        const lvIsHentai = lvGenres.some((g: string) => g.toLowerCase() === 'hentai');
+        const lvIsNsfw = animeInfo?.isAdult || lvGenres.some((g: string) => g.toLowerCase() === 'ecchi');
+        const skipLastVisited = (lvIsHentai && !settings.saveHentaiHistory) || (!lvIsHentai && lvIsNsfw && !settings.saveNSFWHistory);
+        // ───────────────────────────────────────────────────────────────────
+
         if (animeInfo && animeId) {
-          // Preserve any fields previously stored (e.g. AniList status, cover)
-          // so we don't clobber metadata written by the history sync hook.
-          const prev = lvData[animeId] || {};
-          lvData[animeId] = {
-            ...prev,
-            timestamp: Date.now(),
-            titleEnglish: animeInfo.title?.english ?? prev.titleEnglish,
-            titleRomaji: animeInfo.title?.romaji ?? prev.titleRomaji,
-            // Persist totalEpisodes so autosync can compute progress %,
-            // and so the History page can show episode counts.
-            totalEpisodes:
-              animeInfo.totalEpisodes ?? prev.totalEpisodes ?? null,
-            // Store cover image so History can show thumbnails cross-device
-            // (episode thumbnails are device-local; the cover image comes from AniList/API)
-            coverImage:
-              animeInfo.image ?? animeInfo.cover ?? prev.coverImage ?? null,
-          };
-          // Cap the last-visited map to 100 entries
-          const lvKeys = Object.keys(lvData);
-          if (lvKeys.length > 100) {
-            lvKeys
-              .sort((a, b) => (lvData[a].timestamp ?? 0) - (lvData[b].timestamp ?? 0))
-              .slice(0, lvKeys.length - 100)
-              .forEach((k) => delete lvData[k]);
+          if (skipLastVisited) {
+            removeLastAnimeVisited(animeId);
+          } else {
+            saveLastAnimeVisited(animeId, {
+              timestamp: Date.now(),
+              titleEnglish: animeInfo.title?.english,
+              titleRomaji: animeInfo.title?.romaji,
+              totalEpisodes: animeInfo.totalEpisodes ?? null,
+              coverImage: animeInfo.image ?? animeInfo.cover ?? null,
+              genres: lvGenres.length > 0 ? lvGenres : undefined,
+              isAdult: animeInfo.isAdult,
+            });
           }
-          safeLocalStorageSet(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED, JSON.stringify(lvData));
         }
 
         // Determine which episode to navigate to
@@ -1194,6 +1200,8 @@ const Watch: React.FC = () => {
                     serverUrl={serverUrl}
                     embeddedServerKeys={embeddedServerKeys}
                     hlsDirectUrl={hlsDirectUrl}
+                    animeGenres={animeInfo?.genres}
+                    animeIsAdult={animeInfo?.isAdult}
                   />
                 )}
               </VideoPlayerContainer>
@@ -1211,6 +1219,8 @@ const Watch: React.FC = () => {
                       if (ep) handleEpisodeSelect(ep);
                     }}
                     maxListHeight={maxEpisodeListHeight}
+                    animeGenres={animeInfo?.genres}
+                    animeIsAdult={animeInfo?.isAdult}
                   />
                 )}
               </EpisodeListContainer>

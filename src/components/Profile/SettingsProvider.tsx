@@ -21,6 +21,12 @@ interface SettingsContextType {
     titleLanguage: string;
     characterNameLanguage: string;
     hideSpoilers: boolean;
+    blurNSFW: boolean;
+    saveNSFWHistory: boolean;
+    saveNSFWAnilist: boolean;
+    blurHentai: boolean;
+    saveHentaiHistory: boolean;
+    saveHentaiAnilist: boolean;
   };
   setSettings: (settings: Partial<SettingsContextType['settings']>) => void;
 }
@@ -68,6 +74,12 @@ const normalizeCharacterNameLanguage = (value: string | null): string => {
   return CHARACTER_NAME_LANGUAGE_OPTIONS[0];
 };
 
+const getBooleanItem = (key: string, defaultValue: boolean): boolean => {
+  const item = localStorage.getItem(key);
+  if (item === null) return defaultValue;
+  return item === 'true';
+};
+
 export const SettingsProvider: React.FC<SettingsProviderProps> = ({
   children,
 }) => {
@@ -84,7 +96,13 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
      characterNameLanguage: normalizeCharacterNameLanguage(
        localStorage.getItem('characterNameLanguage'),
      ),
-     hideSpoilers: localStorage.getItem('hideSpoilers') === 'true',
+     hideSpoilers: getBooleanItem('hideSpoilers', false),
+     blurNSFW: getBooleanItem('blurNSFW', false),
+     saveNSFWHistory: getBooleanItem('saveNSFWHistory', true),
+     saveNSFWAnilist: getBooleanItem('saveNSFWAnilist', true),
+     blurHentai: getBooleanItem('blurHentai', false),
+     saveHentaiHistory: getBooleanItem('saveHentaiHistory', false),
+     saveHentaiAnilist: getBooleanItem('saveHentaiAnilist', false),
    });
 
   useEffect(() => {
@@ -101,6 +119,12 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({
     localStorage.setItem('titleLanguage', settings.titleLanguage);
     localStorage.setItem('characterNameLanguage', settings.characterNameLanguage);
     localStorage.setItem('hideSpoilers', settings.hideSpoilers ? 'true' : 'false');
+    localStorage.setItem('blurNSFW', settings.blurNSFW ? 'true' : 'false');
+    localStorage.setItem('saveNSFWHistory', settings.saveNSFWHistory ? 'true' : 'false');
+    localStorage.setItem('saveNSFWAnilist', settings.saveNSFWAnilist ? 'true' : 'false');
+    localStorage.setItem('blurHentai', settings.blurHentai ? 'true' : 'false');
+    localStorage.setItem('saveHentaiHistory', settings.saveHentaiHistory ? 'true' : 'false');
+    localStorage.setItem('saveHentaiAnilist', settings.saveHentaiAnilist ? 'true' : 'false');
   }, [settings]);
 
   // Memoised so consumers' callbacks/effects depending on setSettings don't

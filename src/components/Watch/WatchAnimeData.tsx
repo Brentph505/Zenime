@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Seasons, Anime, useTitleWithSubtitle } from '../../index';
 import { SiMyanimelist, SiAnilist } from 'react-icons/si';
 import { FaExternalLinkAlt } from 'react-icons/fa';
+import { useSettings } from '../Profile/SettingsProvider';
 
 const AnimeDataContainer = styled.div`
   margin-bottom: 1.5rem;
@@ -337,6 +338,7 @@ const TrailerOverlayContent = styled.div`
 export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
   animeData,
 }) => {
+  const { settings } = useSettings();
   const navigate = useNavigate();
   const [isDescriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
@@ -405,7 +407,10 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                 }}
                 style={{ touchAction: 'manipulation' }}
               >
-                <AnimeInfoImage src={animeData.image} alt='Anime Title Image' />
+                <AnimeInfoImage
+                  src={animeData.image}
+                  alt='Anime Title Image'
+                />
                 <InfoIconOverlay
                   to={`/info/${animeData.id}`}
                   title="View Info"

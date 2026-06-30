@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../client/useAuth';
 import { fetchUserList } from '../client/authService';
 import { safeLocalStorageSet } from '../lib/safeStorage';
+import { useSettings } from '../components/Profile/SettingsProvider';
 import {
   WATCHED_EPISODES_KEY,
   LAST_ANIME_VISITED_KEY,
@@ -25,6 +26,7 @@ const HISTORY_SYNCED_KEY = 'anilist-history-synced';
 
 export function useSyncAniListHistory() {
   const { isLoggedIn, userData } = useAuth();
+  const { settings } = useSettings();
   const hasSyncedRef = useRef(false);
   const [syncTrigger, setSyncTrigger] = useState(0);
 
@@ -38,6 +40,16 @@ export function useSyncAniListHistory() {
     window.addEventListener('anilist-entry-changed', onEntryChanged);
     return () => window.removeEventListener('anilist-entry-changed', onEntryChanged);
   }, []);
+
+  const isHentaiAnime = (genres: string[] = []) =>
+    genres.some((g) => g.toLowerCase() === 'hentai');
+
+  const isNsfwAnime = (genres: string[] = [], isAdult?: boolean) =>
+    Boolean(isAdult) || genres.some((g) => g.toLowerCase() === 'ecchi');
+
+  useEffect(() => {
+    hasSyncedRef.current = false;
+  }, [settings.saveHentaiHistory, settings.saveNSFWHistory]);
 
   useEffect(() => {
     if (!isLoggedIn || !userData?.name) {
@@ -105,6 +117,33 @@ export function useSyncAniListHistory() {
           const animeId = entry.media?.id?.toString();
           if (!animeId) continue;
 
+          const genres: string[] = entry.media?.genres ?? [];
+          const isHentai = isHentaiAnime(genres);
+          const isNsfw = isNsfwAnime(genres, entry.media?.isAdult);
+
+          if (isHentai && !settings.saveHentaiHistory) {
+            if (animeId in localLastVisited) {
+              delete localLastVisited[animeId];
+              visitedChanged = true;
+            }
+            if (animeId in localWatchedEpisodes) {
+              delete localWatchedEpisodes[animeId];
+              historyChanged = true;
+            }
+            continue;
+          }
+          if (!isHentai && isNsfw && !settings.saveNSFWHistory) {
+            if (animeId in localLastVisited) {
+              delete localLastVisited[animeId];
+              visitedChanged = true;
+            }
+            if (animeId in localWatchedEpisodes) {
+              delete localWatchedEpisodes[animeId];
+              historyChanged = true;
+            }
+            continue;
+          }
+
           if (!entry.media?.title?.romaji && !entry.media?.title?.english) {
             console.warn(`[HistorySync] Skipping entry ${animeId} with invalid title`);
             continue;
@@ -145,6 +184,8 @@ export function useSyncAniListHistory() {
               entry.media?.coverImage?.large ||
               entry.media?.coverImage?.medium ||
               null,
+            genres: existingVisited.genres ?? genres,
+            isAdult: existingVisited.isAdult ?? entry.media?.isAdult ?? false,
           };
 
           if (JSON.stringify(mergedVisited) !== JSON.stringify(existingVisited)) {

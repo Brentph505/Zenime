@@ -70,7 +70,7 @@ const BookmarkBadge = styled.button<{ $bookmarked?: boolean }>`
   cursor: pointer;
   border: 1px solid
     ${({ $bookmarked }) =>
-      $bookmarked ? 'var(--primary-accent)' : 'rgba(255, 255, 255, 0.15)'};
+    $bookmarked ? 'var(--primary-accent)' : 'rgba(255, 255, 255, 0.15)'};
   /* hidden by default; always visible when bookmarked */
   opacity: ${({ $bookmarked }) => ($bookmarked ? 1 : 0)};
   transition: all 0.2s ease-in-out;
@@ -97,7 +97,7 @@ const ProgressBar = styled.div`
 
 // ── Main card ─────────────────────────────────────────────────────────────────
 
-const MangaCardLink = styled(Link)<{ $fullWidth?: boolean }>`
+const MangaCardLink = styled(Link) <{ $fullWidth?: boolean }>`
   position: relative;
   display: block;
   border-radius: var(--global-border-radius);
@@ -242,8 +242,8 @@ export const MangaCard: React.FC<MangaCardProps> = ({
     titleEnglish && typeof titleEnglish === 'string'
       ? titleEnglish
       : titleEnglish &&
-          typeof titleEnglish === 'object' &&
-          'english' in titleEnglish
+        typeof titleEnglish === 'object' &&
+        'english' in titleEnglish
         ? (titleEnglish as any).english
         : '';
 
@@ -251,8 +251,8 @@ export const MangaCard: React.FC<MangaCardProps> = ({
     titleRomaji && typeof titleRomaji === 'string'
       ? titleRomaji
       : titleRomaji &&
-          typeof titleRomaji === 'object' &&
-          'romaji' in titleRomaji
+        typeof titleRomaji === 'object' &&
+        'romaji' in titleRomaji
         ? (titleRomaji as any).romaji
         : '';
 

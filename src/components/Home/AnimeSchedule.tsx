@@ -22,6 +22,7 @@ interface ScheduleItem {
   format: string;
   rating: number | null;
   genres: string[];
+  isAdult: boolean;
   countryOfOrigin: string;
   titleObj: {
     english: string | null;
@@ -92,6 +93,7 @@ function mapToScheduleItem(raw: AniListAiringItem): ScheduleItem {
     format: media.format ?? '',
     rating: media.averageScore ?? null,
     genres: media.genres ?? [],
+    isAdult: media.isAdult ?? false,
     countryOfOrigin: media.countryOfOrigin ?? '',
     titleObj: {
       english: media.title.english ?? null,

@@ -23,6 +23,7 @@ import { saveLastMangaVisited, addReadChapterIfMissing } from '../lib/mangaHisto
 import { ListActions } from '../components/Info/ListActions';
 import { MangaBookmarkButton } from '../components/Home/MangaBookmarkButton';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
+import { useSettings } from '../components/Profile/SettingsProvider';
 
 // ─── Animations ───────────────────────────────────────────────────────────────
 
@@ -209,7 +210,9 @@ const MobilePosterWrap = styled.div`
   position: relative;
 `;
 
-const MobilePosterImg = styled.img`width: 100%; display: block;`;
+const MobilePosterImg = styled.img`
+  width: 100%; display: block;
+`;
 
 const MobilePosterScore = styled.div`
   position: absolute; top: 0; right: 0;
@@ -253,13 +256,27 @@ const PosterWrap = styled.div`
   .dark-mode & { box-shadow: 0 0 0 1px ${A.border}, 0 24px 48px rgba(0,0,0,0.55); }
 `;
 
-const PosterImg = styled.img`width: 100%; display: block;`;
+const PosterImg = styled.img`
+  width: 100%; display: block;
+`;
 
 const ScoreBadge = styled.div`
   position: absolute; top: 0; right: 0;
   background: ${A.accent}; color: #0a0a0c;
   font-size: 0.72rem; font-weight: 800;
   padding: 0.25rem 0.5rem; letter-spacing: 0.04em; border-bottom-left-radius: 6px;
+`;
+
+const AdultBadge = styled.div`
+  position: absolute; top: 0; left: 0;
+  background: rgba(220, 38, 38, 0.95);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.35rem 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-bottom-right-radius: 6px;
 `;
 
 const PosterActions = styled.div`display: flex; flex-direction: column; gap: 0.5rem;`;
@@ -689,13 +706,14 @@ const CardThumbSkeleton = styled.div`
   animation: ${imagePulse} 1.6s ease-in-out infinite;
 `;
 
-const CardThumb = styled.img<{ $loaded: boolean }>`
+const CardThumb = styled.img<{ $loaded: boolean; $blurred?: boolean }>`
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
   opacity: ${({ $loaded }) => ($loaded ? 1 : 0)};
   transition: opacity 0.2s ease-in-out;
+  filter: ${({ $blurred }) => ($blurred ? 'blur(8px)' : 'none')};
 `;
 
 const CardEpBadge = styled.span`
@@ -920,7 +938,9 @@ const Info: React.FC = () => {
   const queryProvider = searchParams.get('provider')?.toLowerCase() ?? null;
 
   const [animeInfo, setAnimeInfo] = useState<Anime & Partial<Manga> | null>(null);
-  const [loading,   setLoading]   = useState(true);
+  const { settings } = useSettings();
+
+  const [loading, setLoading] = useState(true);
   const [error,     setError]     = useState<string | null>(null);
   
   // Call hook unconditionally at the top level, before any conditional renders
@@ -1389,6 +1409,10 @@ const Info: React.FC = () => {
     mediaInfo.studios?.length > 0 && { key: 'Studio', val: mediaInfo.studios.join(', '), onClick: () => navigate(`/studio/${mediaInfo.studioIds?.[0]}`) },
   ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
 
+  const isHentai = !isManga && animeInfo.genres?.some(g => g.toLowerCase() === 'hentai');
+  const isNsfw = !isManga && (animeInfo.isAdult || animeInfo.genres?.some(g => g.toLowerCase() === 'ecchi'));
+  const shouldBlur = Boolean((isHentai && settings.blurHentai) || (!isHentai && isNsfw && settings.blurNSFW));
+
   return (
     <PageWrapper>
       {/* ── Hero ── */}
@@ -1404,6 +1428,9 @@ const Info: React.FC = () => {
         <MobileHeader>
           <MobilePosterWrap>
             <MobilePosterImg src={animeInfo.image} alt={title} />
+            {(isHentai || isNsfw) && (
+              <AdultBadge>{isHentai ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
+            )}
             {animeInfo.rating != null && <MobilePosterScore>{animeInfo.rating}%</MobilePosterScore>}
           </MobilePosterWrap>
           <MobileTitleBlock>
@@ -1424,6 +1451,9 @@ const Info: React.FC = () => {
           <LeftCol>
             <PosterWrap>
               <PosterImg src={animeInfo.image} alt={title} />
+              {(isHentai || isNsfw) && (
+                <AdultBadge>{isHentai ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
+              )}
               {animeInfo.rating != null && <ScoreBadge>{animeInfo.rating}%</ScoreBadge>}
             </PosterWrap>
 
@@ -1699,6 +1729,7 @@ const Info: React.FC = () => {
                                     src={ep.image || cover}
                                     alt={ep.title || ''}
                                     $loaded={!!loadedEpisodeImages[ep.id]}
+                                    $blurred={shouldBlur}
                                     onLoad={() => handleEpisodeImageLoad(ep.id)}
                                     onError={() => handleEpisodeImageLoad(ep.id)}
                                   />

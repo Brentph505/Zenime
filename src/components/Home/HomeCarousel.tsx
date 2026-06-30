@@ -4,7 +4,7 @@ import { FaPlay } from 'react-icons/fa';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import 'swiper/swiper-bundle.css';
 import { useNavigate } from 'react-router-dom';
-import { SkeletonSlide, Anime, useTitleWithSubtitle } from '../../index';
+import { SkeletonSlide, Anime } from '../../index';
 import { TbCards } from 'react-icons/tb';
 import { FaStar } from 'react-icons/fa';
 import { FaClock } from 'react-icons/fa6';
@@ -404,17 +404,9 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
         keyboard={true}
         centeredSlides={true}
       >
-        {validData.map(
-          ({
-            id,
-            cover,
-            title,
-            description,
-            rating,
-            totalEpisodes,
-            duration,
-            type,
-          }) => (
+        {validData.map((anime) => {
+          const { id, cover, title, description, rating, totalEpisodes, duration, type } = anime;
+          return (
             <StyledSwiperSlide
               key={id}
               title={title.english || title.romaji}
@@ -477,8 +469,8 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
                 <DarkOverlay />
               </SlideImageWrapper>
             </StyledSwiperSlide>
-          ),
-        )}
+          );
+        })}
         <div className='swiper-pagination'></div>
       </StyledSwiperContainer>
     </PaginationStyle>

@@ -69,13 +69,7 @@ const Card = styled.div<{ $backgroundImage: string }>`
     box-shadow 0.2s ease-in-out,
     transform 0.2s ease-in-out;
 
-  background: linear-gradient(
-      90deg,
-      rgba(235, 237, 240, 0.96) 0%,
-      rgba(235, 237, 240, 0.88) 60%,
-      rgba(235, 237, 240, 0.55) 100%
-    ),
-    url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
+  background: linear-gradient(90deg, rgba(235, 237, 240, 0.96) 0%, rgba(235, 237, 240, 0.88) 60%, rgba(235, 237, 240, 0.55) 100%), url(${({ $backgroundImage }) => $backgroundImage}) center/cover no-repeat;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 
   .dark-mode & {
@@ -177,7 +171,7 @@ const Details = styled.p`
 `;
 
 interface RelatedItemProps {
-  relation: any;
+  relation: Relation;
   index: number;
   isNonWatchable: boolean;
 }
@@ -231,7 +225,7 @@ const RelatedItemCard: React.FC<RelatedItemProps> = ({ relation, index, isNonWat
 };
 
 interface RecommendationItemProps {
-  recommendation: any;
+  recommendation: Recommendation;
   index: number;
 }
 

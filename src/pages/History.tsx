@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
-import { FaPlay, FaSortAmountDown, FaSortAmountUp, FaSearch, FaTrashAlt } from 'react-icons/fa';
+import { FaSortAmountDown, FaSortAmountUp, FaSearch, FaTrashAlt } from 'react-icons/fa';
 import { IoIosCloseCircleOutline, IoIosArrowDown } from 'react-icons/io';
 import { Episode } from '../index';
 import { MangaGrid } from '../components/Home/MangaGrid';
 import { MangaCard } from '../components/Home/MangaCard';
+import { HistoryAnimeCard } from '../components/History/HistoryAnimeCard';
 import {
   getMangaBookmarks,
 } from '../lib/mangaHistory';
@@ -18,6 +19,7 @@ import {
   normalizeToEpisodeArray,
   resolveLastEpisodeNumber,
 } from '../lib/watchHistory';
+import { useSettings } from '../components/Profile/SettingsProvider';
 
 type AniListStatus =
   | 'CURRENT'
@@ -42,6 +44,8 @@ interface LastVisitedData {
     anilistProgress?: number;
     lastEpisodeNumber?: number;
     totalEpisodes?: number | null;
+    genres?: string[];
+    isAdult?: boolean;
   };
 }
 
@@ -58,6 +62,8 @@ interface AnimeWatchData {
   lastChapterId?: string;
   status?: AniListStatus;
   type: ContentType;
+  genres?: string[];
+  isAdult?: boolean;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -308,7 +314,7 @@ const SortButton = styled.button`
 
 // ── Clear-all + bookmark-only toggle ─────────────────────────────────────────
 
-const ClearAllButton = styled.button`
+const ClearAllButton = styled.button<{ $disabled?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
@@ -317,9 +323,10 @@ const ClearAllButton = styled.button`
   border: 1px solid rgba(239, 68, 68, 0.35);
   border-radius: 0.5rem;
   background-color: transparent;
-  color: rgba(239, 68, 68, 0.85);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  color: ${({ $disabled }) => ($disabled ? 'rgba(239, 68, 68, 0.45)' : 'rgba(239, 68, 68, 0.85)')};
+  cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
+  opacity: ${({ $disabled }) => ($disabled ? 0.7 : 1)};
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s, color 0.15s;
   flex-shrink: 0;
   font-size: 0.78rem;
   font-weight: 600;
@@ -330,8 +337,8 @@ const ClearAllButton = styled.button`
   }
 
   &:hover {
-    background-color: rgba(239, 68, 68, 0.1);
-    border-color: rgba(239, 68, 68, 0.6);
+    background-color: ${({ $disabled }) => ($disabled ? 'transparent' : 'rgba(239, 68, 68, 0.1)')};
+    border-color: ${({ $disabled }) => ($disabled ? 'rgba(239, 68, 68, 0.35)' : 'rgba(239, 68, 68, 0.6)')};
   }
 
   &:focus {
@@ -487,127 +494,6 @@ const RemoveGroupButton = styled.button`
   }
 `;
 
-// ─── Anime card sub-elements ──────────────────────────────────────────────────
-
-const PlayIcon = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #ffffff;
-  font-size: 2.5rem;
-  opacity: 0;
-  z-index: 1;
-  transition: opacity 0.2s ease-in-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-`;
-
-const AnimeCloseButton = styled.button`
-  position: absolute;
-  top: 0;
-  right: 0;
-  background: transparent;
-  border: none;
-  color: #ffffff;
-  cursor: pointer;
-  display: none;
-  transition: 0.2s ease-in-out;
-  padding: 0.2rem 0.2rem 0 0;
-  z-index: 2;
-
-  svg {
-    font-size: 2.25rem;
-    transition: transform 0.2s ease-in-out;
-    transform: scale(0.95);
-
-    &:hover,
-    &:active,
-    &:focus {
-      transform: scale(1);
-    }
-  }
-`;
-
-const AnimeProgressBar = styled.div`
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  height: 0.25rem;
-  border-radius: var(--global-border-radius);
-  background-color: var(--primary-accent);
-  transition: width 0.3s ease-in-out;
-`;
-
-const AnimeCard = styled(Link)`
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  border-radius: var(--global-border-radius);
-  overflow: hidden;
-  transition: box-shadow 0.2s ease-in-out;
-  text-decoration: none;
-
-  &:hover,
-  &:active,
-  &:focus {
-    box-shadow: 2px 2px 10px var(--global-card-hover-shadow);
-
-    ${PlayIcon} {
-      opacity: 1;
-    }
-
-    img {
-      filter: brightness(0.5);
-    }
-
-    ${AnimeCloseButton} {
-      display: block;
-    }
-  }
-
-  img {
-    width: 100%;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    transition: filter 0.2s ease-in-out;
-    display: block;
-    background: linear-gradient(135deg, var(--global-secondary-bg, #161b22) 0%, var(--global-tertiary-bg, #21262d) 100%);
-  }
-
-  .episode-info {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    padding: 0.5rem;
-    background: linear-gradient(
-      360deg,
-      rgba(8, 8, 8, 1) -15%,
-      transparent 100%
-    );
-    color: white;
-    box-sizing: border-box;
-
-    .episode-title {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-size: 0.95rem;
-      font-weight: bold;
-      margin: 0.25rem 0 0;
-    }
-
-    .episode-number {
-      font-size: 0.75rem;
-      color: rgba(255, 255, 255, 0.65);
-      margin: 0.15rem 0 0.35rem;
-    }
-  }
-`;
-
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 const EmptyState = styled.div`
@@ -640,6 +526,7 @@ const EmptyState = styled.div`
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const History: React.FC = () => {
+  const { settings } = useSettings();
   // Separate state for anime and manga so each tab re-renders independently
   const [animeStorageData, setAnimeStorageData] = useState(
     () => localStorage.getItem(WATCHED_EPISODES_KEY),
@@ -703,11 +590,13 @@ const History: React.FC = () => {
         : {};
 
       // Include AniList-synced entries that only exist in last-anime-visited.
+      // Preserve existing history entries even if the current NSFW/Hentai
+      // preference is disabled; those settings only affect future saves.
       for (const animeId of Object.keys(lastAnimeVisited)) {
+        const visited = lastAnimeVisited[animeId];
         const progress = resolveLastEpisodeNumber(
           allRaw[animeId],
-          lastAnimeVisited[animeId]?.anilistProgress ??
-            lastAnimeVisited[animeId]?.lastEpisodeNumber,
+          visited?.anilistProgress ?? visited?.lastEpisodeNumber,
         );
         if (progress > 0 && allRaw[animeId] === undefined) {
           allRaw[animeId] = progress;
@@ -735,12 +624,13 @@ const History: React.FC = () => {
             episodes,
             timestamp: visited?.timestamp || 0,
             playbackPercentage:
-              playbackInfo[lastEpisode?.id]?.playbackPercentage ||
-              (lastEpNum > 0 ? 100 : 0),
+              playbackInfo[lastEpisode?.id]?.playbackPercentage ?? 0,
             lastEpisodeNumber: lastEpNum > 0 ? lastEpNum : (lastEpisode?.number ?? 1),
             lastEpisodeTitle: lastEpisode?.title,
             status: visited?.status,
             type: 'anime' as ContentType,
+            genres: visited?.genres,
+            isAdult: visited?.isAdult,
           };
         })
         .filter((item) => item.lastEpisodeNumber !== 0)
@@ -781,8 +671,11 @@ const History: React.FC = () => {
             lastChapterId: lastChapter?.url || lastChapter?.id,
             status: lastMangaVisited[mangaId]?.status,
             type: 'manga' as ContentType,
+            genres: lastMangaVisited[mangaId]?.genres,
+            isAdult: lastMangaVisited[mangaId]?.isAdult,
           };
         })
+        .filter((item) => item.lastEpisodeNumber !== 0)
         .sort((a, b) => b.timestamp - a.timestamp);
     } catch {
       return [];
@@ -946,78 +839,41 @@ const History: React.FC = () => {
   // ── Render helpers ────────────────────────────────────────────────────────
 
   const renderAnimeCard = (anime: AnimeWatchData) => {
-    const titleEng = safeTitle(anime.titleEnglish, 'english');
-    const titleRom = safeTitle(anime.titleRomaji, 'romaji');
-    const animeTitle = String(titleEng || titleRom || 'Unknown Anime');
-    const cleanEpisodeNumber = String(anime.lastEpisodeNumber || 1).split('-')[0];
-    const displayTitle = `${animeTitle}${
-      anime.lastEpisodeTitle ? ` - ${anime.lastEpisodeTitle}` : ''
-    }`;
-
-    // coverImage: episode thumbnail (16:9, device-local) → AniList cover (portrait, synced)
-    // If neither is available we leave src empty and the CSS placeholder kicks in.
-    const imgSrc = anime.coverImage || '';
-
     return (
-      <AnimeCard
+      <HistoryAnimeCard
         key={anime.animeId}
-        to={`/watch/${anime.animeId}?ep=${cleanEpisodeNumber}`}
-        title={`Continue watching ${animeTitle}`}
-      >
-        <img
-          src={imgSrc}
-          alt={`Cover for ${animeTitle}`}
-          data-title={animeTitle}
-          onError={(e) => {
-            // Hide broken image icon; CSS will show a dark placeholder
-            e.currentTarget.style.visibility = 'hidden';
-          }}
-          onLoad={(e) => {
-            // Restore if previously hidden on error
-            e.currentTarget.style.visibility = '';
-          }}
-        />
-
-        <PlayIcon aria-label='Play'>
-          <FaPlay />
-        </PlayIcon>
-
-        <div className='episode-info'>
-          <p className='episode-title'>{displayTitle}</p>
-          <p className='episode-number'>Episode {cleanEpisodeNumber}</p>
-        </div>
-
-        <AnimeProgressBar
-          style={{ width: `${Math.max(anime.playbackPercentage, 5)}%` }}
-        />
-
-        <AnimeCloseButton
-          onClick={(e) => handleDeleteItem(anime.animeId, e)}
-          title='Remove from history'
-          aria-label='Remove from history'
-        >
-          <IoIosCloseCircleOutline aria-hidden='true' />
-        </AnimeCloseButton>
-      </AnimeCard>
+        animeId={anime.animeId}
+        titleEnglish={safeTitle(anime.titleEnglish, 'english')}
+        titleRomaji={safeTitle(anime.titleRomaji, 'romaji')}
+        coverImage={anime.coverImage}
+        lastEpisodeNumber={anime.lastEpisodeNumber}
+        lastEpisodeTitle={anime.lastEpisodeTitle}
+        playbackPercentage={anime.playbackPercentage}
+        genres={anime.genres}
+        isAdult={anime.isAdult}
+        onDelete={handleDeleteItem}
+      />
     );
   };
 
   // MangaCard handles its own sizing via $fullWidth — no extra wrapper needed.
-  const renderMangaCard = (manga: AnimeWatchData) => (
-    <MangaCard
-      key={manga.animeId}
-      animeId={manga.animeId}
-      titleEnglish={safeTitle(manga.titleEnglish, 'english')}
-      titleRomaji={safeTitle(manga.titleRomaji, 'romaji')}
-      coverImage={manga.coverImage}
-      lastChapterNumber={manga.lastEpisodeNumber}
-      lastChapterTitle={manga.lastEpisodeTitle}
-      lastChapterId={manga.lastChapterId}
-      playbackPercentage={manga.playbackPercentage}
-      fullWidth
-      onDelete={handleDeleteItem}
-    />
-  );
+  const renderMangaCard = (manga: AnimeWatchData) => {
+    return (
+      <MangaCard
+        key={manga.animeId}
+        animeId={manga.animeId}
+        titleEnglish={safeTitle(manga.titleEnglish, 'english')}
+        titleRomaji={safeTitle(manga.titleRomaji, 'romaji')}
+        coverImage={manga.coverImage}
+        lastChapterNumber={manga.lastEpisodeNumber}
+        lastChapterTitle={manga.lastEpisodeTitle}
+        lastChapterId={manga.lastChapterId}
+        playbackPercentage={manga.playbackPercentage}
+        fullWidth
+        onDelete={handleDeleteItem}
+      />
+    );
+  };
 
   const renderCard = (item: AnimeWatchData) =>
     contentType === 'anime' ? renderAnimeCard(item) : renderMangaCard(item);
@@ -1081,6 +937,18 @@ const History: React.FC = () => {
               >
                 {sortOrder === 'asc' ? <FaSortAmountUp /> : <FaSortAmountDown />}
               </SortButton>
+
+              <ClearAllButton
+                $disabled={activeList.length === 0}
+                onClick={handleClearAll}
+                disabled={activeList.length === 0}
+                title={`Clear ${
+                  isManga ? 'reading history' : 'watch history'
+                }`}
+                aria-label='Clear all'
+              >
+                <FaTrashAlt aria-hidden='true' />
+              </ClearAllButton>
             </FilterTop>
 
             <FilterBottom>
@@ -1208,19 +1076,19 @@ const History: React.FC = () => {
               {sortOrder === 'asc' ? <FaSortAmountUp /> : <FaSortAmountDown />}
             </SortButton>
 
-            {activeList.length > 0 && (
-              <ClearAllButton
-                onClick={handleClearAll}
-                title={`Clear ${
-                  isManga
-                    ? 'reading history'
-                    : 'watch history'
-                }`}
-                aria-label='Clear all'
-              >
-                <FaTrashAlt aria-hidden='true' />
-              </ClearAllButton>
-            )}
+            <ClearAllButton
+              $disabled={activeList.length === 0}
+              onClick={handleClearAll}
+              disabled={activeList.length === 0}
+              title={`Clear ${
+                isManga
+                  ? 'reading history'
+                  : 'watch history'
+              }`}
+              aria-label='Clear all'
+            >
+              <FaTrashAlt aria-hidden='true' />
+            </ClearAllButton>
           </FilterTop>
 
           <FilterBottom>

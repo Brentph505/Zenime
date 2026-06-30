@@ -32,6 +32,8 @@ export interface Recommendation {
   coverHash: string;
   rating: number;
   type: string;
+  genres?: string[];
+  isAdult?: boolean;
 }
 
 export interface Character {
@@ -56,6 +58,8 @@ export interface Relation {
   coverHash: string;
   rating: number;
   type: string;
+  genres?: string[];
+  isAdult?: boolean;
 }
 
 export interface Mapping {

@@ -68,6 +68,8 @@ export interface MediaListEntryResult {
     chapters: number | null;
     type: 'ANIME' | 'MANGA';
     coverImage?: { large?: string; medium?: string } | null;
+    genres?: string[];
+    isAdult?: boolean;
   };
 }
 
@@ -281,6 +283,8 @@ export interface AniListNotification {
     title?: string;
     coverImage?: string;
     type?: string;
+    genres?: string[];
+    isAdult?: boolean;
   } | null;
   /** Episode / chapter number for airing notifications. */
   episode?: number | null;
@@ -328,11 +332,11 @@ export async function fetchNotifications(
         notifications(resetNotificationCount: $resetCount) {
           ... on AiringNotification {
             id type createdAt episode contexts
-            media { id type title { userPreferred } coverImage { medium } }
+            media { id type title { userPreferred } coverImage { medium } genres isAdult }
           }
           ... on RelatedMediaAdditionNotification {
             id type createdAt
-            media { id type title { userPreferred } coverImage { medium } }
+            media { id type title { userPreferred } coverImage { medium } genres isAdult }
           }
           ... on FollowingNotification {
             id type createdAt context
@@ -389,11 +393,11 @@ export async function fetchNotifications(
           }
           ... on MediaDataChangeNotification {
             id type createdAt reason context
-            media { id type title { userPreferred } coverImage { medium } }
+            media { id type title { userPreferred } coverImage { medium } genres isAdult }
           }
           ... on MediaMergeNotification {
             id type createdAt reason context deletedMediaTitles
-            media { id type title { userPreferred } coverImage { medium } }
+            media { id type title { userPreferred } coverImage { medium } genres isAdult }
           }
           ... on MediaDeletionNotification {
             id type createdAt reason context deletedMediaTitle
@@ -426,6 +430,8 @@ export async function fetchNotifications(
           title: n.media.title?.userPreferred,
           coverImage: n.media.coverImage?.medium,
           type: n.media.type,
+          genres: n.media.genres,
+          isAdult: n.media.isAdult,
         }
       : null,
     episode: n.episode ?? null,
@@ -454,6 +460,7 @@ const ENTRY_FIELDS = /* GraphQL */ `
     id episodes chapters type
     title { romaji english }
     coverImage { large medium }
+    genres isAdult
   }
 `;
 

@@ -42,15 +42,27 @@ interface Preferences {
   restoreDefaultPreferences: string;
   clearContinueWatching: string;
   hideSpoilers: string;
+  blurNSFW: string;
+  saveNSFWHistory: string;
+  saveNSFWAnilist: string;
+  blurHentai: string;
+  saveHentaiHistory: string;
+  saveHentaiAnilist: string;
 }
 
-type BoolKey = 'autoskipIntroOutro' | 'autoPlay' | 'autoNext' | 'aniListSync' | 'hideSpoilers';
+type BoolKey = 'autoskipIntroOutro' | 'autoPlay' | 'autoNext' | 'aniListSync' | 'hideSpoilers' | 'blurNSFW' | 'saveNSFWHistory' | 'saveNSFWAnilist' | 'blurHentai' | 'saveHentaiHistory' | 'saveHentaiAnilist';
 const BOOL_KEYS: BoolKey[] = [
   'autoskipIntroOutro',
   'autoPlay',
   'autoNext',
   'aniListSync',
   'hideSpoilers',
+  'blurNSFW',
+  'saveNSFWHistory',
+  'saveNSFWAnilist',
+  'blurHentai',
+  'saveHentaiHistory',
+  'saveHentaiAnilist',
 ];
 const isBoolKey = (k: string): k is BoolKey => BOOL_KEYS.includes(k as BoolKey);
 
@@ -66,6 +78,12 @@ const DEFAULT_SETTINGS = {
   titleLanguage: 'English (Attack on Titan)',
   characterNameLanguage: 'Romaji (Zoldyck Killua)',
   hideSpoilers: false,
+  blurNSFW: false,
+  saveNSFWHistory: true,
+  saveNSFWAnilist: true,
+  blurHentai: false,
+  saveHentaiHistory: false,
+  saveHentaiAnilist: false,
 };
 
 /* ─── Section / Row definitions ─────────────────────────────────────────── */
@@ -169,6 +187,36 @@ const ROW_META: Record<string, RowDef> = {
     icon: <IoTrashOutline />,
     label: 'Clear continue watching',
     description: 'Erase all local watch and read history. Cannot be undone.',
+  },
+  blurNSFW: {
+    icon: <IoEyeOffOutline />,
+    label: 'Blur Ecchi/NSFW images',
+    description: 'Blur thumbnails and cover photos of general NSFW (Ecchi) content.',
+  },
+  saveNSFWHistory: {
+    icon: <IoArchiveOutline />,
+    label: 'Save Ecchi/NSFW to history',
+    description: 'Keep a local record of watched Ecchi/NSFW episodes.',
+  },
+  saveNSFWAnilist: {
+    icon: <IoSyncOutline />,
+    label: 'Sync Ecchi/NSFW to AniList',
+    description: 'Sync your progress for Ecchi/NSFW content to AniList.',
+  },
+  blurHentai: {
+    icon: <IoEyeOffOutline />,
+    label: 'Blur Hentai images',
+    description: 'Blur thumbnails and cover photos of Hentai content for safety.',
+  },
+  saveHentaiHistory: {
+    icon: <IoArchiveOutline />,
+    label: 'Save Hentai to history',
+    description: 'Keep a local record of watched Hentai episodes in your history.',
+  },
+  saveHentaiAnilist: {
+    icon: <IoSyncOutline />,
+    label: 'Sync Hentai to AniList',
+    description: 'Sync your progress for Hentai content to your AniList account.',
   },
 };
 
@@ -746,6 +794,12 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
     restoreDefaultPreferences: '',
     clearContinueWatching: '',
     hideSpoilers: settings.hideSpoilers ? 'Enabled' : 'Disabled',
+    blurNSFW: settings.blurNSFW ? 'Enabled' : 'Disabled',
+    saveNSFWHistory: settings.saveNSFWHistory ? 'Enabled' : 'Disabled',
+    saveNSFWAnilist: settings.saveNSFWAnilist ? 'Enabled' : 'Disabled',
+    blurHentai: settings.blurHentai ? 'Enabled' : 'Disabled',
+    saveHentaiHistory: settings.saveHentaiHistory ? 'Enabled' : 'Disabled',
+    saveHentaiAnilist: settings.saveHentaiAnilist ? 'Enabled' : 'Disabled',
   });
 
   // Sync syncThreshold changes to settings context
@@ -781,17 +835,27 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       autoNext: settings.autoNext ? 'Enabled' : 'Disabled',
       aniListSync: settings.aniListSync ? 'Enabled' : 'Disabled',
       hideSpoilers: settings.hideSpoilers ? 'Enabled' : 'Disabled',
+      blurNSFW: settings.blurNSFW ? 'Enabled' : 'Disabled',
+      saveNSFWHistory: settings.saveNSFWHistory ? 'Enabled' : 'Disabled',
+      saveNSFWAnilist: settings.saveNSFWAnilist ? 'Enabled' : 'Disabled',
+      blurHentai: settings.blurHentai ? 'Enabled' : 'Disabled',
+      saveHentaiHistory: settings.saveHentaiHistory ? 'Enabled' : 'Disabled',
+      saveHentaiAnilist: settings.saveHentaiAnilist ? 'Enabled' : 'Disabled',
     }));
   }, [settings]);
 
-  // Disable aniListSync if user logs out
+  // Disable aniListSync and saveHentaiAnilist if user logs out
   useEffect(() => {
-    if (!isLoggedIn && settings.aniListSync) {
-      setSettings({ aniListSync: false });
-      setPreferences((prev) => ({
-        ...prev,
-        aniListSync: 'Disabled',
-      }));
+    if (!isLoggedIn) {
+      if (settings.aniListSync || settings.saveHentaiAnilist || settings.saveNSFWAnilist) {
+        setSettings({ aniListSync: false, saveHentaiAnilist: false, saveNSFWAnilist: false });
+        setPreferences((prev) => ({
+          ...prev,
+          aniListSync: 'Disabled',
+          saveHentaiAnilist: 'Disabled',
+          saveNSFWAnilist: 'Disabled',
+        }));
+      }
     }
   }, [isLoggedIn]);
 
@@ -842,6 +906,16 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
         { title: 'Danger zone', danger: true, keys: ['clearContinueWatching'] },
       ],
     },
+    {
+      id: 'nsfw',
+      icon: <IoWarningOutline />,
+      label: 'NSFW Options',
+      color: '#f43f5e',
+      groups: [
+        { title: 'General NSFW (Ecchi)', keys: ['blurNSFW', 'saveNSFWHistory', 'saveNSFWAnilist'] },
+        { title: 'Hentai', keys: ['blurHentai', 'saveHentaiHistory', 'saveHentaiAnilist'] },
+      ],
+    },
   ];
 
   /* Notify parent of active section label (for breadcrumb) */
@@ -886,6 +960,30 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       case 'autoNext':           setSettings({ autoNext: value === 'Enabled' }); break;
       case 'aniListSync':        setSettings({ aniListSync: value === 'Enabled' }); break;
       case 'hideSpoilers':       setSettings({ hideSpoilers: value === 'Enabled' }); break;
+      case 'blurNSFW':           
+        setSettings({ blurNSFW: value === 'Enabled' });
+        if (value === 'Enabled') {
+          setSettings({ blurHentai: true });
+          setPreferences(prev => ({ ...prev, blurHentai: 'Enabled' }));
+        }
+        break;
+      case 'saveNSFWHistory':    
+        setSettings({ saveNSFWHistory: value === 'Enabled' });
+        if (value === 'Disabled') {
+          setSettings({ saveHentaiHistory: false });
+          setPreferences(prev => ({ ...prev, saveHentaiHistory: 'Disabled' }));
+        }
+        break;
+      case 'saveNSFWAnilist':    
+        setSettings({ saveNSFWAnilist: value === 'Enabled' });
+        if (value === 'Disabled') {
+          setSettings({ saveHentaiAnilist: false });
+          setPreferences(prev => ({ ...prev, saveHentaiAnilist: 'Disabled' }));
+        }
+        break;
+      case 'blurHentai':         setSettings({ blurHentai: value === 'Enabled' }); break;
+      case 'saveHentaiHistory':  setSettings({ saveHentaiHistory: value === 'Enabled' }); break;
+      case 'saveHentaiAnilist':  setSettings({ saveHentaiAnilist: value === 'Enabled' }); break;
       case 'defaultLanguage':    setSettings({ defaultLanguage: value.toLowerCase() }); break;
       case 'defaultServers':     setSettings({ defaultServers: value.toLowerCase() }); break;
       case 'titleLanguage':      setSettings({ titleLanguage: value }); break;
@@ -923,6 +1021,12 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       restoreDefaultPreferences: '',
       clearContinueWatching: '',
       hideSpoilers: DEFAULT_SETTINGS.hideSpoilers ? 'Enabled' : 'Disabled',
+      blurNSFW: DEFAULT_SETTINGS.blurNSFW ? 'Enabled' : 'Disabled',
+      saveNSFWHistory: DEFAULT_SETTINGS.saveNSFWHistory ? 'Enabled' : 'Disabled',
+      saveNSFWAnilist: DEFAULT_SETTINGS.saveNSFWAnilist ? 'Enabled' : 'Disabled',
+      blurHentai: DEFAULT_SETTINGS.blurHentai ? 'Enabled' : 'Disabled',
+      saveHentaiHistory: DEFAULT_SETTINGS.saveHentaiHistory ? 'Enabled' : 'Disabled',
+      saveHentaiAnilist: DEFAULT_SETTINGS.saveHentaiAnilist ? 'Enabled' : 'Disabled',
     });
   };
 
@@ -948,7 +1052,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
 
     if (isBoolKey(key)) {
       const on = preferences[key] === 'Enabled';
-      const isDisabled = key === 'aniListSync' && !isLoggedIn;
+      const isDisabled = (key === 'aniListSync' || key === 'saveHentaiAnilist' || key === 'saveNSFWAnilist') && !isLoggedIn;
       
       return (
         <ToggleTrack

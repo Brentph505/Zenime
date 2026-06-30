@@ -6,11 +6,65 @@
  * and UI helpers merge them here.
  */
 
+import { safeLocalStorageSet } from './safeStorage';
+
 export const WATCH_HISTORY_CHANGED_EVENT = 'watch-history-changed';
 
 export const WATCHED_EPISODES_KEY = 'watched-episodes';
 export const WATCHED_EPISODES_CACHE_KEY = 'watched-episodes-cache';
 export const LAST_ANIME_VISITED_KEY = 'last-anime-visited';
+
+export interface LastAnimeVisitedEntry {
+  timestamp: number;
+  titleEnglish?: string;
+  titleRomaji?: string;
+  status?: string;
+  anilistProgress?: number;
+  lastEpisodeNumber?: number;
+  totalEpisodes?: number | null;
+  coverImage?: string | null;
+  genres?: string[];
+  isAdult?: boolean;
+}
+
+export type LastAnimeVisitedMap = Record<string, LastAnimeVisitedEntry>;
+
+export function saveLastAnimeVisited(
+  animeId: string,
+  entry: Partial<LastAnimeVisitedEntry>,
+  cap = 100,
+): void {
+  const data = getLastAnimeVisitedMap();
+  const existing = data[animeId] || {};
+
+  data[animeId] = {
+    ...existing,
+    ...entry,
+    timestamp: entry.timestamp ?? Date.now(),
+    coverImage:
+      entry.coverImage === undefined ? existing.coverImage : entry.coverImage,
+    genres: entry.genres === undefined ? existing.genres : entry.genres,
+    isAdult: entry.isAdult === undefined ? existing.isAdult : entry.isAdult,
+  };
+
+  const keys = Object.keys(data);
+  if (keys.length > cap) {
+    keys
+      .sort((a, b) => (data[a].timestamp ?? 0) - (data[b].timestamp ?? 0))
+      .slice(0, keys.length - cap)
+      .forEach((key) => delete data[key]);
+  }
+
+  safeLocalStorageSet(LAST_ANIME_VISITED_KEY, JSON.stringify(data));
+}
+
+export function removeLastAnimeVisited(animeId: string): void {
+  const data = getLastAnimeVisitedMap();
+  if (!(animeId in data)) return;
+
+  delete data[animeId];
+  safeLocalStorageSet(LAST_ANIME_VISITED_KEY, JSON.stringify(data));
+}
 
 export function dispatchWatchHistoryChanged(): void {
   try {
@@ -146,8 +200,8 @@ export async function getAllWatchedAnimeMap(): Promise<Record<string, unknown>> 
   return merged;
 }
 
-export function getLastAnimeVisitedMap(): Record<string, Record<string, unknown>> {
-  return parseRecord(LAST_ANIME_VISITED_KEY) as Record<string, Record<string, unknown>>;
+export function getLastAnimeVisitedMap(): LastAnimeVisitedMap {
+  return parseRecord(LAST_ANIME_VISITED_KEY) as LastAnimeVisitedMap;
 }
 
 /** Minimal episode shape used across watch history + AniList sync. */

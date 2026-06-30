@@ -93,8 +93,8 @@ const ImageWrapper = styled.div`
     width: 100%;
     height: 100%;
     border-radius: var(--global-border-radius);
-    transition: 0.3s ease-in-out;
     transition: filter 0.3s ease-in-out;
+    filter: none;
   }
 
   &:hover img {
@@ -108,6 +108,22 @@ const ImageWrapper = styled.div`
   &:hover ${InfoIcon} {
     opacity: 1;
   }
+`;
+
+const AdultBadge = styled.span`
+  position: absolute;
+  top: 0.35rem;
+  left: 0.35rem;
+  z-index: 2;
+  padding: 0.14rem 0.4rem;
+  background: rgba(220, 38, 38, 0.95);
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  white-space: nowrap;
 `;
 
 const PosterLink = styled(Link)`
@@ -234,6 +250,18 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean; showEditB
 
   const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(anime.title);
 
+  const isHentaiAnime = Boolean(
+    anime.genres?.some((genre) => genre?.toLowerCase() === 'hentai'),
+  );
+  const isAdultAnime = Boolean(
+    anime.isAdult ||
+      anime.genres?.some(
+        (genre) =>
+          genre?.toLowerCase() === 'hentai' ||
+          genre?.toLowerCase() === 'ecchi',
+      ),
+  );
+
   const truncateTitle = useMemo(
     () => (title: string, maxLength: number) =>
       title.length > maxLength ? `${title.slice(0, maxLength)}...` : title,
@@ -269,6 +297,11 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean; showEditB
                     anime.title.english || anime.title.romaji + ' Cover Image'
                   }
                 />
+                {isAdultAnime && (
+                  <AdultBadge>
+                    {isHentaiAnime ? '+18 Hentai' : '+18 NSFW'}
+                  </AdultBadge>
+                )}
                 {MANGA_FORMAT_TYPES.has(anime.type) ? (
                   <InfoIcon
                     title={

@@ -7,6 +7,7 @@ import 'swiper/swiper-bundle.css';
 import { Episode } from '../../index';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
+import { useSettings } from '../Profile/SettingsProvider';
 
 const LOCAL_STORAGE_KEYS = {
   WATCHED_EPISODES: 'watched-episodes',
@@ -22,6 +23,8 @@ interface LastVisitedData {
     timestamp?: number;
     titleEnglish?: string;
     titleRomaji?: string;
+    genres?: string[];
+    isAdult?: boolean;
   };
 }
 
@@ -50,7 +53,33 @@ const PlayIcon = styled.div`
   justify-content: center;
 `;
 
-const AnimeEpisodeCard = styled(Link)`
+const AdultBadge = styled.span`
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 2;
+  padding: 0.18rem 0.45rem;
+  background: rgba(220, 38, 38, 0.95);
+  color: #ffffff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border-radius: 999px;
+  white-space: nowrap;
+`;
+
+const EpisodeCardImage = styled.img<{ $blurred?: boolean }>`
+  animation: slideDown 0.5s ease-in-out;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  transition: filter 0.2s ease-in-out;
+  filter: ${({ $blurred }) =>
+    $blurred ? 'blur(5px) brightness(0.75)' : 'none'};
+`;
+
+const AnimeEpisodeCard = styled(Link)<{ $blurred?: boolean }>`
   position: relative;
   display: flex;
   flex-direction: column;
@@ -69,8 +98,9 @@ const AnimeEpisodeCard = styled(Link)`
       opacity: 1;
     }
 
-    img {
-      filter: brightness(0.5); // Optional: Slightly darken the image itself
+    ${EpisodeCardImage} {
+      filter: ${({ $blurred }) =>
+        $blurred ? 'blur(5px) brightness(0.55)' : 'brightness(0.5)'};
     }
   }
 
@@ -82,13 +112,6 @@ const AnimeEpisodeCard = styled(Link)`
     }
   }
 
-  img {
-    animation: slideDown 0.5s ease-in-out;
-    height: auto;
-    aspect-ratio: 16 / 9;
-    object-fit: cover;
-    transition: filter 0.2s ease-in-out; // Smooth transition for the filter
-  }
   .episode-info {
     position: absolute;
     bottom: 0;
@@ -186,15 +209,36 @@ const calculateSlidesPerView = (windowWidth: number): number => {
 
 export const EpisodeCard: React.FC = () => {
   const navigate = useNavigate();
+  const { settings } = useSettings();
   const [watchedEpisodesData, setWatchedEpisodesData] = useState(
     localStorage.getItem('watched-episodes'),
   );
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
 
-  const lastVisitedData = useMemo<LastVisitedData>(() => {
+  const [lastVisitedData, setLastVisitedData] = useState<LastVisitedData>(() => {
     const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
     return data ? JSON.parse(data) : {};
+  });
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (
+        event.key === LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED ||
+        event.key === null
+      ) {
+        const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
+        setLastVisitedData(data ? JSON.parse(data) : {});
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
   }, []);
+
+  useEffect(() => {
+    const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
+    setLastVisitedData(data ? JSON.parse(data) : {});
+  }, [watchedEpisodesData]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -231,11 +275,15 @@ export const EpisodeCard: React.FC = () => {
         return lastVisitedB - lastVisitedA;
       });
 
+      // Preserve existing history entries even if the current NSFW/Hentai
+      // preference is disabled; those settings only affect future saves.
+      const filteredAnimeIds = orderedAnimeIds;
+
       // Deduplicate by episode ID to prevent duplicate key warnings
       const seenEpisodeIds = new Set<string>();
       const uniqueEpisodes: Array<{ animeId: string; episode: Episode }> = [];
 
-      for (const animeId of orderedAnimeIds) {
+      for (const animeId of filteredAnimeIds) {
         const episode = lastEpisodes[animeId];
         if (episode && !seenEpisodeIds.has(episode.id)) {
           seenEpisodeIds.add(episode.id);
@@ -272,6 +320,17 @@ export const EpisodeCard: React.FC = () => {
           setWatchedEpisodesData(newWatchedEpisodesData); // Trigger re-render
         };
 
+        const genres =
+          lastVisitedData[animeId]?.genres?.map((genre) => genre?.toLowerCase()) ?? [];
+        const isHentai = genres.some((genre) => genre === 'hentai');
+        const isNsfw =
+          (lastVisitedData[animeId]?.isAdult ?? false) ||
+          genres.some((genre) => genre === 'ecchi');
+        const shouldBlur = Boolean(
+          (isHentai && settings.blurHentai) ||
+            (!isHentai && isNsfw && settings.blurNSFW),
+        );
+
         return (
           <StyledSwiperSlide key={episode.id}>
             <AnimeEpisodeCard
@@ -279,7 +338,14 @@ export const EpisodeCard: React.FC = () => {
               style={{ textDecoration: 'none' }}
               title={`Continue Watching ${displayTitle}`}
             >
-              <img src={episode.image} alt={`Cover for ${animeTitle}`} />
+              <EpisodeCardImage
+                src={episode.image}
+                alt={`Cover for ${animeTitle}`}
+                $blurred={shouldBlur}
+              />
+              {(isHentai || isNsfw) && (
+                <AdultBadge>{isHentai ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
+              )}
               <PlayIcon aria-label='Play Episode'>
                 <FaPlay />
               </PlayIcon>
@@ -307,7 +373,7 @@ export const EpisodeCard: React.FC = () => {
       console.error('Failed to parse watched episodes data:', error);
       return [];
     }
-  }, [watchedEpisodesData, lastVisitedData]);
+  }, [watchedEpisodesData, lastVisitedData, settings.blurHentai, settings.blurNSFW]);
 
   const swiperSettings = useMemo(
     () => ({

@@ -117,6 +117,10 @@ type PlayerProps = {
   hlsDirectUrl?: string;
   /** Subtitles to inject when using hlsDirectUrl (animekai HLS playback) */
   externalSubtitles?: Array<{ url: string; lang: string }>;
+  /** Genres of the anime, used to determine Hentai/NSFW for sync guards */
+  animeGenres?: string[];
+  /** Whether the anime is marked as adult content by AniList */
+  animeIsAdult?: boolean;
 };
 
 type StreamingSource = {
@@ -174,6 +178,8 @@ export function Player({
   embeddedServerKeys,
   hlsDirectUrl,
   externalSubtitles,
+  animeGenres = [],
+  animeIsAdult = false,
 }: PlayerProps) {
   const { isLoggedIn } = useAuth();
   const player = useRef<MediaPlayerInstance>(null);
@@ -942,6 +948,14 @@ export function Player({
       typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
     if (!isLoggedIn || !accessToken || !settings.aniListSync) return;
+
+    // ── NSFW / Hentai AniList sync guard ──────────────────────────────────
+    const isHentaiContent = animeGenres.some((g) => g.toLowerCase() === 'hentai');
+    const isNsfwContent = animeIsAdult || animeGenres.some((g) => g.toLowerCase() === 'ecchi');
+
+    if (isHentaiContent && !settings.saveHentaiAnilist) return;
+    if (!isHentaiContent && isNsfwContent && !settings.saveNSFWAnilist) return;
+    // ────────────────────────────────────────────────────────────────────
 
     try {
       // The app's `animeId` (from the /watch/:animeId route, backed by the
