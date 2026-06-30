@@ -383,9 +383,10 @@ export const HomeCarousel: FC<HomeCarouselProps> = ({
       <StyledSwiperContainer
         spaceBetween={30}
         slidesPerView={1}
+        speed={800}
         loop={validData.length >= 3}
         autoplay={{
-          delay: 5000,
+          delay: 8000,
           disableOnInteraction: false,
         }}
         navigation={{
