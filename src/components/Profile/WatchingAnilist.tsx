@@ -15,7 +15,7 @@ const ANIME_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'REPEATING', label: 'Re-watching' },
   { value: 'PAUSED',    label: 'Paused' },
-  { value: 'DROPPED',    label: 'Dropped' },
+  { value: 'DROPPED',   label: 'Dropped' },
 ];
 
 const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
@@ -24,7 +24,7 @@ const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'REPEATING', label: 'Re-reading' },
   { value: 'PAUSED',    label: 'Paused' },
-  { value: 'DROPPED',    label: 'Dropped' },
+  { value: 'DROPPED',   label: 'Dropped' },
 ];
 
 const TAB_OPTIONS: { value: MediaTab; label: string }[] = [
@@ -41,6 +41,9 @@ const ANILIST_STATUS_LABELS: Record<string, string> = {
 };
 
 const Container = styled.div`
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Prevents extending past parent */
   margin-top: 0.75rem;
   margin-bottom: 1rem;
 
@@ -57,6 +60,9 @@ const HeaderRow = styled.div`
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Key fix for flex wrapping cutoffs */
 
   @media (max-width: 600px) {
     flex-direction: column;
@@ -70,6 +76,7 @@ const HeadingGroup = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
+  overflow: hidden;
 
   @media (max-width: 600px) {
     flex-direction: row;
@@ -83,6 +90,9 @@ const SectionTitle = styled.h3`
   margin: 0;
   font-size: 1rem;
   color: var(--global-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   @media (max-width: 600px) {
     font-size: 0.9rem;
@@ -95,6 +105,10 @@ const SectionSubtext = styled.p`
   color: var(--global-text-muted);
   flex: 1;
   text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0; /* Allows it to shrink */
 
   @media (min-width: 601px) {
     text-align: left;
@@ -110,6 +124,9 @@ const Toolbar = styled.div`
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Key fix */
 
   @media (max-width: 600px) {
     flex-direction: column;
@@ -126,9 +143,11 @@ const TabGroup = styled.div`
   border: 1px solid var(--global-border);
   flex-shrink: 0;
   align-self: flex-start;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden; /* Key fix */
 
   @media (max-width: 600px) {
-    width: 100%;
     justify-content: center;
     align-self: stretch;
   }
@@ -145,10 +164,11 @@ const TabButton = styled.button<{ $active: boolean }>`
   background: ${({ $active }) => ($active ? 'var(--primary-accent)' : 'transparent')};
   min-width: 5.5rem;
   transition: all 0.2s ease;
+  box-sizing: border-box; /* Key fix */
 
   @media (max-width: 600px) {
     flex: 1;
-    min-width: 0;
+    min-width: 0; /* Key fix: allows button to shrink */
     padding: 0.4rem 0.6rem;
   }
 `;
@@ -157,15 +177,15 @@ const SearchAndStatusRow = styled.div`
   display: flex;
   gap: 0.5rem;
   width: 100%;
-
-  @media (max-width: 600px) {
-    width: 100%;
-  }
+  box-sizing: border-box;
+  min-width: 0; /* Key fix: allows flex row to shrink */
+  overflow: hidden; /* Key fix */
 `;
 
 const SearchInput = styled.input`
   flex: 1;
-  min-width: 0;
+  min-width: 0; /* Key fix: allows input to shrink */
+  max-width: 100%;
   padding: 0.6rem 0.75rem;
   border-radius: var(--global-border-radius);
   border: 1px solid var(--global-border);
@@ -173,6 +193,7 @@ const SearchInput = styled.input`
   color: var(--global-text);
   outline: none;
   font-size: 0.85rem;
+  box-sizing: border-box; /* Key fix: padding included in width */
 
   @media (min-width: 601px) {
     width: 240px;
@@ -202,20 +223,21 @@ const StatusDropdown = styled.select`
   border: 1px solid var(--global-border);
   cursor: pointer;
   font-size: 0.85rem;
+  box-sizing: border-box; /* Key fix */
+  flex-shrink: 0; /* Forces the input to shrink, not the dropdown */
 
   @media (min-width: 601px) {
     width: 160px;
   }
 
   @media (max-width: 600px) {
-    width: 140px;
-    flex-shrink: 0;
-    padding: 0.5rem 0.65rem;
+    width: 130px;
+    padding: 0.5rem 0.5rem;
     font-size: 0.8rem;
   }
 
   @media (max-width: 350px) {
-    width: 120px;
+    width: 110px; /* Smaller on very tiny screens */
     font-size: 0.75rem;
   }
 `;
@@ -238,7 +260,7 @@ const Message = styled.div`
 `;
 
 const NotLoggedIn = styled.div`
-  margin: 5rem;
+  margin: 5rem 1rem;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -246,17 +268,14 @@ const NotLoggedIn = styled.div`
   font-size: 1.5rem;
   font-weight: bold;
   max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 
   @media (max-width: 600px) {
     margin: 2rem 0.5rem;
     padding: 1.5rem 1rem;
     font-size: 0.95rem;
     font-weight: 600;
-  }
-
-  @media (max-width: 400px) {
-    margin: 1.5rem 0.25rem;
-    font-size: 0.85rem;
   }
 `;
 
@@ -373,7 +392,7 @@ export const WatchingAnilist = () => {
         <HeadingGroup>
           <SectionTitle>AniList Library</SectionTitle>
           <SectionSubtext>
-            Search your saved {activeTab === 'anime' ? 'anime' : 'manga'} and switch list status.
+            Search your saved {activeTab === 'anime' ? 'anime' : 'manga'} and switch status.
           </SectionSubtext>
         </HeadingGroup>
 
@@ -420,7 +439,7 @@ export const WatchingAnilist = () => {
           onEdit={(anime) => setEditingAnime(anime)}
         />
       ) : (
-        <Message>No {activeTab === 'anime' === 'anime' ? 'anime' : 'manga'} entries found.</Message>
+        <Message>No {activeTab === 'anime' ? 'anime' : 'manga'} entries found.</Message>
       )}
 
       {editingAnime && (
