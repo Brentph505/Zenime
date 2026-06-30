@@ -64,35 +64,16 @@ const SectionSubtext = styled.p`
   color: var(--global-text-muted);
 `;
 
-/* Single toolbar row: filters on the left, tabs on the right (desktop).
-   Stacks vertically on mobile, with tabs shown first. */
+/* Desktop: search, dropdown and tabs all on one line — tabs pushed to the
+   far right via auto margin.
+   Mobile: search takes its own full-width row; dropdown (left) and tabs
+   (right) share the row below it. */
 const Toolbar = styled.div`
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 1rem;
-
-  @media (max-width: 600px) {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
-`;
-
-const FilterGroup = styled.div`
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  flex: 1;
-  min-width: 0;
-
-  @media (max-width: 600px) {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-  }
 `;
 
 const TabGroup = styled.div`
@@ -104,8 +85,12 @@ const TabGroup = styled.div`
   border: 1px solid var(--global-border);
   flex-shrink: 0;
 
+  @media (min-width: 601px) {
+    margin-left: auto;
+  }
+
   @media (max-width: 600px) {
-    width: 100%;
+    flex: 1 1 0;
     justify-content: center;
   }
 `;
@@ -123,7 +108,6 @@ const TabButton = styled.button<{ $active: boolean }>`
 `;
 
 const SearchInput = styled.input`
-  width: min(100%, 100%);
   padding: 0.65rem 0.8rem;
   border-radius: var(--global-border-radius);
   border: 1px solid var(--global-border);
@@ -134,10 +118,13 @@ const SearchInput = styled.input`
   @media (min-width: 601px) {
     width: 240px;
   }
+
+  @media (max-width: 600px) {
+    flex: 1 1 100%;
+  }
 `;
 
 const StatusDropdown = styled.select`
-  width: min(100%, 100%);
   padding: 0.65rem 0.8rem;
   border-radius: var(--global-border-radius);
   background-color: var(--global-secondary-bg);
@@ -147,6 +134,10 @@ const StatusDropdown = styled.select`
 
   @media (min-width: 601px) {
     width: 160px;
+  }
+
+  @media (max-width: 600px) {
+    flex: 1 1 0;
   }
 `;
 
@@ -294,21 +285,19 @@ export const WatchingAnilist = () => {
       </HeadingGroup>
 
       <Toolbar>
-        <FilterGroup>
-          <SearchInput
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder={`Search ${activeTab === 'anime' ? 'anime' : 'manga'} titles`}
-          />
+        <SearchInput
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder={`Search ${activeTab === 'anime' ? 'anime' : 'manga'} titles`}
+        />
 
-          <StatusDropdown value={selectedStatus} onChange={handleStatusChange}>
-            {(activeTab === 'anime' ? ANIME_STATUS_OPTIONS : MANGA_STATUS_OPTIONS).map(({ value, label }) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </StatusDropdown>
-        </FilterGroup>
+        <StatusDropdown value={selectedStatus} onChange={handleStatusChange}>
+          {(activeTab === 'anime' ? ANIME_STATUS_OPTIONS : MANGA_STATUS_OPTIONS).map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </StatusDropdown>
 
         <TabGroup>
           {TAB_OPTIONS.map(({ value, label }) => (
