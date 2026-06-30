@@ -9,11 +9,20 @@ import type { Anime } from '../../index';
 
 type MediaTab = 'anime' | 'manga';
 
-const STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
-  { value: 'CURRENT',   label: 'Watching / Reading' },
-  { value: 'PLANNING',  label: 'Plan to Watch / Read' },
+const ANIME_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+  { value: 'CURRENT',   label: 'Watching' },
+  { value: 'PLANNING',  label: 'Plan to Watch' },
   { value: 'COMPLETED', label: 'Completed' },
-  { value: 'REPEATING', label: 'Re-watching / Re-reading' },
+  { value: 'REPEATING', label: 'Re-watching' },
+  { value: 'PAUSED',    label: 'Paused' },
+  { value: 'DROPPED',   label: 'Dropped' },
+];
+
+const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+  { value: 'CURRENT',   label: 'Reading' },
+  { value: 'PLANNING',  label: 'Plan to Read' },
+  { value: 'COMPLETED', label: 'Completed' },
+  { value: 'REPEATING', label: 'Re-reading' },
   { value: 'PAUSED',    label: 'Paused' },
   { value: 'DROPPED',   label: 'Dropped' },
 ];
@@ -273,7 +282,7 @@ export const WatchingAnilist = () => {
           />
 
           <StatusDropdown value={selectedStatus} onChange={handleStatusChange}>
-            {STATUS_OPTIONS.map(({ value, label }) => (
+            {(activeTab === 'anime' ? ANIME_STATUS_OPTIONS : MANGA_STATUS_OPTIONS).map(({ value, label }) => (
               <option key={value} value={value}>
                 {label}
               </option>
