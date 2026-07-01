@@ -62,6 +62,42 @@ function monthToSeason(month: number): AniListSeason {
   return 'FALL';
 }
 
+function getPreviousSeasonInfo(
+  season: AniListSeason,
+  year: number,
+): { season: AniListSeason; year: number } {
+  switch (season) {
+    case 'WINTER':
+      return { season: 'FALL', year: year - 1 };
+    case 'SPRING':
+      return { season: 'WINTER', year };
+    case 'SUMMER':
+      return { season: 'SPRING', year };
+    case 'FALL':
+    default:
+      return { season: 'SUMMER', year };
+  }
+}
+
+export function getSeasonFallbackCandidates(
+  season: AniListSeason,
+  year: number,
+  limit: number = 2,
+): Array<{ season: AniListSeason; year: number }> {
+  const candidates: Array<{ season: AniListSeason; year: number }> = [];
+  let currentSeason = season;
+  let currentYear = year;
+
+  for (let index = 0; index < limit; index++) {
+    candidates.push({ season: currentSeason, year: currentYear });
+    const previous = getPreviousSeasonInfo(currentSeason, currentYear);
+    currentSeason = previous.season;
+    currentYear = previous.year;
+  }
+
+  return candidates;
+}
+
 /**
  * Returns the current AniList season and year based on today's date.
  * Called fresh every time so it always reflects the real current date.
@@ -806,21 +842,55 @@ async function fetchList(
 
   switch (type) {
     case 'TopAiring': {
-      // 🧠 Dynamically resolved at call-time — always the correct season/year
       const { season, year: currentYear } = getCurrentSeasonInfo();
       console.log(`🧠 TopAiring → season: ${season}, year: ${currentYear}`);
 
-      const params = new URLSearchParams({
-        type: 'ANIME',
-        status: 'RELEASING',
-        sort: '["POPULARITY_DESC"]',
-        season,
-        year: currentYear.toString(),
-        page: page.toString(),
-        perPage: perPage.toString(),
-      });
-      url = `${BASE_URL}meta/anilist/advanced-search?${params.toString()}`;
-      break;
+      const candidates = getSeasonFallbackCandidates(season, currentYear, 2);
+
+      for (const candidate of candidates) {
+        const params = new URLSearchParams({
+          type: 'ANIME',
+          status: 'RELEASING',
+          sort: '["POPULARITY_DESC"]',
+          season: candidate.season,
+          year: candidate.year.toString(),
+          page: page.toString(),
+          perPage: perPage.toString(),
+        });
+
+        const candidateUrl = `${BASE_URL}meta/anilist/advanced-search?${params.toString()}`;
+        const candidateCacheKey = generateCacheKey(
+          'TopAiringAnime',
+          page.toString(),
+          perPage.toString(),
+          candidate.season,
+          candidate.year.toString(),
+        );
+
+        const result = await fetchFromProxy(
+          candidateUrl,
+          'TopAiring',
+          candidateCacheKey,
+        );
+
+        if (Array.isArray(result?.results) && result.results.length > 0) {
+          if (
+            candidate.season !== season ||
+            candidate.year !== currentYear
+          ) {
+            console.log(
+              `🧠 TopAiring fallback used season: ${candidate.season}, year: ${candidate.year}`,
+            );
+          }
+          return result;
+        }
+
+        console.log(
+          `🧠 TopAiring empty for ${candidate.season} ${candidate.year}; trying previous season.`,
+        );
+      }
+
+      return { results: [], hasNextPage: false };
     }
 
     case 'Upcoming': {
