@@ -11,6 +11,31 @@ const SidebarStyled = styled.div`
   margin: 0;
   padding: 0;
   max-width: 24rem;
+
+  /* For mid-size screens (1000–1365) show a compact list with internal
+     scrolling capped to 5 items. On >=1366 (desktop) we disable the
+     internal scroller because we'll render the full set (10 or 6).
+  */
+  @media (min-width: 1000px) and (max-width: 1365px) {
+    /* mid-size: cap to 5 visible, allow internal scroll */
+    max-height: calc((6.5rem + 0.5rem) * 5);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  @media (min-width: 1366px) and (max-width: 1599px) {
+    /* desktop: show all 10 items, no internal scroller */
+    max-height: none;
+    overflow: visible;
+  }
+
+  @media (min-width: 1600px) {
+    /* large desktop: show 6 visible items, enable internal scroller for remaining */
+    max-height: calc((6.5rem + 0.5rem) * 6);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   @media (max-width: 1000px) {
     max-width: unset;
   }
@@ -199,7 +224,11 @@ export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const displayedAnime = windowWidth <= 500 ? animeData.slice(0, 5) : animeData;
+  // Determine how many items to render. We render up to 10 items for
+  // desktop sizes so CSS can control visibility/scrolling. On small
+  // screens render only 5 to keep the UI compact.
+  const desiredRenderCount = windowWidth <= 500 ? 5 : Math.min(10, animeData.length);
+  const displayedAnime = animeData.slice(0, desiredRenderCount);
 
   return (
     <SidebarStyled>
