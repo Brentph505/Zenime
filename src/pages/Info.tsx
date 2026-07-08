@@ -277,6 +277,18 @@ const AdultBadge = styled.div`
   letter-spacing: 0.04em;
   text-transform: uppercase;
   border-bottom-right-radius: 6px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+  box-sizing: border-box;
+
+  @media (max-width: 860px) {
+    font-size: 0.6rem;
+    padding: 0.25rem 0.45rem;
+  }
 `;
 
 const PosterActions = styled.div`display: flex; flex-direction: column; gap: 0.5rem;`;
