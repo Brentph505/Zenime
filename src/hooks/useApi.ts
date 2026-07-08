@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { cacheManager } from '../lib/caching';
+import { proxyDirectMediaUrls } from '../lib/streamUrlProxy';
 
 // Utility function to ensure URL ends with a slash
 function ensureUrlEndsWithSlash(url: string): string {
@@ -1586,7 +1587,7 @@ export async function fetchAnimeStreamingLinksProxied(
 ) {
   const finalProvider = provider || 'kickassanime';
   const requestTimeout = finalProvider === 'anikoto' ? 30000 : undefined;
-  const data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
+  let data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
 
   const proxyUrl = finalProvider === 'reanime'
     ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
@@ -1642,9 +1643,16 @@ export async function fetchAnimeStreamingLinksProxied(
     );
   }
 
-  // Proxy KAA subtitle URLs so the browser can fetch them without CORS errors.
-  // Only apply to kickassanime — other providers either don't return subtitles
-  // or serve them from CORS-accessible origins.
+  if (finalProvider === 'kickassanime' || finalProvider === 'reanime') {
+    data = proxyDirectMediaUrls(
+      data,
+      finalProvider,
+      serverUrl,
+      (sourceUrl: string, referer: string) =>
+        buildM3U8ProxyUrl(sourceUrl, referer, proxyUrl, true),
+    );
+  }
+
   if (finalProvider === 'kickassanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
     console.log('[fetchAnimeStreamingLinksProxied] Proxying KAA subtitles:', data.subtitles.length);
     data.subtitles = proxyKaaSubtitles(data.subtitles);

@@ -4,12 +4,23 @@
  * Supports pipeline batching and exponential-backoff retries.
  */
 
+import { selectRedisKeysToPrune } from './redisPrune';
+
 export interface RedisClientConfig {
   url?: string;
   token?: string;
   maxRetries?: number;
   retryDelayMs?: number;
   timeoutMs?: number;
+}
+
+interface RedisCacheRecord {
+  key: string;
+  value?: string;
+  createdAt?: number;
+  expiresAt?: number | null;
+  strategy?: string;
+  version?: number;
 }
 
 interface UpstashResponse<T> {
@@ -24,6 +35,7 @@ class RedisClientWrapper {
   private readonly retryDelayMs: number;
   private readonly timeoutMs: number;
   private _available: boolean = false;
+  private lastError: string | null = null;
 
   constructor(config?: RedisClientConfig) {
     this.baseUrl = config?.url ?? (typeof import.meta !== 'undefined' ? import.meta.env?.VITE_REDIS_URL : null) ?? null;
@@ -82,14 +94,14 @@ class RedisClientWrapper {
       return json.result ?? null;
     } catch (err: any) {
       clearTimeout(timeout);
+      this.lastError = err?.message ?? 'Unknown Redis error';
       const isRetryable = err?.name !== 'AbortError' && attempt < this.maxRetries;
       if (isRetryable) {
         await this.sleep(this.retryDelayMs * 2 ** attempt);
         return this.request<T>(method, path, body, attempt + 1);
       }
-      // Mark Redis as unavailable on repeated failures so we stop hammering it
       if (attempt >= this.maxRetries) {
-        console.error(`❌ [Redis] Disabling after ${attempt + 1} failed attempts`);
+        console.error(`❌ [Redis] Disabling after ${attempt + 1} failed attempts: ${this.lastError}`);
         this._available = false;
       }
       return null;
@@ -110,7 +122,6 @@ class RedisClientWrapper {
   async set(key: string, value: string, exSeconds?: number): Promise<boolean> {
     let res: string | null;
     if (exSeconds && exSeconds > 0) {
-      // SETEX key seconds value
       res = await this.request<string>(
         'POST',
         `/setex/${enc(key)}/${exSeconds}`,
@@ -119,7 +130,18 @@ class RedisClientWrapper {
     } else {
       res = await this.request<string>('POST', `/set/${enc(key)}`, value);
     }
-    return res === 'OK';
+
+    if (res === 'OK') return true;
+
+    if (this.isStorageFullError(res)) {
+      await this.pruneForSpace();
+      const retried = exSeconds && exSeconds > 0
+        ? await this.request<string>('POST', `/setex/${enc(key)}/${exSeconds}`, value)
+        : await this.request<string>('POST', `/set/${enc(key)}`, value);
+      return retried === 'OK';
+    }
+
+    return false;
   }
 
   async del(key: string): Promise<boolean> {
@@ -197,6 +219,45 @@ class RedisClientWrapper {
     const cmds = keys.map((k): [string, string] => ['DEL', k]);
     const results = await this.pipeline(cmds);
     return results.filter((r) => (r as number) > 0).length;
+  }
+
+  private isStorageFullError(result: string | null): boolean {
+    if (!result) return this.lastError ? /full|memory|quota|overload/i.test(this.lastError) : false;
+    return /full|memory|quota|overload/i.test(result) || /full|memory|quota|overload/i.test(this.lastError ?? '');
+  }
+
+  private async pruneForSpace(): Promise<void> {
+    try {
+      const pattern = '*';
+      const keys = await this.keys(pattern);
+      const payloads = await Promise.all(
+        keys.map(async (key) => {
+          const raw = await this.get(key);
+          if (!raw) return null;
+          try {
+            const parsed = JSON.parse(raw) as RedisCacheRecord;
+            return {
+              key,
+              createdAt: parsed.createdAt ?? 0,
+              expiresAt: parsed.expiresAt ?? null,
+              strategy: parsed.strategy,
+              version: parsed.version,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+
+      const candidates = payloads.flatMap((entry) => (entry ? [entry] : []));
+      const toDelete = selectRedisKeysToPrune(candidates);
+      if (toDelete.length) {
+        await this.delMany(toDelete);
+        console.warn(`🧹 [Redis] pruned ${toDelete.length} entries to free space`);
+      }
+    } catch (err) {
+      console.warn('[Redis] pruneForSpace failed:', err);
+    }
   }
 
   /**
