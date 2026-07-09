@@ -47,23 +47,54 @@ const ServerTitle = styled.div`
   font-size: 0.95rem;
 `;
 
+// Row height is pinned via ServerButton's height so the grid can be sized
+// to exactly 2 rows: (2 * ROW_HEIGHT) + (1 * GRID_GAP) = max-height below.
+const SERVER_ROW_HEIGHT = '2.5rem';
+const SERVER_GRID_GAP = '0.5rem';
+const SERVER_GRID_MAX_HEIGHT = `calc(${SERVER_ROW_HEIGHT} * 2 + ${SERVER_GRID_GAP})`;
+
 const ServerGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
+  grid-auto-rows: ${SERVER_ROW_HEIGHT};
+  gap: ${SERVER_GRID_GAP};
   width: 100%;
-  
+
+  /* Cap desktop height at 2 rows (6 servers); scroll for anything beyond */
+  max-height: ${SERVER_GRID_MAX_HEIGHT};
+  overflow-y: auto;
+  padding-right: 0.25rem;
+
+  scrollbar-width: thin;
+  scrollbar-color: var(--primary-accent) transparent;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--primary-accent);
+    border-radius: 999px;
+  }
+
   @media (max-width: 768px) {
     grid-template-columns: repeat(3, 1fr);
   }
-  
+
   @media (max-width: 500px) {
     grid-template-columns: repeat(2, 1fr);
+    grid-auto-rows: auto;
+    max-height: none;
+    overflow-y: visible;
   }
 `;
 
 const ServerButton = styled.button`
-  padding: 0.6rem;
+  box-sizing: border-box;
+  height: ${SERVER_ROW_HEIGHT};
+  padding: 0.4rem 0.6rem;
   border: 2px solid transparent;
   font-weight: bold;
   border-radius: var(--global-border-radius);
@@ -78,16 +109,24 @@ const ServerButton = styled.button`
   font-size: 0.85rem;
   white-space: normal;
   word-break: break-word;
-  
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+
+  @media (max-width: 500px) {
+    height: auto;
+  }
+
   &:hover {
     background-color: var(--primary-accent);
     transform: scale(1.025);
   }
-  
+
   &:active {
     transform: scale(0.95);
   }
-  
+
   &.active {
     background-color: var(--primary-accent);
     border-color: var(--primary-accent);
@@ -98,11 +137,11 @@ const ServerLabel = styled.span`
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  
+
   .server-name {
     font-size: 0.85rem;
   }
-  
+
   .em-badge {
     font-size: 0.6rem;
     color: #ff6b6b;
@@ -164,11 +203,11 @@ const ShareButton = styled.button`
   color: var(--global-text);
   text-decoration: none;
   transition: background-color 0.2s ease;
-  
+
   &:hover {
     background-color: var(--primary-accent);
   }
-  
+
   svg {
     font-size: 0.85rem;
   }
