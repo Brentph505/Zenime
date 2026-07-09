@@ -53,6 +53,11 @@ const SERVER_ROW_HEIGHT = '2.5rem';
 const SERVER_GRID_GAP = '0.5rem';
 const SERVER_GRID_MAX_HEIGHT = `calc(${SERVER_ROW_HEIGHT} * 2 + ${SERVER_GRID_GAP})`;
 
+// Mobile uses a 2-column grid, so 8 servers = 4 rows before it scrolls.
+// minmax (not a fixed height) keeps buttons free to grow for wrapped labels,
+// so the scale/wrapping behavior on mobile is untouched.
+const MOBILE_SERVER_GRID_MAX_HEIGHT = `calc(${SERVER_ROW_HEIGHT} * 4 + ${SERVER_GRID_GAP} * 3)`;
+
 const ServerGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -85,9 +90,12 @@ const ServerGrid = styled.div`
 
   @media (max-width: 500px) {
     grid-template-columns: repeat(2, 1fr);
-    grid-auto-rows: auto;
-    max-height: none;
-    overflow-y: visible;
+    /* minmax keeps each row's natural (wrap-friendly) height as the floor,
+       instead of forcing the fixed desktop row height */
+    grid-auto-rows: minmax(${SERVER_ROW_HEIGHT}, auto);
+    /* Cap mobile height at 4 rows (8 servers); scroll for anything beyond */
+    max-height: ${MOBILE_SERVER_GRID_MAX_HEIGHT};
+    overflow-y: auto;
   }
 `;
 
@@ -114,8 +122,14 @@ const ServerButton = styled.button`
   justify-content: center;
   overflow: hidden;
 
+  /* Reset back to natural sizing on mobile — the fixed row height above
+     is only needed to compute the desktop 2-row scroll cutoff. */
   @media (max-width: 500px) {
     height: auto;
+    min-height: 2.5rem;
+    padding: 0.6rem;
+    display: block;
+    overflow: visible;
   }
 
   &:hover {
