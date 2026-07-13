@@ -30,6 +30,7 @@ const KAA_SUBTITLE_PROXY_URL = import.meta.env.VITE_KICKASSANIME_SUBTITLE_PROXY 
 
 // Image Proxy configuration (Cloudflare Worker)
 const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
+const HENTAI_IMAGE_PROXY_URL = import.meta.env.VITE_HENTAI_IMAGE_PROXY_URL as string;
 
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
@@ -204,7 +205,8 @@ export type MangaProvider =
   | 'mangapark'
   | 'mangapill'
   | 'mangareader'
-  | 'mangasee123';
+  | 'mangasee123'
+  | 'hentaireadio'; // Added hentaireadio
 
 interface FetchOptions {
   type?: string;
@@ -416,6 +418,39 @@ export function buildImageProxyUrl(
 
   const proxyBase = IMAGE_PROXY_URL.replace(/\/$/, '');
   let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=${encodeURIComponent(provider)}`;
+
+  if (referer) {
+    proxied += `&referer=${encodeURIComponent(referer)}`;
+  }
+
+  return proxied;
+}
+
+/**
+ * Build image proxy URL specifically for hentaireadio using a separate proxy endpoint.
+ * Falls back to direct URL if no hentai proxy is configured.
+ */
+export function buildHentaiImageProxyUrl(
+  imageUrl: string,
+  referer?: string,
+): string {
+  // If no dedicated hentai proxy, return the image URL directly
+  if (!HENTAI_IMAGE_PROXY_URL) {
+    console.warn('⚠️ No dedicated hentai image proxy configured. Returning original URL.');
+    return imageUrl;
+  }
+
+  if (imageUrl.includes(HENTAI_IMAGE_PROXY_URL)) {
+    return imageUrl;
+  }
+
+  if (!isValidUrl(imageUrl)) {
+    console.warn(`⚠️ Invalid image URL. Returning as-is.`);
+    return imageUrl;
+  }
+
+  const proxyBase = HENTAI_IMAGE_PROXY_URL.replace(/\/$/, '');
+  let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=hentaireadio`;
 
   if (referer) {
     proxied += `&referer=${encodeURIComponent(referer)}`;
@@ -1191,7 +1226,7 @@ export async function fetchAnimeInfo(
  */
 export async function fetchMangaInfo(
   mangaId: string,
-  provider: 'mangahere' | 'mangapill' = 'mangahere',
+  provider: 'mangahere' | 'mangapill' | 'hentaireadio' = 'mangahere',
 ): Promise<any> {
   const finalProvider = provider || 'mangahere';
   const params = new URLSearchParams({ provider: finalProvider });
@@ -1217,7 +1252,7 @@ export interface MangaReadPage {
 
 export async function fetchMangaRead(
   chapterId: string,
-  provider: 'mangahere' | 'mangapill' = 'mangahere',
+  provider: 'mangahere' | 'mangapill' | 'hentaireadio' = 'mangahere',
 ): Promise<MangaReadPage[]> {
   const finalProvider = provider || 'mangahere';
   const params = new URLSearchParams({ chapterId, provider: finalProvider });

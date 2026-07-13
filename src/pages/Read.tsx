@@ -25,6 +25,7 @@ import {
   MangaReadPage,
   Episode,
   buildImageProxyUrl,
+  buildHentaiImageProxyUrl,
   useAuth,
   useSettings,
   syncMangaReadProgress,
@@ -773,7 +774,9 @@ function Read() {
   const selectedChapterRef = useRef<MangaChapter | null>(null);
   const providerSwitchRef = useRef(false);
   const [readPages, setReadPages] = useState<MangaReadPage[]>([]);
-  const [provider, setProvider] = useState<'mangahere' | 'mangapill'>('mangahere');
+  const [provider, setProvider] = useState<'mangahere' | 'mangapill' | 'hentaireadio'>('mangahere');
+  const [availableProviders, setAvailableProviders] = useState<Array<'mangahere' | 'mangapill' | 'hentaireadio'>>([]);
+  const [isHentaiManga, setIsHentaiManga] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(false);
 
@@ -848,12 +851,12 @@ function Read() {
 
   /* ── Provider init ── */
   useEffect(() => {
-    if (providerParam === 'mangapill' || providerParam === 'mangahere') {
+    if (providerParam === 'mangapill' || providerParam === 'mangahere' || providerParam === 'hentaireadio') {
       setProvider(providerParam); return;
     }
     const stored = localStorage.getItem('manga-provider-preference');
-    if (stored === 'mangapill' || stored === 'mangahere') {
-      setProvider(stored as 'mangahere' | 'mangapill');
+    if (stored === 'mangapill' || stored === 'mangahere' || stored === 'hentaireadio') {
+      setProvider(stored as 'mangahere' | 'mangapill' | 'hentaireadio');
     }
   }, [providerParam]);
 
@@ -871,59 +874,108 @@ function Read() {
     if (!animeId) return;
     setIsLoading(true);
     setError(null);
-    fetchMangaInfo(animeId, provider)
-      .then((data: Manga) => {
-        setMangaInfo(data);
-        const chs = (data?.chapters ?? []) as MangaChapter[];
-        if (!chs.length) { setSelectedChapter(null); return; }
 
-        const previousChapter = selectedChapterRef.current;
-        const chapterSlug = chapterIdParam.split('/').filter(Boolean).pop() || '';
+    const hasEntries = (data: Partial<Manga> | null | undefined) => {
+      const chapters = (data as Manga | undefined)?.chapters ?? [];
+      return Array.isArray(chapters) && chapters.length > 0;
+    };
 
-        const findBySlug = (chapter: MangaChapter) =>
-          chapter.id === chapterIdParam ||
-          chapter.url === chapterIdParam ||
-          (chapterSlug && (chapter.id.endsWith(chapterSlug) || chapter.url?.endsWith(chapterSlug)));
+    (async () => {
+      try {
+        const aniListData = await fetchMangaInfo(animeId, provider).catch(() => null as Manga | null);
+        const isHentai = (aniListData?.genres?.some((g: string) => g.toLowerCase() === 'hentai') || aniListData?.isAdult === true) || provider === 'hentaireadio';
+        setIsHentaiManga(isHentai);
 
-        const findByPrevious = (chapter: MangaChapter) =>
-          previousChapter && (
-            chapter.id === previousChapter.id ||
-            chapter.url === previousChapter.url ||
-            (typeof previousChapter.number === 'number' && chapter.number === previousChapter.number) ||
-            (previousChapter.title?.trim() && chapter.title?.trim() === previousChapter.title.trim()) ||
-            // When switching providers, try to match by chapter number if available
-            (previousChapter.number && chapter.number === previousChapter.number)
-          );
+        const candidates: Array<'mangahere' | 'mangapill' | 'hentaireadio'> = isHentai
+          ? ['hentaireadio']
+          : (provider === 'mangapill' ? ['mangapill', 'mangahere'] : ['mangahere', 'mangapill']);
 
-        // Last-read pointer: when there's no explicit ?chapterId=, resume the
-        // chapter the reader last had open instead of always chs[0].
-        const lastRead = chapterIdParam ? null : getLastReadChapter(animeId);
-        const findByLastRead = (chapter: MangaChapter) =>
-          !!lastRead && (
-            chapter.id === lastRead.id ||
-            chapter.url === lastRead.url ||
-            chapter.url === lastRead.id ||
-            (lastRead.number != null && chapter.number === lastRead.number)
-          );
+        const probeResults = await Promise.allSettled(
+          candidates.map(async (candidate) => {
+            const data = await fetchMangaInfo(animeId, candidate);
+            return { candidate, data, hasData: hasEntries(data) };
+          }),
+        );
 
-        const shouldResetSelection = providerSwitchRef.current;
-        const matchedChapter = !shouldResetSelection
-          ? (chs.find((c) => chapterIdParam && findBySlug(c))
+        const viable: Array<'mangahere' | 'mangapill' | 'hentaireadio'> = [];
+        const dataMap: Partial<Record<'mangahere' | 'mangapill' | 'hentaireadio', Manga>> = {};
+        let fallbackData: Manga | null = null;
+
+        for (const result of probeResults) {
+          if (result.status === 'fulfilled') {
+            const { candidate, data, hasData } = result.value;
+            if (hasData) {
+              viable.push(candidate);
+              dataMap[candidate] = data as Manga;
+            }
+            if (!fallbackData) fallbackData = (data as Manga) ?? null;
+          }
+        }
+
+        setAvailableProviders(viable);
+
+        const chosenProvider = viable[0] ?? candidates[0] ?? provider;
+        const data = dataMap[chosenProvider] ?? fallbackData ?? aniListData ?? null;
+
+        if (data) {
+          setMangaInfo(data);
+          if (chosenProvider !== provider) {
+            providerSwitchRef.current = true;
+            setProvider(chosenProvider);
+          }
+
+          const chs = (data?.chapters ?? []) as MangaChapter[];
+          if (!chs.length) {
+            setSelectedChapter(null);
+            setVisibleChapter(null);
+            return;
+          }
+
+          const previousChapter = selectedChapterRef.current;
+          const chapterSlug = chapterIdParam.split('/').filter(Boolean).pop() || '';
+
+          const findBySlug = (chapter: MangaChapter) =>
+            chapter.id === chapterIdParam ||
+            chapter.url === chapterIdParam ||
+            (chapterSlug && (chapter.id.endsWith(chapterSlug) || chapter.url?.endsWith(chapterSlug)));
+
+          const findByPrevious = (chapter: MangaChapter) =>
+            previousChapter && (
+              chapter.id === previousChapter.id ||
+              chapter.url === previousChapter.url ||
+              (typeof previousChapter.number === 'number' && chapter.number === previousChapter.number) ||
+              (previousChapter.title?.trim() && chapter.title?.trim() === previousChapter.title.trim()) ||
+              (previousChapter.number && chapter.number === previousChapter.number)
+            );
+
+          const lastRead = chapterIdParam ? null : getLastReadChapter(animeId);
+          const findByLastRead = (chapter: MangaChapter) =>
+            !!lastRead && (
+              chapter.id === lastRead.id ||
+              chapter.url === lastRead.url ||
+              chapter.url === lastRead.id ||
+              (lastRead.number != null && chapter.number === lastRead.number)
+            );
+
+          const matchedChapter = chs.find((c) => chapterIdParam && findBySlug(c))
             || (previousChapter ? chs.find(findByPrevious) : null)
             || (lastRead ? chs.find(findByLastRead) : null)
-            || chs[0])
-          : null;
+            || chs[0] || null;
 
-        setSelectedChapter(matchedChapter);
-        if (matchedChapter) setVisibleChapter(matchedChapter);
-      })
-      .catch((err: unknown) => {
+          setSelectedChapter(matchedChapter);
+          if (matchedChapter) setVisibleChapter(matchedChapter);
+        } else {
+          setError('Unable to load manga data');
+        }
+      } catch (err: unknown) {
         setError(
           typeof err === 'object' && err !== null && 'message' in err
             ? (err as { message: string }).message : 'Unable to load manga data'
         );
-      })
-      .finally(() => setIsLoading(false));
+      } finally {
+        setIsLoading(false);
+      }
+    })();
   }, [animeId, provider, chapterIdParam]);
 
   /* ── Persist provider ── */
@@ -1222,8 +1274,15 @@ function Read() {
     setTimeout(() => { setSidebarOpen(false); setSidebarClosing(false); }, 220);
   }, []);
 
-  const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill') => {
+  const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill' | 'hentaireadio') => {
     if (nextProvider === provider) return;
+
+    // Prevent switching away from hentaireadio for hentai manga
+    if (isHentaiManga && nextProvider !== 'hentaireadio') {
+      console.warn('⚠️ Cannot switch away from HentaiRadio for hentai content');
+      return;
+    }
+
     providerSwitchRef.current = true;
     setProvider(nextProvider);
     setSelectedChapter(null);
@@ -1234,7 +1293,7 @@ function Read() {
     setIsPageLoading(false);
     setCurrentPage(0);
     if (pagesColRef.current) pagesColRef.current.scrollTop = 0;
-  }, [provider]);
+  }, [provider, isHentaiManga]);
 
   const toggleFullscreen = useCallback(() => {
     if (isFullscreen) {
@@ -1263,17 +1322,26 @@ function Read() {
         </SbHead>
       )}
 
-      <SbSection>
-        <SbSectionLabel>Provider</SbSectionLabel>
-        <ProvRow>
-          <ProvBtn $active={provider === 'mangahere'} onClick={() => handleProviderChange('mangahere')}>
-            Mangahere
-          </ProvBtn>
-          <ProvBtn $active={provider === 'mangapill'} onClick={() => handleProviderChange('mangapill')}>
-            Mangapill
-          </ProvBtn>
-        </ProvRow>
-      </SbSection>
+      {availableProviders.length > 1 && (
+        <SbSection>
+          <SbSectionLabel>Provider</SbSectionLabel>
+          <ProvRow>
+            {!isHentaiManga && (
+              <>
+                <ProvBtn $active={provider === 'mangahere'} onClick={() => handleProviderChange('mangahere')}>
+                  Mangahere
+                </ProvBtn>
+                <ProvBtn $active={provider === 'mangapill'} onClick={() => handleProviderChange('mangapill')}>
+                  Mangapill
+                </ProvBtn>
+              </>
+            )}
+            <ProvBtn $active={provider === 'hentaireadio'} onClick={() => handleProviderChange('hentaireadio')}>
+              HentaiRadio
+            </ProvBtn>
+          </ProvRow>
+        </SbSection>
+      )}
 
       <SearchWrap>
         <FaSearch />
@@ -1454,7 +1522,7 @@ function Read() {
                     ) : (ps?.visible || ps?.loaded) ? (
                       <MangaImg
                         src={
-                          buildImageProxyUrl(page.img, provider, page.headerForImage?.Referer) +
+                          (provider === 'hentaireadio' ? buildHentaiImageProxyUrl(page.img, page.headerForImage?.Referer) : buildImageProxyUrl(page.img, provider, page.headerForImage?.Referer)) +
                           (ps?.retryTs ? `&_t=${ps.retryTs}` : '')
                         }
                         alt={`Page ${idx + 1}`}
