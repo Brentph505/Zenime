@@ -196,7 +196,7 @@ const MAX_CACHE_EPISODES_PER_ANIME = 30;
 // Max number of anime entries kept in the localStorage cache
 const MAX_CACHE_ANIME_ENTRIES = 50;
 
-const PROVIDERS: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe'];
+const PROVIDERS: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'anidb'];
 
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
 
@@ -847,6 +847,25 @@ const Watch: React.FC = () => {
           return uniqueLabel;
         };
 
+        const normalizeAnidbLabel = (
+          name: string,
+          quality?: string,
+          isEmbedded: boolean = false,
+        ) => {
+          const normalizedText = (quality || name || '').toLowerCase();
+          const baseLabel = normalizedText.includes('dub') || normalizedText.includes('english')
+            ? 'ADB Dub'
+            : normalizedText.includes('sub') || normalizedText.includes('japanese')
+              ? 'ADB Sub'
+              : 'ADB';
+
+          const label = isEmbedded ? `${baseLabel} (Embed)` : baseLabel;
+          const count = providerNameCounters.get(label) || 0;
+          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
+          providerNameCounters.set(label, count + 1);
+          return uniqueLabel;
+        };
+
         const normalizeKickassanimeLabel = () => {
           const label = 'KAA';
           const count = providerNameCounters.get(label) || 0;
@@ -865,15 +884,18 @@ const Watch: React.FC = () => {
           type: string,
           isEmbedded: boolean,
           quality?: string,
+          skipNormalization?: boolean,
         ) => {
           const proxiedUrl = proxyHentaiUrl(url, provider, type);
           if (!proxiedUrl || urlSet.has(proxiedUrl)) return;
 
-          const finalName = provider === 'anikoto'
-            ? normalizeAnikotoLabel(name, type, quality)
-            : provider === 'kickassanime'
-              ? normalizeKickassanimeLabel()
-              : name;
+          const finalName = skipNormalization || provider === 'anidb'
+            ? name
+            : provider === 'anikoto'
+              ? normalizeAnikotoLabel(name, type, quality)
+              : provider === 'kickassanime'
+                ? normalizeKickassanimeLabel()
+                : name;
 
           urlSet.add(proxiedUrl);
           if (isEmbedded) hasEmbeddedPlayer_ = true;
@@ -882,8 +904,36 @@ const Watch: React.FC = () => {
 
         serverResults.forEach(({ provider, servers, response }) => {
           const isHentaiProvider = provider === 'hentaimama' || provider === 'watchhentai';
+          const isAnidbProvider = provider === 'anidb';
 
-          if (!isHentaiProvider) {
+          // ─── AniDB-specific handling ──────────────────────────────────────
+          if (isAnidbProvider) {
+            // Process direct M3U8 sources from response.sources only (ignore embedded)
+            if (response?.sources && Array.isArray(response.sources)) {
+              console.log('[Watch] Processing AniDB sources:', response.sources);
+              response.sources.forEach((source: any) => {
+                const sourceUrl = source?.url || '';
+                if (!sourceUrl || !sourceUrl.includes('.m3u8')) return;
+
+                const qualityLabel = (source?.quality || '').trim();
+                const lowerQuality = qualityLabel.toLowerCase();
+                
+                // Simple label: ADB Sub or ADB Dub
+                const isDub = lowerQuality.includes('dub');
+                const label = isDub ? 'ADB Dub' : 'ADB Sub';
+                
+                console.log('[Watch] AniDB server:', { label, sourceUrl, qualityLabel });
+
+                addServer(label, sourceUrl, provider, 'hls', false, qualityLabel);
+              });
+            }
+            return; // Skip other processing for AniDB
+          }
+
+          // ─── Non-AniDB providers ─────────────────────────────────────────
+          const hasAnidbM3u8Sources = false; // Not needed anymore with dedicated AniDB handling
+
+          if (!isHentaiProvider && !hasAnidbM3u8Sources) {
             servers.forEach((server: any) => {
               const serverName = server?.name || '';
               const serverUrl = server?.url || '';
@@ -914,7 +964,10 @@ const Watch: React.FC = () => {
 
               const type = sLang || '';
               const isEmb = isEmbeddedServer(sUrl, type, provider);
-              addServer(sName, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb, sLang);
+              const label = provider === 'anidb'
+                ? normalizeAnidbLabel(sName, sLang, isEmb)
+                : sName;
+              addServer(label, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb, sLang);
             });
           }
 
@@ -966,6 +1019,7 @@ const Watch: React.FC = () => {
 
         const serverNames = entries.map((s) => s.name) || [];
         console.log('[Watch] Aggregated available servers:', serverNames);
+        console.log('[Watch] Full server entries:', entries);
         setAvailableServers(serverNames);
       };
 
@@ -997,6 +1051,9 @@ const Watch: React.FC = () => {
   useEffect(() => {
     if (!currentEpisode.id || currentEpisode.id === '0' || !sourceType) return;
 
+    console.log('[Watch] Resolving URL for sourceType:', sourceType);
+    console.log('[Watch] Available serverEntries:', serverEntries);
+
     if (sourceType === 'embedded') {
       if (hasEmbeddedPlayer) {
         setEmbeddedUrl(
@@ -1014,6 +1071,7 @@ const Watch: React.FC = () => {
       const entry = serverEntries.find(
         (s) => s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase(),
       );
+      console.log('[Watch] Found embedded entry:', entry);
       if (entry?.url) {
         setEmbeddedUrl(entry.url);
         setServerUrl(entry.url);
@@ -1026,6 +1084,9 @@ const Watch: React.FC = () => {
         return nameMatch && typeMatch;
       });
 
+      console.log('[Watch] Looking for sourceType:', baseName);
+      console.log('[Watch] Found entry:', entry);
+
       if (entry?.url) {
         const isDirectMedia =
           isDirectMediaUrl(entry.url) ||
@@ -1034,10 +1095,12 @@ const Watch: React.FC = () => {
         setEmbeddedUrl('');
         setServerUrl(entry.url);
         setHlsDirectUrl(isDirectMedia ? entry.url : '');
+        console.log('[Watch] Set HLS URL:', entry.url);
       } else if (serverEntries.length > 0) {
         const fallbackEntry = serverEntries.find((e) =>
           e.name.toLowerCase().includes(baseName.toLowerCase()) && !e.name.includes('__EM')
         );
+        console.log('[Watch] Fallback entry:', fallbackEntry);
         if (fallbackEntry?.url) {
           const isDirectMedia =
             isDirectMediaUrl(fallbackEntry.url) ||

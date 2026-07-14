@@ -24,6 +24,7 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 // M3U8 Proxy configuration
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
 const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
+const M3U8_PROXY_URL_ANIDB = import.meta.env.VITE_M3U8_PROXY_URL_ANIDB as string;
 
 // Kickassanime subtitle/SRT proxy (CORS workaround for KAA subtitle files)
 const KAA_SUBTITLE_PROXY_URL = import.meta.env.VITE_KICKASSANIME_SUBTITLE_PROXY as string;
@@ -243,11 +244,11 @@ export function isDirectMediaUrl(url: string): boolean {
 }
 
 /** Providers that return native m3u8 streams (HLS player), not iframe embeds. */
-export const HLS_FIRST_PROVIDERS = new Set(['kickassanime', 'animepahe']);
+export const HLS_FIRST_PROVIDERS = new Set(['kickassanime', 'animepahe', 'anidb']);
 
 /**
  * Whether a server entry should open in the iframe player vs the HLS player.
- * anikoto/reanime use sub/dub/hsub embed pages; kickassanime/animepahe use m3u8.
+ * anikoto/reanime use sub/dub/hsub embed pages; kickassanime/animepahe/anidb use m3u8.
  */
 export function isEmbeddedPlaybackServer(
   url: string,
@@ -277,6 +278,10 @@ export function isEmbeddedPlaybackServer(
       normalizedType === 'dub' ||
       normalizedType === 'hsub'
     );
+  }
+
+  if (p === 'anidb') {
+    return url.includes('/embed/') || normalizedType === 'iframe';
   }
 
   return (
@@ -1626,7 +1631,9 @@ export async function fetchAnimeStreamingLinksProxied(
 
   const proxyUrl = finalProvider === 'reanime'
     ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
-    : M3U8_PROXY_URL;
+    : finalProvider === 'anidb'
+      ? M3U8_PROXY_URL_ANIDB || M3U8_PROXY_URL
+      : M3U8_PROXY_URL;
 
   if (finalProvider === 'watchhentai') {
     return data;
@@ -1640,6 +1647,12 @@ export async function fetchAnimeStreamingLinksProxied(
   if (finalProvider === 'reanime' && !M3U8_PROXY_URL_2) {
     console.warn(
       `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_2 is not set.`,
+    );
+  }
+
+  if (finalProvider === 'anidb' && !M3U8_PROXY_URL_ANIDB) {
+    console.warn(
+      `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_ANIDB is not set.`,
     );
   }
 
@@ -1678,7 +1691,7 @@ export async function fetchAnimeStreamingLinksProxied(
     );
   }
 
-  if (finalProvider === 'kickassanime' || finalProvider === 'reanime') {
+  if (finalProvider === 'kickassanime' || finalProvider === 'reanime' || finalProvider === 'anidb') {
     data = proxyDirectMediaUrls(
       data,
       finalProvider,

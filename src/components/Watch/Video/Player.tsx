@@ -127,6 +127,7 @@ type StreamingSource = {
   url: string;
   quality: string;
   isM3U8?: boolean;
+  isDub?: boolean;
 };
 
 type Subtitle = {
@@ -157,6 +158,22 @@ type FetchSkipTimesResponse = {
 const getEpisodeNumber = (episodeId: string): string => {
   const match = episodeId.match(/(\d+)$/);
   return match ? match[1] : '1';
+};
+
+// ─── Dub/Sub detection helper ────────────────────────────────────────────────
+// Some providers (e.g. AniDB) don't populate `source.isDub` at all — they only
+// give a human-readable `quality` string like "English Dub" / "Japanese Sub".
+// Relying on `source.isDub === true/false` alone means that field is always
+// `undefined` for those providers, so the strict equality check never matches
+// and every source falls through as a "candidate", after which we just grab
+// sources[0] — which happened to always be the Dub track for AniDB. This
+// helper falls back to reading the quality/name text when isDub is missing.
+const sourceIsDub = (source: StreamingSource): boolean | undefined => {
+  if (typeof source.isDub === 'boolean') return source.isDub;
+  const text = (source.quality || '').toLowerCase();
+  if (text.includes('dub')) return true;
+  if (text.includes('sub') || text.includes('japanese')) return false;
+  return undefined;
 };
 
 export function Player({
@@ -205,6 +222,9 @@ export function Player({
   const aniListProgressRef = useRef({ lastSavedProgress: 0, lastSavedTime: 0 });
   const iframeProgressRef = useRef({ currentTime: 0, duration: 0, hasTriggeredEnd: false });
   const saveAniListProgressRef = useRef<((episodeNumber: number) => Promise<void>) | null>(null);
+  const playbackTransitionRef = useRef(false);
+  const playbackTransitionLockUntilRef = useRef(0);
+  const autoplayAttemptKeyRef = useRef('');
   const episodeNumber = propEpisodeNumber
     ? String(propEpisodeNumber)
     : getEpisodeNumber(episodeId);
@@ -212,6 +232,9 @@ export function Player({
   useEffect(() => {
     aniListProgressRef.current = { lastSavedProgress: 0, lastSavedTime: 0 };
     iframeProgressRef.current = { currentTime: 0, duration: 0, hasTriggeredEnd: false };
+    playbackTransitionRef.current = false;
+    playbackTransitionLockUntilRef.current = 0;
+    autoplayAttemptKeyRef.current = '';
   }, [episodeNumber]);
 
   const animeVideoTitle = animeTitle;
@@ -622,13 +645,30 @@ export function Player({
     scheduleHlsRetry(message);
   };
 
+  const getCurrentSrcKey = () => {
+    if (typeof src === 'string') return src;
+    if (src && typeof src === 'object' && 'src' in src) return src.src;
+    return '';
+  };
+
+  const tryAutoPlay = () => {
+    if (isEmbedded || !autoPlay || !userInteracted || !canPlay || !player.current) return;
+
+    const srcKey = getCurrentSrcKey();
+    if (!srcKey) return;
+
+    const autoplayKey = `${episodeId}-${srcKey}`;
+    if (autoplayAttemptKeyRef.current === autoplayKey) return;
+
+    autoplayAttemptKeyRef.current = autoplayKey;
+    player.current
+      .play()
+      .catch((e) => console.log('Playback failed to start automatically:', e));
+  };
+
   useEffect(() => {
-    if (autoPlay && userInteracted && canPlay && player.current) {
-      player.current
-        .play()
-        .catch((e) => console.log('Playback failed to start automatically:', e));
-    }
-  }, [autoPlay, src, canPlay, userInteracted]);
+    tryAutoPlay();
+  }, [autoPlay, src, canPlay, userInteracted, episodeId]);
 
   useEffect(() => {
     const handleUserInteraction = () => {
@@ -669,6 +709,7 @@ export function Player({
 
   function onCanPlay() {
     setCanPlay(true);
+    tryAutoPlay();
   }
 
   function onTimeUpdate() {
@@ -777,9 +818,15 @@ export function Player({
     // Capture the current token; if it changes while we await, the fetch is stale.
     const fetchToken = fetchAbortRef.current;
 
+    // Treat any hlsDirectUrl containing .m3u8 as valid too — isDirectMediaUrl
+    // is trusted first, but we don't want an overly strict implementation of
+    // that helper to silently kick a perfectly good AniDB HLS URL into the
+    // buggy fallback-fetch path below.
     const isValidHlsDirectUrl =
       hlsDirectUrl &&
-      (isDirectMediaUrl(hlsDirectUrl) || /\.mp4/i.test(hlsDirectUrl));
+      (isDirectMediaUrl(hlsDirectUrl) ||
+        /\.mp4/i.test(hlsDirectUrl) ||
+        /\.m3u8/i.test(hlsDirectUrl));
 
     if (isValidHlsDirectUrl) {
       if (fetchToken !== fetchAbortRef.current) return;
@@ -903,10 +950,16 @@ export function Player({
           ? false
           : undefined;
 
+        // Use sourceIsDub() instead of raw `source.isDub` — providers like
+        // AniDB never set `isDub` on their source objects, only a `quality`
+        // string ("English Dub" / "Japanese Sub"). Reading `source.isDub`
+        // directly meant this filter always failed for AniDB, so we fell
+        // through to "take every m3u8 source" and always played sources[0]
+        // (the Dub track) regardless of which one the user picked.
         const candidateSources = response.sources.filter(
-          (source: StreamingSource & { isDub?: boolean }) =>
+          (source) =>
             (source.isM3U8 || source.url?.endsWith('.m3u8')) &&
-            (isDubServer === undefined || source.isDub === isDubServer),
+            (isDubServer === undefined || sourceIsDub(source) === isDubServer),
         );
         const m3u8Sources =
           candidateSources.length > 0
@@ -996,16 +1049,29 @@ export function Player({
   const toggleAutoSkip = () => setSettings({ ...settings, autoSkip: !autoSkip });
 
   const handlePlaybackEnded = async () => {
+    const transitionLockUntil = playbackTransitionLockUntilRef.current;
+    if (playbackTransitionRef.current || (transitionLockUntil > 0 && Date.now() < transitionLockUntil)) {
+      return;
+    }
+
+    playbackTransitionRef.current = true;
+    playbackTransitionLockUntilRef.current = Date.now() + 2_000;
+
     try {
       if (propEpisodeNumber) {
         await saveAniListProgress(propEpisodeNumber);
       }
       if (!autoNextRef.current) return;
       player.current?.pause();
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 250));
       await onEpisodeEndRef.current();
     } catch (error) {
       console.error('Error moving to the next episode:', error);
+    } finally {
+      window.setTimeout(() => {
+        playbackTransitionRef.current = false;
+        playbackTransitionLockUntilRef.current = 0;
+      }, 2_200);
     }
   };
 

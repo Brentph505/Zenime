@@ -16,7 +16,7 @@ export function proxyDirectMediaUrls<T extends DirectMediaPayload>(
   referer: string,
   buildProxyUrl: (sourceUrl: string, referer: string) => string,
 ): T | null | undefined {
-  if (!data || typeof data !== 'object' || !['kickassanime', 'reanime'].includes(provider)) {
+  if (!data || typeof data !== 'object' || !['kickassanime', 'reanime', 'anidb'].includes(provider)) {
     return data;
   }
 

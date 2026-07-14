@@ -22,6 +22,7 @@ export interface LastAnimeVisitedEntry {
   anilistProgress?: number;
   lastEpisodeNumber?: number;
   totalEpisodes?: number | null;
+  total_episodes?: number | null;
   coverImage?: string | null;
   genres?: string[];
   isAdult?: boolean;
