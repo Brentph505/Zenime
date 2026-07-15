@@ -347,13 +347,18 @@ export function buildKaaSubtitleProxyUrl(subtitleUrl: string): string {
     return subtitleUrl;
   }
 
-  // Avoid double-proxying
-  if (subtitleUrl.includes(proxy)) {
+  const proxyBase = proxy.replace(/\/+$/, '');
+
+  // Avoid double-proxying if the subtitle URL is already proxied.
+  if (subtitleUrl.includes(proxyBase)) {
     return subtitleUrl;
   }
 
-  const proxyBase = proxy.replace(/\/+$/, '');
-  return `${proxyBase}/subtitle?url=${encodeURIComponent(subtitleUrl)}`;
+  const hasSubtitlePath = /\/subtitle$/i.test(proxyBase);
+  const separator = proxyBase.includes('?') ? '&' : '?';
+  const pathSuffix = hasSubtitlePath ? '' : '/subtitle';
+
+  return `${proxyBase}${pathSuffix}${separator}url=${encodeURIComponent(subtitleUrl)}`;
 }
 
 /**
