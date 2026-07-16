@@ -60,6 +60,25 @@ function isHentaiGenres(genres?: string[]): boolean {
   return Array.isArray(genres) && genres.some((g) => g.toLowerCase() === 'hentai');
 }
 
+// ─── Safe localStorage helpers ─────────────────────────────────────────────────
+// localStorage.setItem/getItem can throw (Safari private mode, storage quota,
+// disabled storage, some webviews) — every call site below used to call it
+// directly, so a single throw would blow up the whole render. Wrap it once.
+function safeGetItem(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+function safeSetItem(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore — non-fatal, just means the preference won't persist
+  }
+}
+
 const RANGE = 100;
 
 /**
@@ -917,7 +936,7 @@ interface CharacterCardComponentProps {
 
 const CharacterCardComponent: React.FC<CharacterCardComponentProps> = ({ character }) => {
   const displayName = useCharacterName(character.name);
-  
+
   return (
     <CharCard>
       <CharImg src={character.image} alt={displayName} />
@@ -945,12 +964,20 @@ const Info: React.FC = () => {
 
   const [loading, setLoading] = useState(true);
   const [error,     setError]     = useState<string | null>(null);
-  
+
   // Call hook unconditionally at the top level, before any conditional renders
   const titleDisplay = useTitleWithSubtitle(animeInfo?.title);
-  
+
   const [activeTab, setActiveTab] = useState<InfoTab>('overview');
-  const [selectedEpisodeId] = useState<string | null>(null);
+
+  // Episode UI controls — declared here (above every effect that references
+  // them) so the setters below are never referenced out of their natural
+  // declaration order. Purely a readability/maintenance fix — closures made
+  // the old order technically work, but made the file fragile to reorder.
+  const [epView,   setEpView]   = useState<EpView>(() => queryType === 'MANGA' ? 'list' : 'card');
+  const [epSearch, setEpSearch] = useState('');
+  const [epRange,  setEpRange]  = useState(0);
+  const [loadedEpisodeImages, setLoadedEpisodeImages] = useState<Record<string, boolean>>({});
 
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
@@ -965,43 +992,36 @@ const Info: React.FC = () => {
     if (queryType === 'MANGA') {
       return queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
         ? (queryProvider as MangaProvider)
-        : (localStorage.getItem('manga-provider-preference') as MangaProvider) || 'mangahere';
+        : (safeGetItem('manga-provider-preference') as MangaProvider) || 'mangahere';
     }
     // Hentai preference is stored separately
-    const savedHentai = localStorage.getItem('hentai-provider-preference') as AnimeProvider | null;
-    const savedAnime  = localStorage.getItem('provider-preference') as AnimeProvider | null;
+    const savedHentai = safeGetItem('hentai-provider-preference') as AnimeProvider | null;
+    const savedAnime  = safeGetItem('provider-preference') as AnimeProvider | null;
     return savedAnime || savedHentai || 'anikoto';
   });
 
   // ── Sync state when URL params change ────────────────────────────────────────
   useEffect(() => {
-    const newType: MediaType = queryType === 'MANGA' ? 'MANGA' : 'ANIME';
     setAvailableMangaProviders(new Set());
     setAvailableHentaiProviders(new Set());
     setIsHentaiManga(false);
     setEpRange(0);
     setEpSearch('');
 
-    if (newType === 'MANGA') {
+    if (queryType === 'MANGA') {
       setEpView('list');
       setProvider(
         queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
           ? (queryProvider as MangaProvider)
-          : (localStorage.getItem('manga-provider-preference') as MangaProvider) || 'mangahere',
+          : (safeGetItem('manga-provider-preference') as MangaProvider) || 'mangahere',
       );
     } else {
       // Will be overridden by the fetch effect once genres are known
       setProvider(
-        (localStorage.getItem('provider-preference') as AnimeProvider) || 'anikoto',
+        (safeGetItem('provider-preference') as AnimeProvider) || 'anikoto',
       );
     }
   }, [queryType, queryProvider]);
-
-  // Episode UI controls
-  const [epView,   setEpView]   = useState<EpView>(() => queryType === 'MANGA' ? 'list' : 'card');
-  const [epSearch, setEpSearch] = useState('');
-  const [epRange,  setEpRange]  = useState(0);
-  const [loadedEpisodeImages, setLoadedEpisodeImages] = useState<Record<string, boolean>>({});
 
   // Scroll refs for horizontal carousels
   const recsRef    = useRef<HTMLDivElement>(null);
@@ -1019,7 +1039,16 @@ const Info: React.FC = () => {
   // IMPORTANT: `currentMediaType` is intentionally derived inside the effect
   // from the `queryType` URL param and not kept in separate state.
   // This avoids a fetch loop while still responding correctly to URL changes.
+  //
+  // STABILITY FIX: this effect used to have no cancellation guard. Navigating
+  // quickly between two anime/manga pages (e.g. clicking a recommendation
+  // before the previous page finished loading) could let an in-flight fetch
+  // for the *old* animeId resolve after the new one and stomp its state with
+  // stale data. `cancelled` is checked before every state update so only the
+  // most recently-requested fetch is allowed to commit.
   useEffect(() => {
+    let cancelled = false;
+
     if (!animeId) {
       setError('Anime ID not found');
       setLoading(false);
@@ -1043,12 +1072,14 @@ const Info: React.FC = () => {
     (async () => {
       if (currentMediaType === 'MANGA') {
         const aniListBase = await fetchAniListMediaBase(animeId).catch(() => null);
+        if (cancelled) return;
+
         let detectedHentaiManga =
           isHentaiGenres(aniListBase?.genres) || aniListBase?.isAdult === true;
         const explicitHentaiProvider = queryProvider === 'hentaireadio' || queryProvider === 'hentai20' || provider === 'hentaireadio' || provider === 'hentai20';
 
         // Store hentai status for provider switch validation
-        setIsHentaiManga(detectedHentaiManga || explicitHentaiProvider);
+        if (!cancelled) setIsHentaiManga(detectedHentaiManga || explicitHentaiProvider);
 
         // If AniList didn't give us genres, probe a non-hentai source once just to
         // read the genres (we discard its chapters if it turns out to be hentai).
@@ -1056,10 +1087,11 @@ const Info: React.FC = () => {
           const probeSource =
             (await fetchMangaInfo(animeId, 'mangahere').catch(() => null)) ||
             (await fetchMangaInfo(animeId, 'mangapill').catch(() => null));
+          if (cancelled) return;
           detectedHentaiManga =
             isHentaiGenres(probeSource?.genres) || probeSource?.isAdult === true;
           // Update hentai flag if detected from probe
-          if (detectedHentaiManga) {
+          if (detectedHentaiManga && !cancelled) {
             setIsHentaiManga(true);
           }
         }
@@ -1086,6 +1118,8 @@ const Info: React.FC = () => {
           }),
         );
 
+        if (cancelled) return;
+
         const viable = new Set<MangaProvider>();
         const dataMap: Partial<Record<MangaProvider, any>> = {};
         let anyData: any = null;
@@ -1111,7 +1145,7 @@ const Info: React.FC = () => {
         if (chosen && dataMap[chosen]) {
           setAnimeInfo(dataMap[chosen]);
           setProvider(chosen);
-          localStorage.setItem('manga-provider-preference', chosen);
+          safeSetItem('manga-provider-preference', chosen);
         } else if (anyData) {
           // No provider had chapters — still show the info page
           setAnimeInfo(anyData);
@@ -1133,12 +1167,14 @@ const Info: React.FC = () => {
           // probe failure is non-fatal
         }
 
+        if (cancelled) return;
+
         const detectedHentai = isHentaiGenres(probeData?.genres);
 
         let candidates: AnimeProvider[];
         if (detectedHentai) {
           // Hentai: prefer hentaimama, allow watchhentai as fallback
-          const savedHentai = localStorage.getItem('hentai-provider-preference') as AnimeProvider | null;
+          const savedHentai = safeGetItem('hentai-provider-preference') as AnimeProvider | null;
           const preferredHentai: AnimeProvider =
             savedHentai === 'watchhentai' ? 'watchhentai' : 'hentaimama';
           candidates = preferredHentai === 'watchhentai'
@@ -1159,8 +1195,10 @@ const Info: React.FC = () => {
 
         // Pass 1: look for a provider with episodes
         for (const candidate of candidates) {
+          if (cancelled) return;
           try {
             const data = await fetchAnimeInfo(animeId, candidate);
+            if (cancelled) return;
             if (!bestData && data) bestData = data;
 
             if (hasEntries(data)) {
@@ -1174,9 +1212,9 @@ const Info: React.FC = () => {
               setAnimeInfo(data);
               setProvider(candidate);
               if (detectedHentai) {
-                localStorage.setItem('hentai-provider-preference', candidate);
+                safeSetItem('hentai-provider-preference', candidate);
               } else {
-                localStorage.setItem('provider-preference', candidate);
+                safeSetItem('provider-preference', candidate);
               }
               loaded = true;
               break;
@@ -1187,10 +1225,12 @@ const Info: React.FC = () => {
         }
 
         // Pass 2: if no episodes found, try fetchAnimeData as fallback
-        if (!loaded) {
+        if (!loaded && !cancelled) {
           for (const candidate of candidates) {
+            if (cancelled) return;
             try {
               const data = await fetchAnimeData(animeId, candidate);
+              if (cancelled) return;
               if (!bestData && data) bestData = data;
 
               if (hasEntries(data)) {
@@ -1204,9 +1244,9 @@ const Info: React.FC = () => {
                 setAnimeInfo(data);
                 setProvider(candidate);
                 if (detectedHentai) {
-                  localStorage.setItem('hentai-provider-preference', candidate);
+                  safeSetItem('hentai-provider-preference', candidate);
                 } else {
-                  localStorage.setItem('provider-preference', candidate);
+                  safeSetItem('provider-preference', candidate);
                 }
                 loaded = true;
                 break;
@@ -1216,6 +1256,8 @@ const Info: React.FC = () => {
             }
           }
         }
+
+        if (cancelled) return;
 
         // Pass 3: no provider had episodes — show the page anyway with what we have.
         if (!loaded && bestData) {
@@ -1239,8 +1281,12 @@ const Info: React.FC = () => {
         }
       }
 
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     })();
+
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [animeId, queryType, queryProvider]);
   // ↑ INTENTIONALLY excludes `mediaType` and `provider` (stateful) to prevent
@@ -1257,7 +1303,7 @@ const Info: React.FC = () => {
     }
 
     setProvider(newProvider);
-    localStorage.setItem('manga-provider-preference', newProvider);
+    safeSetItem('manga-provider-preference', newProvider);
 
     try {
       const data = await fetchMangaInfo(animeId, newProvider);
@@ -1273,7 +1319,7 @@ const Info: React.FC = () => {
   const handleHentaiProviderSwitch = async (newProvider: AnimeProvider) => {
     if (!animeId || newProvider === provider) return;
     setProvider(newProvider);
-    localStorage.setItem('hentai-provider-preference', newProvider);
+    safeSetItem('hentai-provider-preference', newProvider);
     try {
       const data = await fetchAnimeInfo(animeId, newProvider);
       if (data) setAnimeInfo(data as any);
@@ -1389,7 +1435,14 @@ const Info: React.FC = () => {
     return startLabel === endLabel ? startLabel : `${startLabel}-${endLabel}`;
   };
 
-  const isFirst = (ep: Episode) => ep.id === selectedEpisodeId;
+  // BUG FIX: `isFirst` used to compare against a `selectedEpisodeId` piece of
+  // state that had no setter (`const [selectedEpisodeId] = useState(null)`),
+  // so it was permanently `null` and this always evaluated to `false` — the
+  // "currently playing/reading" highlight on the episode/chapter list never
+  // actually lit up. The intent (matching the `firstEntry` used for the
+  // Watch/Read button above) was clearly to highlight the first entry, so
+  // compare directly against `firstEntry.id` instead of dead state.
+  const isFirst = (ep: Episode) => firstEntry != null && ep.id === firstEntry.id;
 
   const navigateToEntry = (ep: Episode) => {
     if (isManga) {
@@ -1455,7 +1508,7 @@ const Info: React.FC = () => {
     mediaInfo.releaseDate && { key: 'Year', val: String(mediaInfo.releaseDate), onClick: () => navigate(`/search?year=${mediaInfo.releaseDate}`) },
     mediaInfo.status   && { key: 'Status', val: mediaInfo.status },
     mediaInfo.type     && { key: 'Format', val: mediaInfo.type, onClick: () => navigate(`/search?format=${encodeURIComponent(mediaInfo.type!)}`) },
-    mediaInfo.title.native && { key: 'Native', val: mediaInfo.title.native },
+    mediaInfo.title?.native && { key: 'Native', val: mediaInfo.title.native },
     mediaInfo.studios?.length > 0 && { key: 'Studio', val: mediaInfo.studios.join(', '), onClick: () => navigate(`/studio/${mediaInfo.studioIds?.[0]}`) },
   ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
 
@@ -1545,7 +1598,7 @@ const Info: React.FC = () => {
                 {mediaInfo.releaseDate && <SideMetaRow><SideMetaKey>Year</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?year=${mediaInfo.releaseDate}`)}>{mediaInfo.releaseDate}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
                 {mediaInfo.status      && <SideMetaRow><SideMetaKey>Status</SideMetaKey><SideMetaVal>{mediaInfo.status}</SideMetaVal></SideMetaRow>}
                 {mediaInfo.type        && <SideMetaRow><SideMetaKey>Format</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/search?format=${encodeURIComponent(mediaInfo.type!)}`)}>{mediaInfo.type}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
-                {mediaInfo.title.native && <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{mediaInfo.title.native}</SideMetaVal></SideMetaRow>}
+                {mediaInfo.title?.native && <SideMetaRow><SideMetaKey>Native</SideMetaKey><SideMetaVal>{mediaInfo.title.native}</SideMetaVal></SideMetaRow>}
                 {mediaInfo.studios?.length > 0 && <SideMetaRow><SideMetaKey>Studio</SideMetaKey><SideMetaVal><ClickableMetaVal onClick={() => navigate(`/studio/${mediaInfo.studioIds?.[0]}`)}>{mediaInfo.studios.join(', ')}</ClickableMetaVal></SideMetaVal></SideMetaRow>}
               </SidebarMeta>
             </PosterActions>
