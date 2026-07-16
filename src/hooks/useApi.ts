@@ -199,6 +199,11 @@ function buildQueryString(params: URLSearchParams) {
   return params.toString().replace(/%2F/g, '/');
 }
 
+function normalizeMangaProvider(provider: string): string {
+  if (provider === 'hentairead') return 'hentaireadio';
+  return provider;
+}
+
 export type MangaProvider =
   | 'mangadex'
   | 'mangahere'
@@ -207,7 +212,8 @@ export type MangaProvider =
   | 'mangapill'
   | 'mangareader'
   | 'mangasee123'
-  | 'hentaireadio'; // Added hentaireadio
+  | 'hentaireadio'
+  | 'hentai20'; // Added hentaireadio / hentai20 support
 
 interface FetchOptions {
   type?: string;
@@ -1236,9 +1242,9 @@ export async function fetchAnimeInfo(
  */
 export async function fetchMangaInfo(
   mangaId: string,
-  provider: 'mangahere' | 'mangapill' | 'hentaireadio' = 'mangahere',
+  provider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
 ): Promise<any> {
-  const finalProvider = provider || 'mangahere';
+  const finalProvider = normalizeMangaProvider(provider || 'mangahere');
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist-manga/info/${mangaId}?${params.toString()}`;
   const cacheKey = generateCacheKey('mangaInfo', mangaId, finalProvider);
@@ -1262,9 +1268,9 @@ export interface MangaReadPage {
 
 export async function fetchMangaRead(
   chapterId: string,
-  provider: 'mangahere' | 'mangapill' | 'hentaireadio' = 'mangahere',
+  provider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
 ): Promise<MangaReadPage[]> {
-  const finalProvider = provider || 'mangahere';
+  const finalProvider = normalizeMangaProvider(provider || 'mangahere');
   const params = new URLSearchParams({ chapterId, provider: finalProvider });
   const url = `${BASE_URL}meta/anilist-manga/read?${buildQueryString(params)}`;
   const cacheKey = generateCacheKey('mangaRead', chapterId, finalProvider);

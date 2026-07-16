@@ -764,7 +764,9 @@ interface PageState {
 function Read() {
   const { animeId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  // FIX: pull the setter too — this was previously read-only, which is why
+  // chapter/provider changes never made it into the URL.
+  const [searchParams, setSearchParams] = useSearchParams();
   const { isLoggedIn } = useAuth();
   const { settings } = useSettings();
 
@@ -774,8 +776,8 @@ function Read() {
   const selectedChapterRef = useRef<MangaChapter | null>(null);
   const providerSwitchRef = useRef(false);
   const [readPages, setReadPages] = useState<MangaReadPage[]>([]);
-  const [provider, setProvider] = useState<'mangahere' | 'mangapill' | 'hentaireadio'>('mangahere');
-  const [availableProviders, setAvailableProviders] = useState<Array<'mangahere' | 'mangapill' | 'hentaireadio'>>([]);
+  const [provider, setProvider] = useState<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'>('mangahere');
+  const [availableProviders, setAvailableProviders] = useState<Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'>>([]);
   const [isHentaiManga, setIsHentaiManga] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(false);
@@ -851,14 +853,15 @@ function Read() {
 
   /* ── Provider init ── */
   useEffect(() => {
-    if (providerParam === 'mangapill' || providerParam === 'mangahere' || providerParam === 'hentaireadio') {
+    if (providerParam === 'mangapill' || providerParam === 'mangahere' || providerParam === 'hentaireadio' || providerParam === 'hentai20') {
       setProvider(providerParam); return;
     }
     const stored = localStorage.getItem('manga-provider-preference');
-    if (stored === 'mangapill' || stored === 'mangahere' || stored === 'hentaireadio') {
-      setProvider(stored as 'mangahere' | 'mangapill' | 'hentaireadio');
+    if (stored === 'mangapill' || stored === 'mangahere' || stored === 'hentaireadio' || stored === 'hentai20') {
+      setProvider(stored as 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20');
     }
-  }, [providerParam]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* ── Sidebar collapse persist ── */
   useEffect(() => {
@@ -869,9 +872,48 @@ function Read() {
     localStorage.setItem('manga-sidebar-collapsed', String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
+  /*
+   * FIX: URL sync helper.
+   * Writes the current chapter + provider into the URL via `replace` so the
+   * address bar always reflects what's on screen (refresh / share / browser
+   * back-forward all work), without spamming history on every page-scroll.
+   * Uses the functional form of setSearchParams so this callback never needs
+   * `searchParams` as a dependency (avoids stale closures / extra re-creates).
+   */
+  const updateUrl = useCallback((chapter: MangaChapter | null, providerVal: string) => {
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev);
+      if (chapter?.id) {
+        params.set('chapterId', chapter.id);
+      } else {
+        params.delete('chapterId');
+      }
+      params.set('provider', providerVal);
+      return params;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  /* FIX: single place that changes chapter + keeps the URL in sync. */
+  const goToChapter = useCallback((chapter: MangaChapter | null) => {
+    if (!chapter) return;
+    providerSwitchRef.current = false;
+    setSelectedChapter(chapter);
+    setVisibleChapter(chapter);
+    updateUrl(chapter, provider);
+    if (isMobile) closeSidebarRef.current?.();
+  }, [provider, updateUrl, isMobile]);
+
+  // Ref indirection so goToChapter doesn't need closeSidebar in its deps
+  // before closeSidebar is declared below.
+  const closeSidebarRef = useRef<(() => void) | null>(null);
+
   /* ── Fetch manga info ── */
   useEffect(() => {
     if (!animeId) return;
+    // FIX: cancellation guard — prevents an older, slower request from a
+    // rapid provider/chapter switch overwriting state set by a newer one.
+    let cancelled = false;
+
     setIsLoading(true);
     setError(null);
 
@@ -883,11 +925,13 @@ function Read() {
     (async () => {
       try {
         const aniListData = await fetchMangaInfo(animeId, provider).catch(() => null as Manga | null);
-        const isHentai = (aniListData?.genres?.some((g: string) => g.toLowerCase() === 'hentai') || aniListData?.isAdult === true) || provider === 'hentaireadio';
+        if (cancelled) return;
+
+        const isHentai = (aniListData?.genres?.some((g: string) => g.toLowerCase() === 'hentai') || aniListData?.isAdult === true) || provider === 'hentaireadio' || provider === 'hentai20';
         setIsHentaiManga(isHentai);
 
-        const candidates: Array<'mangahere' | 'mangapill' | 'hentaireadio'> = isHentai
-          ? ['hentaireadio']
+        const candidates: Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = isHentai
+          ? ['hentaireadio', 'hentai20']
           : (provider === 'mangapill' ? ['mangapill', 'mangahere'] : ['mangahere', 'mangapill']);
 
         const probeResults = await Promise.allSettled(
@@ -896,9 +940,10 @@ function Read() {
             return { candidate, data, hasData: hasEntries(data) };
           }),
         );
+        if (cancelled) return;
 
-        const viable: Array<'mangahere' | 'mangapill' | 'hentaireadio'> = [];
-        const dataMap: Partial<Record<'mangahere' | 'mangapill' | 'hentaireadio', Manga>> = {};
+        const viable: Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = [];
+        const dataMap: Partial<Record<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20', Manga>> = {};
         let fallbackData: Manga | null = null;
 
         for (const result of probeResults) {
@@ -914,7 +959,9 @@ function Read() {
 
         setAvailableProviders(viable);
 
-        const chosenProvider = viable[0] ?? candidates[0] ?? provider;
+        const chosenProvider = viable.includes(provider as any)
+          ? provider
+          : viable[0] ?? candidates[0] ?? provider;
         const data = dataMap[chosenProvider] ?? fallbackData ?? aniListData ?? null;
 
         if (data) {
@@ -962,20 +1009,24 @@ function Read() {
             || (lastRead ? chs.find(findByLastRead) : null)
             || chs[0] || null;
 
+          if (cancelled) return;
           setSelectedChapter(matchedChapter);
           if (matchedChapter) setVisibleChapter(matchedChapter);
-        } else {
+        } else if (!cancelled) {
           setError('Unable to load manga data');
         }
       } catch (err: unknown) {
+        if (cancelled) return;
         setError(
           typeof err === 'object' && err !== null && 'message' in err
             ? (err as { message: string }).message : 'Unable to load manga data'
         );
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     })();
+
+    return () => { cancelled = true; };
   }, [animeId, provider, chapterIdParam]);
 
   /* ── Persist provider ── */
@@ -1071,6 +1122,11 @@ function Read() {
       setPageError(null);
       return;
     }
+    // FIX: cancellation guard — ignore a response if the chapter has already
+    // changed again by the time it resolves (fixes "wrong chapter's pages
+    // flash in" when clicking Next/Prev quickly).
+    let cancelled = false;
+
     setIsPageLoading(true);
     setPageError(null);
     setCurrentPage(0);
@@ -1082,6 +1138,7 @@ function Read() {
 
     fetchMangaRead(chapterFetchId, provider)
       .then((pages: MangaReadPage[]) => {
+        if (cancelled) return;
         const arr = Array.isArray(pages) ? pages : [];
         setReadPages(arr);
         setPageStates(arr.map((_, i) => ({
@@ -1089,6 +1146,7 @@ function Read() {
         })));
       })
       .catch((err: unknown) => {
+        if (cancelled) return;
         setPageError(
           typeof err === 'object' && err !== null && 'message' in err
             ? (err as { message: string }).message : 'Unable to load chapter pages'
@@ -1096,7 +1154,9 @@ function Read() {
         setReadPages([]);
         setPageStates([]);
       })
-      .finally(() => setIsPageLoading(false));
+      .finally(() => { if (!cancelled) setIsPageLoading(false); });
+
+    return () => { cancelled = true; };
   }, [selectedChapter, provider]);
 
   /* ── Restore reading position ──
@@ -1226,7 +1286,11 @@ function Read() {
       });
     };
     col.addEventListener('scroll', onScroll, { passive: true });
-    return () => col.removeEventListener('scroll', onScroll);
+    return () => {
+      col.removeEventListener('scroll', onScroll);
+      // FIX: also cancel any in-flight rAF from the scroll handler on cleanup.
+      if (scrollRaf.current) cancelAnimationFrame(scrollRaf.current);
+    };
   }, [isMobile, readPages]);
 
   /* ── Fullscreen events ── */
@@ -1244,7 +1308,10 @@ function Read() {
   /* ── Scroll active chapter into view ── */
   useEffect(() => {
     if ((sidebarOpen || (!isMobile && !sidebarCollapsed)) && activeChapterRef.current) {
-      setTimeout(() => activeChapterRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' }), 60);
+      // FIX: store the timeout id and clear it on cleanup so a stale scroll
+      // doesn't fire after the sidebar/chapter changes again or unmounts.
+      const t = setTimeout(() => activeChapterRef.current?.scrollIntoView({ block: 'center', behavior: 'auto' }), 60);
+      return () => clearTimeout(t);
     }
   }, [sidebarOpen, sidebarCollapsed, isMobile, currentChapter]);
 
@@ -1274,12 +1341,17 @@ function Read() {
     setTimeout(() => { setSidebarOpen(false); setSidebarClosing(false); }, 220);
   }, []);
 
-  const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill' | 'hentaireadio') => {
+  // Keep the ref used by goToChapter pointed at the latest closeSidebar.
+  useEffect(() => {
+    closeSidebarRef.current = closeSidebar;
+  }, [closeSidebar]);
+
+  const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20') => {
     if (nextProvider === provider) return;
 
-    // Prevent switching away from hentaireadio for hentai manga
-    if (isHentaiManga && nextProvider !== 'hentaireadio') {
-      console.warn('⚠️ Cannot switch away from HentaiRadio for hentai content');
+    // Prevent switching away from hentai providers for hentai manga
+    if (isHentaiManga && nextProvider !== 'hentaireadio' && nextProvider !== 'hentai20') {
+      console.warn('⚠️ Cannot switch away from hentai providers for hentai content');
       return;
     }
 
@@ -1293,14 +1365,21 @@ function Read() {
     setIsPageLoading(false);
     setCurrentPage(0);
     if (pagesColRef.current) pagesColRef.current.scrollTop = 0;
-  }, [provider, isHentaiManga]);
+    // FIX: the provider param (and stale chapterId, since chapter ids are
+    // provider-specific) needs to be reflected in the URL too.
+    updateUrl(null, nextProvider);
+  }, [provider, isHentaiManga, updateUrl]);
 
   const toggleFullscreen = useCallback(() => {
+    // FIX: guard against browsers/contexts where neither API exists instead
+    // of calling `.call` on `undefined` and throwing.
     if (isFullscreen) {
-      (document.exitFullscreen || (document as any).webkitExitFullscreen).call(document);
+      const exit = document.exitFullscreen || (document as any).webkitExitFullscreen;
+      exit?.call(document);
     } else {
       const el = document.documentElement;
-      (el.requestFullscreen || (el as any).webkitRequestFullscreen).call(el);
+      const request = el.requestFullscreen || (el as any).webkitRequestFullscreen;
+      request?.call(el);
     }
   }, [isFullscreen]);
 
@@ -1339,6 +1418,9 @@ function Read() {
             <ProvBtn $active={provider === 'hentaireadio'} onClick={() => handleProviderChange('hentaireadio')}>
               HentaiRadio
             </ProvBtn>
+            <ProvBtn $active={provider === 'hentai20'} onClick={() => handleProviderChange('hentai20')}>
+              Hentai20
+            </ProvBtn>
           </ProvRow>
         </SbSection>
       )}
@@ -1371,12 +1453,7 @@ function Read() {
               key={ch.id}
               $active={isActive}
               ref={isActive ? activeChapterRef : null}
-              onClick={() => {
-                providerSwitchRef.current = false;
-                setSelectedChapter(ch);
-                setVisibleChapter(ch);
-                if (isMobile) closeSidebar();
-              }}
+              onClick={() => goToChapter(ch)}
             >
               <ChMeta>
                 <span className='num'>{getChapterShortLabel(ch)}</span>
@@ -1437,12 +1514,7 @@ function Read() {
 
         {/* Prev / Next */}
         <Btn
-          onClick={() => {
-            if (!prevChapter) return;
-            providerSwitchRef.current = false;
-            setSelectedChapter(prevChapter);
-            setVisibleChapter(prevChapter);
-          }}
+          onClick={() => goToChapter(prevChapter)}
           disabled={!prevChapter}
           title='Previous chapter'
         >
@@ -1451,12 +1523,7 @@ function Read() {
         </Btn>
 
         <PrimaryBtn
-          onClick={() => {
-            if (!nextChapter) return;
-            providerSwitchRef.current = false;
-            setSelectedChapter(nextChapter);
-            setVisibleChapter(nextChapter);
-          }}
+          onClick={() => goToChapter(nextChapter)}
           disabled={!nextChapter}
           title='Next chapter'
         >
@@ -1508,7 +1575,11 @@ function Read() {
               {readPages.map((page, idx) => {
                 const ps = pageStates[idx];
                 return (
-                  <PageWrapper key={page.page} data-idx={idx}>
+                  // FIX: page.page is not guaranteed unique/stable across
+                  // providers — use the array index instead (safe here since
+                  // the whole readPages array is replaced wholesale per
+                  // chapter, never spliced in place).
+                  <PageWrapper key={idx} data-idx={idx}>
                     {ps?.loading && !ps?.loaded && <LoadingCell><Spinner /></LoadingCell>}
                     {ps?.error ? (
                       <ErrorCell>
@@ -1522,7 +1593,9 @@ function Read() {
                     ) : (ps?.visible || ps?.loaded) ? (
                       <MangaImg
                         src={
-                          (provider === 'hentaireadio' ? buildHentaiImageProxyUrl(page.img, page.headerForImage?.Referer) : buildImageProxyUrl(page.img, provider, page.headerForImage?.Referer)) +
+                          (provider === 'hentaireadio' || provider === 'hentai20'
+                            ? buildHentaiImageProxyUrl(page.img, page.headerForImage?.Referer)
+                            : buildImageProxyUrl(page.img, provider, page.headerForImage?.Referer)) +
                           (ps?.retryTs ? `&_t=${ps.retryTs}` : '')
                         }
                         alt={`Page ${idx + 1}`}
@@ -1545,25 +1618,12 @@ function Read() {
                 <EocSub>Ready for the next chapter?</EocSub>
                 <EocBtnRow>
                   {prevChapter && (
-                    <EocBtn
-                      onClick={() => {
-                        providerSwitchRef.current = false;
-                        setSelectedChapter(prevChapter);
-                        setVisibleChapter(prevChapter);
-                      }}
-                    >
+                    <EocBtn onClick={() => goToChapter(prevChapter)}>
                       <FaChevronLeft /> Previous Chapter
                     </EocBtn>
                   )}
                   {nextChapter && (
-                    <EocBtn
-                      $primary
-                      onClick={() => {
-                        providerSwitchRef.current = false;
-                        setSelectedChapter(nextChapter);
-                        setVisibleChapter(nextChapter);
-                      }}
-                    >
+                    <EocBtn $primary onClick={() => goToChapter(nextChapter)}>
                       Next Chapter <FaChevronRight />
                     </EocBtn>
                   )}
