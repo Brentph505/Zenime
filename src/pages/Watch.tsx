@@ -932,8 +932,9 @@ const Watch: React.FC = () => {
 
           // ─── Non-AniDB providers ─────────────────────────────────────────
           const hasAnidbM3u8Sources = false; // Not needed anymore with dedicated AniDB handling
+          const isKickassanimeProvider = provider === 'kickassanime';
 
-          if (!isHentaiProvider && !hasAnidbM3u8Sources) {
+          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider) {
             servers.forEach((server: any) => {
               const serverName = server?.name || '';
               const serverUrl = server?.url || '';
@@ -963,7 +964,8 @@ const Watch: React.FC = () => {
               seenProviderName.add(nameKey);
 
               const type = sLang || '';
-              const isEmb = isEmbeddedServer(sUrl, type, provider);
+              // KAA servers are HLS-only, never embedded
+              const isEmb = provider === 'kickassanime' ? false : isEmbeddedServer(sUrl, type, provider);
               const label = provider === 'anidb'
                 ? normalizeAnidbLabel(sName, sLang, isEmb)
                 : sName;
@@ -971,7 +973,8 @@ const Watch: React.FC = () => {
             });
           }
 
-          if (response?.sources && Array.isArray(response.sources)) {
+          // Skip sources processing for KAA (already handled in response.servers)
+          if (!isKickassanimeProvider && response?.sources && Array.isArray(response.sources)) {
             let subCount = 0;
             let dubCount = 0;
 
