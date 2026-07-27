@@ -1,4 +1,4 @@
-﻿import {
+import {
   useEffect,
   useMemo,
   useRef,
@@ -830,6 +830,13 @@ function Read() {
   const currentChapter = visibleChapter;
   const pageCount = readPages.length;
   const progressPct = pageCount > 0 ? Math.round(((currentPage + 1) / pageCount) * 100) : 0;
+  const visibleProviders = useMemo(() => {
+    const allowedProviders = isHentaiManga
+      ? ['hentaireadio', 'hentai20'] as const
+      : ['mangahere', 'mangapill'] as const;
+
+    return allowedProviders.filter((providerName) => availableProviders.includes(providerName));
+  }, [availableProviders, isHentaiManga]);
 
   const prevChapter = useMemo(() => {
     if (!currentChapter) return null;
@@ -927,7 +934,10 @@ function Read() {
         const aniListData = await fetchMangaInfo(animeId, provider).catch(() => null as Manga | null);
         if (cancelled) return;
 
-        const isHentai = (aniListData?.genres?.some((g: string) => g.toLowerCase() === 'hentai') || aniListData?.isAdult === true) || provider === 'hentaireadio' || provider === 'hentai20';
+        const detectedHentai =
+          (aniListData?.genres?.some((g: string) => g.toLowerCase() === 'hentai') || aniListData?.isAdult === true);
+        const explicitHentaiProvider = providerParam === 'hentaireadio' || providerParam === 'hentai20';
+        const isHentai = detectedHentai || explicitHentaiProvider;
         setIsHentaiManga(isHentai);
 
         const candidates: Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = isHentai
@@ -1349,6 +1359,14 @@ function Read() {
   const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20') => {
     if (nextProvider === provider) return;
 
+    const allowedProviders = isHentaiManga
+      ? ['hentaireadio', 'hentai20']
+      : ['mangahere', 'mangapill'];
+
+    if (!allowedProviders.includes(nextProvider)) {
+      return;
+    }
+
     // Prevent switching away from hentai providers for hentai manga
     if (isHentaiManga && nextProvider !== 'hentaireadio' && nextProvider !== 'hentai20') {
       console.warn('⚠️ Cannot switch away from hentai providers for hentai content');
@@ -1401,26 +1419,30 @@ function Read() {
         </SbHead>
       )}
 
-      {availableProviders.length > 1 && (
+      {visibleProviders.length > 0 && (
         <SbSection>
           <SbSectionLabel>Provider</SbSectionLabel>
           <ProvRow>
-            {!isHentaiManga && (
-              <>
-                <ProvBtn $active={provider === 'mangahere'} onClick={() => handleProviderChange('mangahere')}>
-                  Mangahere
-                </ProvBtn>
-                <ProvBtn $active={provider === 'mangapill'} onClick={() => handleProviderChange('mangapill')}>
-                  Mangapill
-                </ProvBtn>
-              </>
+            {visibleProviders.includes('mangahere') && (
+              <ProvBtn $active={provider === 'mangahere'} onClick={() => handleProviderChange('mangahere')}>
+                Mangahere
+              </ProvBtn>
             )}
-            <ProvBtn $active={provider === 'hentaireadio'} onClick={() => handleProviderChange('hentaireadio')}>
-              HentaiRadio
-            </ProvBtn>
-            <ProvBtn $active={provider === 'hentai20'} onClick={() => handleProviderChange('hentai20')}>
-              Hentai20
-            </ProvBtn>
+            {visibleProviders.includes('mangapill') && (
+              <ProvBtn $active={provider === 'mangapill'} onClick={() => handleProviderChange('mangapill')}>
+                Mangapill
+              </ProvBtn>
+            )}
+            {visibleProviders.includes('hentaireadio') && (
+              <ProvBtn $active={provider === 'hentaireadio'} onClick={() => handleProviderChange('hentaireadio')}>
+                HentaiRadio
+              </ProvBtn>
+            )}
+            {visibleProviders.includes('hentai20') && (
+              <ProvBtn $active={provider === 'hentai20'} onClick={() => handleProviderChange('hentai20')}>
+                Hentai20
+              </ProvBtn>
+            )}
           </ProvRow>
         </SbSection>
       )}
