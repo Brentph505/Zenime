@@ -111,13 +111,17 @@ export const EPISODE_CACHE_BY_STATUS: Record<AnimeStatus, CacheConfig> = {
 
 export const CACHE_CONFIGS: Record<string, CacheConfig> = {
 
-  // ── Anime info: always permanent ───────────────────────────────────────────
-  // Title, description, genres, cover — structural data that almost never changes.
-  // Permanent cache = instant loads, zero server pressure.
+  // ── Anime info: SWR with long TTL ──────────────────────────────────────────
+  // Title, description, genres, cover — structural data that rarely changes,
+  // BUT status and episode count can change for airing shows, so use SWR
+  // to allow background refreshes instead of permanent caching.
   Info: {
-    strategy: 'permanent',
+    strategy: 'swr',
+    ttl: 6 * H,        // Soft TTL: refresh in background after 6 hours
+    hardTtl: 24 * H,   // Hard TTL: force refresh after 24 hours
     backend: 'hybrid',
-    updatePolicy: 'immutable',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 6 * 60 * 60 * 1000, // 6 hours in ms
     priority: 'critical',
   },
 
