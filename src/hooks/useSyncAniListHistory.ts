@@ -155,10 +155,13 @@ export function useSyncAniListHistory() {
           const localProgress = getWatchedCount(localWatchedEpisodes[animeId]);
           const effectiveProgress = Math.max(anilistProgress, localProgress, existingAnilistProgress);
 
+          // Convert AniList updatedAt (Unix seconds) to milliseconds for local storage
+          const anilistUpdatedAt = entry.updatedAt ? entry.updatedAt * 1000 : null;
+
           // Always enrich last-anime-visited (titles, status, AniList progress, cover).
           const mergedVisited = {
             ...existingVisited,
-            timestamp: existingVisited.timestamp ?? Date.now(),
+            timestamp: anilistUpdatedAt ?? existingVisited.timestamp ?? Date.now(),
             titleEnglish:
               existingVisited.titleEnglish ||
               entry.media?.title?.english ||
