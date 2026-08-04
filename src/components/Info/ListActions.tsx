@@ -8,7 +8,7 @@
  * Renders nothing when the user is not logged in.
  */
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import styled from 'styled-components';
 import { FaHeart, FaRegHeart } from 'react-icons/fa';
 import { useAuth, useAniListEntry } from '../../index';
@@ -52,7 +52,7 @@ interface ListActionsProps {
 const Wrap = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.5rem;
   width: 100%;
 `;
 
@@ -100,7 +100,28 @@ const Select = styled.select`
   &:disabled { opacity: 0.5; cursor: not-allowed; }
 `;
 
-
+const ScoreInput = styled.input`
+  width: 3.5rem;
+  height: 2.05rem;
+  padding: 0 0.5rem;
+  background: ${T.card};
+  color: ${T.text};
+  border: 1px solid ${T.border};
+  border-radius: 6px;
+  font-size: 0.8rem;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s;
+  &:hover { border-color: ${T.accent}; }
+  &:focus { border-color: ${T.accent}; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  -moz-appearance: textfield;
+`;
 
 const Hint = styled.p`
   margin: 0;
@@ -111,14 +132,44 @@ const Hint = styled.p`
 export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME' }) => {
   const { isLoggedIn } = useAuth();
   const {
-    loading, inList, status, isFavourite, saving,
-    setStatus, toggleFavourite, deleteFromList,
+    loading, inList, status, score, isFavourite, saving,
+    setStatus, setScore, toggleFavourite, deleteFromList,
   } = useAniListEntry(mediaId, isLoggedIn);
+
+  // Local state for the score input to allow smooth typing before blur/enter
+  const [localScore, setLocalScore] = useState<string>(String(score ?? ''));
+
+  // Sync local score when the hook's score changes (e.g., after a successful save)
+  React.useEffect(() => {
+    setLocalScore(String(score ?? ''));
+  }, [score]);
 
   if (!isLoggedIn) return null;
 
   const isManga = type === 'MANGA';
   const statusOptions = isManga ? MANGA_STATUS_OPTIONS : ANIME_STATUS_OPTIONS;
+
+  const handleScoreChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalScore(e.target.value);
+  }, []);
+
+  const handleScoreBlur = useCallback(async () => {
+    const num = Number(localScore);
+    if (Number.isNaN(num) || num < 0 || num > 100) {
+      // Invalid value — revert to the last known good score
+      setLocalScore(String(score ?? ''));
+      return;
+    }
+    if (num !== score) {
+      await setScore(num);
+    }
+  }, [localScore, score, setScore]);
+
+  const handleScoreKeyDown = useCallback(async (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    }
+  }, []);
 
   return (
     <Wrap>
@@ -159,6 +210,20 @@ export const ListActions: React.FC<ListActionsProps> = ({ mediaId, type = 'ANIME
           ))}
           {inList && <option value='DELETE'>Remove from list</option>}
         </Select>
+
+        <ScoreInput
+          type="number"
+          min={0}
+          max={100}
+          placeholder="Score"
+          value={localScore}
+          onChange={handleScoreChange}
+          onBlur={handleScoreBlur}
+          onKeyDown={handleScoreKeyDown}
+          disabled={loading || saving}
+          title="Score (0–100)"
+          aria-label="Score"
+        />
       </Row>
 
       {loading && <Hint>Loading your {isManga ? 'reading' : 'watch'} status…</Hint>}

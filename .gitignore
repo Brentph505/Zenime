@@ -1,68 +1,95 @@
-# Dependency directories
+```gitignore
+# Dependencies
 node_modules/
-jspm_packages/
-.pnpm-store/
 
-# Vite and Build outputs
+# Build outputs
 dist/
-dist-ssr/
 build/
-out/
-.temp/
+target/
 
-# Bun
-.bun/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.ENV
+.env
+.env.local
+.env.*
+.envrc
+.pytest_cache/
+.mypy_cache/
+.coverage
+coverage/
 
-# TypeScript cache
-*.tsbuildinfo
+# Logs
+*.log
 
-# Compiled binary addons (node-gyp)
-build/Release/
-
-# Editor directories and files
-.idea/
-.vscode/
-*.sublime-workspace
-*.sublime-project
-
-# Operating System generated files
+# OS generated files
 .DS_Store
+.DS_Store?
 ._*
 .Spotlight-V100
 .Trashes
 ehthumbs.db
 Thumbs.db
 
-# Package manager lock files
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-bun.lockb
-
-# dotenv environment variables files
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Caches and logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-.cache/
-.eslintcache
-.stylelintcache
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Temporary files
 *.tmp
+*.temp
 *~
-*.bak
-*.sw?
-*.swo
-*.swn
-*.swp
-*.orig
+
+# Environment specific
+.env
+.env.local
+.env.*
+.envrc
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
+
+# Coverage reports
+coverage/
+htmlcov/
+
+# Compiled binary files
+*.exe
+*.dll
+*.so
+*.a
+*.out
+*.class
+*.o
+*.obj
+```
