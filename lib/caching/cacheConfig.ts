@@ -111,13 +111,17 @@ export const EPISODE_CACHE_BY_STATUS: Record<AnimeStatus, CacheConfig> = {
 
 export const CACHE_CONFIGS: Record<string, CacheConfig> = {
 
-  // ── Anime info: always permanent ───────────────────────────────────────────
+  // ── Anime info: status-aware caching — NOT permanent for unreleased/airing shows
   // Title, description, genres, cover — structural data that almost never changes.
-  // Permanent cache = instant loads, zero server pressure.
+  // BUT the status field changes when anime transitions from NOT_YET_RELEASED → ONGOING
+  // Using permanent cache here causes the episode list to freeze on old episode numbers.
   Info: {
-    strategy: 'permanent',
+    strategy: 'swr',
+    ttl: 6 * H,
+    hardTtl: 24 * H,
     backend: 'hybrid',
-    updatePolicy: 'immutable',
+    updatePolicy: 'background-refresh',
+    refreshInterval: 6 * 60 * 60 * 1000,
     priority: 'critical',
   },
 
