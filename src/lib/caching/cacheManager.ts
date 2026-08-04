@@ -29,6 +29,7 @@ import {
   usesRedis,
   usesLocalStorage,
   isSWRStrategy,
+  isPermanent,
   normalizeAnimeStatus,
   CACHE_VERSION,
   type CacheConfig,
@@ -240,7 +241,7 @@ class CacheManager {
     this.ensureStats(cacheKey);
     const full = this.buildKey(cacheKey, key);
     const now = Date.now();
-    const permanent = config.strategy === 'permanent';
+    const permanent = isPermanent(config);
 
     const item: CacheItem<T> = {
       value,
@@ -608,7 +609,7 @@ class CacheManager {
         const raw = localStorage.getItem(k);
         if (!raw) continue;
         const item = JSON.parse(raw) as CacheItem<unknown>;
-        if (item.strategy === 'permanent') continue; // never evict permanent
+        if (isPermanent({ strategy: item.strategy } as CacheConfig)) continue; // never evict permanent
         candidates.push({ key: k, createdAt: item.createdAt ?? 0 });
       } catch {
         // Unparseable entry with the cache prefix — safe to evict
