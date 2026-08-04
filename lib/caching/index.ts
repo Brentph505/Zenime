@@ -16,6 +16,7 @@ export type { RedisClientConfig } from './redisClient';
 export {
   getCacheConfig,
   getEpisodeCacheConfig,
+  getInfoCacheConfig,
   usesRedis,
   usesMemory,
   usesLocalStorage,
