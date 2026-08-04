@@ -113,6 +113,19 @@ class CacheManager {
   }
 
   /**
+   * Get anime info with status-aware config selection.
+   * Reads the anime's `Data` cache first to determine status if Info is missing/stale.
+   */
+  async getInfo<T>(animeId: string): Promise<T | null> {
+    const data = await this.get<{ status?: string }>('Data', animeId);
+    const status = normalizeAnimeStatus(data?.status);
+    const config = status !== 'UNKNOWN'
+      ? getInfoCacheConfig(status)
+      : getCacheConfig('Info');
+    return this.getWithConfig<T>('Info', animeId, config);
+  }
+
+  /**
    * Low-level get that accepts an explicit config.
    */
   async getWithConfig<T>(
