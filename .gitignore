@@ -1,22 +1,41 @@
+```
 # Dependencies
 node_modules/
+
+# Cache
+.cache/
+**/.cache/
+*.cache
 
 # Build outputs
 dist/
 build/
 target/
+out/
 
 # Logs
 *.log
+**/*.log
 
-# Environment variables
+# Environment
 .env
 .env.local
-*.env.*
+.env.*
 
 # IDE specific
 .vscode/
 .idea/
+*.swp
+*.swo
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
 
 # Python specific
 __pycache__/
@@ -25,40 +44,12 @@ __pycache__/
 *.pyd
 .Python
 *.so
-.coverage
-htmlcov/
-.coverage.*
-.pytest_cache/
-.mypy_cache/
+*.egg-info/
+.eggs/
 
-# Temporary files
-*.tmp
-*.swp
-*~
-.DS_Store
-Thumbs.db
-
-# Archives
-*.zip
-*.tar.gz
-*.tar.bz2
-*.tar.xz
-*.gz
-*.rar
-*.7z
-
-# Compiled files
-*.exe
-*.dll
-*.so
-*.a
-*.o
-*.obj
-*.out
-*.class
-
-# Testing
-coverage/
-.nyc_output/
-istanbul/
-test-results/
+# TypeScript/JavaScript specific
+*.tsbuildinfo
+.next/
+.nuxt/
+public/
+```
