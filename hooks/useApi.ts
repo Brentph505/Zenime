@@ -1138,6 +1138,10 @@ export async function fetchAnimeData(
   return mergeBaseData({});
 }
 
+/**
+ * Fetches anime info for a SPECIFIC provider without any internal fallback.
+ * Uses status-aware caching to ensure airing anime update properly.
+ */
 export async function fetchAnimeInfo(
   animeId: string,
   provider: string = 'anikoto',
@@ -1146,6 +1150,28 @@ export async function fetchAnimeInfo(
     const params = new URLSearchParams({ provider: prov });
     const url = `${BASE_URL}meta/anilist/info/${animeId}?${params.toString()}`;
     const cacheKey = generateCacheKey('animeInfo', animeId, prov);
+    
+    // First, try to get cached data
+    const cached = await cacheManager.get('Info', cacheKey);
+    if (cached) {
+      // Check if we need to refresh based on status
+      const status = normalizeAnimeStatus((cached as any)?.status);
+      const config = getInfoCacheConfig(status);
+      
+      // If using permanent strategy for non-completed anime, force refresh
+      if (config.strategy !== 'permanent' && status !== 'COMPLETED' && status !== 'CANCELLED') {
+        const isStale = await cacheManager.checkIsStale('Info', cacheKey);
+        if (isStale) {
+          // Fetch fresh data
+          const freshData = await fetchFromProxy(url, 'Info', cacheKey, undefined, config);
+          return freshData;
+        }
+      }
+      return cached;
+    }
+    
+    // No cache - fetch with status-aware config
+    // We'll apply the correct config after we get the data
     return await fetchFromProxy(url, 'Info', cacheKey);
   };
 
