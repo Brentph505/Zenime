@@ -297,15 +297,17 @@ const Watch: React.FC = () => {
   const EMBEDDED_PLAYER_1 = (import.meta.env.VITE_EMBEDDED_PLAYER_1 as string) || '';
   const hasEmbeddedPlayer = Boolean(EMBEDDED_PLAYER_1?.trim());
   const HENTAIMAMA_PROXY_URL = (import.meta.env.VITE_PROXY_HENTAIMAMA as string) || '';
+  const WATCHHENTAI_PROXY_URL = (import.meta.env.VITE_PROXY_WATCHHENTAI as string) || '';
 
   const getEmbeddedServerName = (lang: string) =>
     lang === 'dub' ? 'Zen Dub' : 'Zen Sub';
 
   const proxyHentaiUrl = (url: string, provider: string, type?: string) => {
-    if (!url || (provider !== 'hentaimama' && provider !== 'watchhentai') || !HENTAIMAMA_PROXY_URL) return url;
+    const proxyUrl = provider === 'watchhentai' ? WATCHHENTAI_PROXY_URL : HENTAIMAMA_PROXY_URL;
+    if (!url || (provider !== 'hentaimama' && provider !== 'watchhentai') || !proxyUrl) return url;
     const isMp4 = /\.mp4$/i.test(url) || type === 'mp4';
     if (!isMp4) return url;
-    return `${HENTAIMAMA_PROXY_URL.replace(/\/+$/, '')}/?url=${encodeURIComponent(url)}`;
+    return `${proxyUrl.replace(/\/+$/, '')}/?url=${encodeURIComponent(url)}`;
   };
 
   const buildEmbeddedPlayerUrl = (
