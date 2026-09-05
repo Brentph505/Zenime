@@ -25,6 +25,7 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
 const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
 const M3U8_PROXY_URL_ANIDB = import.meta.env.VITE_M3U8_PROXY_URL_ANIDB as string;
+const M3U8_PROXY_URL_XANIME = import.meta.env.VITE_M3U8_PROXY_URL_XANIME as string;
 
 // Kickassanime subtitle/SRT proxy (CORS workaround for KAA subtitle files)
 const KAA_SUBTITLE_PROXY_URL = import.meta.env.VITE_KICKASSANIME_SUBTITLE_PROXY as string;
@@ -250,7 +251,7 @@ export function isDirectMediaUrl(url: string): boolean {
 }
 
 /** Providers that return native m3u8 streams (HLS player), not iframe embeds. */
-export const HLS_FIRST_PROVIDERS = new Set(['kickassanime', 'animepahe', 'anidb']);
+export const HLS_FIRST_PROVIDERS = new Set(['kickassanime', 'animepahe', 'xanime', 'anidb']);
 
 /**
  * Whether a server entry should open in the iframe player vs the HLS player.
@@ -342,10 +343,9 @@ export function buildM3U8ProxyUrl(
  * Builds a proxied subtitle URL (VTT / SRT / ASS) for KAA subtitle files.
  * Uses a simple `?url=` passthrough proxy to avoid CORS restrictions.
  */
-export function buildKaaSubtitleProxyUrl(subtitleUrl: string): string {
-  const proxy = KAA_SUBTITLE_PROXY_URL;
+function buildSubtitleProxyUrl(subtitleUrl: string, proxy: string, provider: string): string {
   if (!proxy) {
-    console.warn('⚠️ No KAA subtitle proxy configured (VITE_KICKASSANIME_SUBTITLE_PROXY). Returning original URL.');
+    console.warn(`⚠️ No ${provider} subtitle proxy configured. Returning original URL.`);
     return subtitleUrl;
   }
 
@@ -367,6 +367,22 @@ export function buildKaaSubtitleProxyUrl(subtitleUrl: string): string {
   return `${proxyBase}${pathSuffix}${separator}url=${encodeURIComponent(subtitleUrl)}`;
 }
 
+export function buildKaaSubtitleProxyUrl(subtitleUrl: string): string {
+  return buildSubtitleProxyUrl(
+    subtitleUrl,
+    KAA_SUBTITLE_PROXY_URL,
+    'KAA (VITE_KICKASSANIME_SUBTITLE_PROXY)',
+  );
+}
+
+export function buildXanimeSubtitleProxyUrl(subtitleUrl: string): string {
+  return buildSubtitleProxyUrl(
+    subtitleUrl,
+    M3U8_PROXY_URL_XANIME,
+    'Xanime (VITE_M3U8_PROXY_URL_XANIME)',
+  );
+}
+
 /**
  * Rewrites all subtitle URLs in a subtitles array through the KAA subtitle proxy.
  */
@@ -377,6 +393,16 @@ export function proxyKaaSubtitles(
   return subtitles.map((sub) => ({
     ...sub,
     url: buildKaaSubtitleProxyUrl(sub.url),
+  }));
+}
+
+export function proxyXanimeSubtitles(
+  subtitles: Array<{ url: string; lang: string }>,
+): Array<{ url: string; lang: string }> {
+  if (!M3U8_PROXY_URL_XANIME) return subtitles;
+  return subtitles.map((sub) => ({
+    ...sub,
+    url: buildXanimeSubtitleProxyUrl(sub.url),
   }));
 }
 
@@ -1644,6 +1670,8 @@ export async function fetchAnimeStreamingLinksProxied(
     ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
     : finalProvider === 'anidb'
       ? M3U8_PROXY_URL_ANIDB || M3U8_PROXY_URL
+      : finalProvider === 'xanime'
+        ? M3U8_PROXY_URL_XANIME || M3U8_PROXY_URL
       : M3U8_PROXY_URL;
 
   if (finalProvider === 'watchhentai') {
@@ -1664,6 +1692,12 @@ export async function fetchAnimeStreamingLinksProxied(
   if (finalProvider === 'anidb' && !M3U8_PROXY_URL_ANIDB) {
     console.warn(
       `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_ANIDB is not set.`,
+    );
+  }
+
+  if (finalProvider === 'xanime' && !M3U8_PROXY_URL_XANIME) {
+    console.warn(
+      `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_XANIME is not set.`,
     );
   }
 
@@ -1702,7 +1736,7 @@ export async function fetchAnimeStreamingLinksProxied(
     );
   }
 
-  if (finalProvider === 'kickassanime' || finalProvider === 'reanime' || finalProvider === 'anidb') {
+  if (finalProvider === 'kickassanime' || finalProvider === 'reanime' || finalProvider === 'xanime' || finalProvider === 'anidb') {
     data = proxyDirectMediaUrls(
       data,
       finalProvider,
@@ -1715,6 +1749,11 @@ export async function fetchAnimeStreamingLinksProxied(
   if (finalProvider === 'kickassanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
     console.log('[fetchAnimeStreamingLinksProxied] Proxying KAA subtitles:', data.subtitles.length);
     data.subtitles = proxyKaaSubtitles(data.subtitles);
+  }
+
+  if (finalProvider === 'xanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
+    console.log('[fetchAnimeStreamingLinksProxied] Proxying Xanime subtitles:', data.subtitles.length);
+    data.subtitles = proxyXanimeSubtitles(data.subtitles);
   }
 
   return data;
@@ -1909,7 +1948,7 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
   isDub: boolean = false,
-  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe'],
+  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
@@ -1989,7 +2028,7 @@ export async function fetchEpisodesFromMultipleProviders(
 
 export async function fetchServersFromMultipleProviders(
   episodesByProvider: Record<string, string>,
-  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe'],
+  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 ): Promise<
   Array<{
     provider: string;

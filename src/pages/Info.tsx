@@ -50,7 +50,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'hentaimama' | 'watchhentai';
+type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'hentaimama' | 'watchhentai';
 type MangaProvider = 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -1180,14 +1180,16 @@ const Info: React.FC = () => {
           candidates = preferredHentai === 'watchhentai'
             ? ['watchhentai', 'hentaimama']
             : ['hentaimama', 'watchhentai'];
+        } else if (provider === 'xanime') {
+          candidates = ['xanime', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
         } else if (provider === 'animepahe') {
-          candidates = ['animepahe', 'anikoto', 'reanime', 'kickassanime'];
+          candidates = ['animepahe', 'anikoto', 'reanime', 'kickassanime', 'xanime'];
         } else if (provider === 'kickassanime') {
-          candidates = ['kickassanime', 'anikoto', 'reanime', 'animepahe'];
+          candidates = ['kickassanime', 'anikoto', 'reanime', 'animepahe', 'xanime'];
         } else if (provider === 'reanime') {
-          candidates = ['reanime', 'anikoto', 'kickassanime', 'animepahe'];
+          candidates = ['reanime', 'anikoto', 'kickassanime', 'animepahe', 'xanime'];
         } else {
-          candidates = ['anikoto', 'reanime', 'kickassanime', 'animepahe'];
+          candidates = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
         }
 
         let loaded = false;

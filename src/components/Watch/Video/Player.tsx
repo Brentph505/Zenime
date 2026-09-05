@@ -533,6 +533,7 @@ export function Player({
   useEffect(() => {
     if (isEmbedded) {
       setSrc('');
+      setSubtitles([]);
     } else if (prevIsEmbeddedRef.current && !isEmbedded) {
       resetHlsRetryState();
       setSrc('');
@@ -550,6 +551,7 @@ export function Player({
 
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
     setSrc('');
+    setSubtitles([]);
     fetchAndSetAnimeSource();
     fetchAndProcessSkipTimes();
 
@@ -1126,7 +1128,6 @@ export function Player({
             src={src}
             autoplay={autoPlay && userInteracted}
             muted={false}
-            crossorigin
             playsinline
             onLoadedMetadata={onLoadedMetadata}
             onCanPlay={onCanPlay}
@@ -1155,15 +1156,28 @@ export function Player({
               )}
               {subtitles &&
                 subtitles.length > 0 &&
-                subtitles.map((subtitle, index) => (
-                  <Track
-                    key={`subtitle-${index}`}
-                    kind='subtitles'
-                    src={subtitle.url}
-                    label={subtitle.lang}
-                    default={subtitle.lang === 'English' || index === 0}
-                  />
-                ))}
+                subtitles.map((subtitle, index) => {
+                  const language = subtitle.lang || 'Unknown';
+                  const duplicateCount = subtitles
+                    .slice(0, index)
+                    .filter((item) => item.lang === language).length;
+                  const hasDuplicateLanguage = subtitles.some(
+                    (item) => item.lang === language,
+                  ) && subtitles.filter((item) => item.lang === language).length > 1;
+                  const label = hasDuplicateLanguage
+                    ? `${language} ${duplicateCount + 1}`
+                    : language;
+
+                  return (
+                    <Track
+                      key={`subtitle-${index}-${subtitle.url}`}
+                      kind='subtitles'
+                      src={subtitle.url}
+                      label={label}
+                      default={index === 0}
+                    />
+                  );
+                })}
             </MediaProvider>
             <DefaultAudioLayout icons={defaultLayoutIcons} />
             <DefaultVideoLayout icons={defaultLayoutIcons} />
