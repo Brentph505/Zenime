@@ -196,7 +196,7 @@ const MAX_CACHE_EPISODES_PER_ANIME = 30;
 // Max number of anime entries kept in the localStorage cache
 const MAX_CACHE_ANIME_ENTRIES = 50;
 
-const PROVIDERS: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime', 'anidb'];
+const PROVIDERS: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime', 'anidb'];
 
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
 
@@ -616,7 +616,7 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          const providerPriority = ['hentaimama', 'watchhentai', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          const providerPriority = ['hentaimama', 'watchhentai', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
           let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'anikoto';
 
           for (const priorityProvider of providerPriority) {
@@ -887,6 +887,14 @@ const Watch: React.FC = () => {
           return uniqueLabel;
         };
 
+        const normalizeAnimeParadiesLabel = () => {
+          const label = 'APD';
+          const count = providerNameCounters.get(label) || 0;
+          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
+          providerNameCounters.set(label, count + 1);
+          return uniqueLabel;
+        };
+
         const isEmbeddedServer = (url: string, type?: string, provider?: string) =>
           isEmbeddedPlaybackServer(url, type, provider);
 
@@ -908,6 +916,8 @@ const Watch: React.FC = () => {
               ? normalizeAnikotoLabel(name, type, quality)
               : provider === 'kickassanime'
                 ? normalizeKickassanimeLabel()
+                : provider === 'animeparadies'
+                  ? normalizeAnimeParadiesLabel()
                 : provider === 'xanime'
                   ? normalizeXanimeLabel(name, quality)
                 : name;

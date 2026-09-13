@@ -776,8 +776,8 @@ function Read() {
   const selectedChapterRef = useRef<MangaChapter | null>(null);
   const providerSwitchRef = useRef(false);
   const [readPages, setReadPages] = useState<MangaReadPage[]>([]);
-  const [provider, setProvider] = useState<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'>('mangahere');
-  const [availableProviders, setAvailableProviders] = useState<Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'>>([]);
+  const [provider, setProvider] = useState<'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'>('mangahere');
+  const [availableProviders, setAvailableProviders] = useState<Array<'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'>>([]);
   const [isHentaiManga, setIsHentaiManga] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isPageLoading, setIsPageLoading] = useState(false);
@@ -833,7 +833,7 @@ function Read() {
   const visibleProviders = useMemo(() => {
     const allowedProviders = isHentaiManga
       ? ['hentaireadio', 'hentai20'] as const
-      : ['mangahere', 'mangapill'] as const;
+      : ['atsumaru', 'mangahere', 'mangapill'] as const;
 
     return allowedProviders.filter((providerName) => availableProviders.includes(providerName));
   }, [availableProviders, isHentaiManga]);
@@ -860,12 +860,12 @@ function Read() {
 
   /* ── Provider init ── */
   useEffect(() => {
-    if (providerParam === 'mangapill' || providerParam === 'mangahere' || providerParam === 'hentaireadio' || providerParam === 'hentai20') {
+    if (providerParam === 'atsumaru' || providerParam === 'mangapill' || providerParam === 'mangahere' || providerParam === 'hentaireadio' || providerParam === 'hentai20') {
       setProvider(providerParam); return;
     }
     const stored = localStorage.getItem('manga-provider-preference');
-    if (stored === 'mangapill' || stored === 'mangahere' || stored === 'hentaireadio' || stored === 'hentai20') {
-      setProvider(stored as 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20');
+    if (stored === 'atsumaru' || stored === 'mangapill' || stored === 'mangahere' || stored === 'hentaireadio' || stored === 'hentai20') {
+      setProvider(stored as 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -940,9 +940,9 @@ function Read() {
         const isHentai = detectedHentai || explicitHentaiProvider;
         setIsHentaiManga(isHentai);
 
-        const candidates: Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = isHentai
+        const candidates: Array<'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = isHentai
           ? ['hentaireadio', 'hentai20']
-          : (provider === 'mangapill' ? ['mangapill', 'mangahere'] : ['mangahere', 'mangapill']);
+          : (provider === 'atsumaru' ? ['atsumaru', 'mangahere', 'mangapill'] : provider === 'mangapill' ? ['mangapill', 'atsumaru', 'mangahere'] : ['mangahere', 'atsumaru', 'mangapill']);
 
         const probeResults = await Promise.allSettled(
           candidates.map(async (candidate) => {
@@ -952,8 +952,8 @@ function Read() {
         );
         if (cancelled) return;
 
-        const viable: Array<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = [];
-        const dataMap: Partial<Record<'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20', Manga>> = {};
+        const viable: Array<'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20'> = [];
+        const dataMap: Partial<Record<'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20', Manga>> = {};
         let fallbackData: Manga | null = null;
 
         for (const result of probeResults) {
@@ -1356,12 +1356,12 @@ function Read() {
     closeSidebarRef.current = closeSidebar;
   }, [closeSidebar]);
 
-  const handleProviderChange = useCallback((nextProvider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20') => {
+  const handleProviderChange = useCallback((nextProvider: 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20') => {
     if (nextProvider === provider) return;
 
     const allowedProviders = isHentaiManga
       ? ['hentaireadio', 'hentai20']
-      : ['mangahere', 'mangapill'];
+      : ['atsumaru', 'mangahere', 'mangapill'];
 
     if (!allowedProviders.includes(nextProvider)) {
       return;
@@ -1419,10 +1419,15 @@ function Read() {
         </SbHead>
       )}
 
-      {visibleProviders.length > 0 && (
+      {visibleProviders.length > 1 && (
         <SbSection>
           <SbSectionLabel>Provider</SbSectionLabel>
           <ProvRow>
+            {visibleProviders.includes('atsumaru') && (
+              <ProvBtn $active={provider === 'atsumaru'} onClick={() => handleProviderChange('atsumaru')}>
+                Atsumaru
+              </ProvBtn>
+            )}
             {visibleProviders.includes('mangahere') && (
               <ProvBtn $active={provider === 'mangahere'} onClick={() => handleProviderChange('mangahere')}>
                 Mangahere

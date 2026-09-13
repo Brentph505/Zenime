@@ -207,6 +207,7 @@ function normalizeMangaProvider(provider: string): string {
 
 export type MangaProvider =
   | 'mangadex'
+  | 'atsumaru'
   | 'mangahere'
   | 'mangakakalot'
   | 'mangapark'
@@ -251,7 +252,7 @@ export function isDirectMediaUrl(url: string): boolean {
 }
 
 /** Providers that return native m3u8 streams (HLS player), not iframe embeds. */
-export const HLS_FIRST_PROVIDERS = new Set(['kickassanime', 'animepahe', 'xanime', 'anidb']);
+export const HLS_FIRST_PROVIDERS = new Set(['animeparadies', 'kickassanime', 'animepahe', 'xanime', 'anidb']);
 
 /**
  * Whether a server entry should open in the iframe player vs the HLS player.
@@ -1268,7 +1269,7 @@ export async function fetchAnimeInfo(
  */
 export async function fetchMangaInfo(
   mangaId: string,
-  provider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
+  provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
 ): Promise<any> {
   const finalProvider = normalizeMangaProvider(provider || 'mangahere');
   const params = new URLSearchParams({ provider: finalProvider });
@@ -1294,7 +1295,7 @@ export interface MangaReadPage {
 
 export async function fetchMangaRead(
   chapterId: string,
-  provider: 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
+  provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
 ): Promise<MangaReadPage[]> {
   const finalProvider = normalizeMangaProvider(provider || 'mangahere');
   const params = new URLSearchParams({ chapterId, provider: finalProvider });
@@ -1670,6 +1671,8 @@ export async function fetchAnimeStreamingLinksProxied(
     ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
     : finalProvider === 'anidb'
       ? M3U8_PROXY_URL_ANIDB || M3U8_PROXY_URL
+      : finalProvider === 'animeparadies'
+        ? M3U8_PROXY_URL
       : finalProvider === 'xanime'
         ? M3U8_PROXY_URL_XANIME || M3U8_PROXY_URL
       : M3U8_PROXY_URL;
@@ -1736,7 +1739,7 @@ export async function fetchAnimeStreamingLinksProxied(
     );
   }
 
-  if (finalProvider === 'kickassanime' || finalProvider === 'reanime' || finalProvider === 'xanime' || finalProvider === 'anidb') {
+  if (finalProvider === 'animeparadies' || finalProvider === 'kickassanime' || finalProvider === 'reanime' || finalProvider === 'xanime' || finalProvider === 'anidb') {
     data = proxyDirectMediaUrls(
       data,
       finalProvider,
@@ -1948,7 +1951,7 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
   isDub: boolean = false,
-  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  providers: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
@@ -2028,7 +2031,7 @@ export async function fetchEpisodesFromMultipleProviders(
 
 export async function fetchServersFromMultipleProviders(
   episodesByProvider: Record<string, string>,
-  providers: string[] = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  providers: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 ): Promise<
   Array<{
     provider: string;

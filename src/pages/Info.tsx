@@ -50,8 +50,8 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'hentaimama' | 'watchhentai';
-type MangaProvider = 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20';
+type AnimeProvider = 'animeparadies' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'hentaimama' | 'watchhentai';
+type MangaProvider = 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
 
@@ -990,7 +990,7 @@ const Info: React.FC = () => {
 
   const [provider, setProvider] = useState<Provider>(() => {
     if (queryType === 'MANGA') {
-      return queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
+      return queryProvider === 'atsumaru' || queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
         ? (queryProvider as MangaProvider)
         : (safeGetItem('manga-provider-preference') as MangaProvider) || 'mangahere';
     }
@@ -1011,7 +1011,7 @@ const Info: React.FC = () => {
     if (queryType === 'MANGA') {
       setEpView('list');
       setProvider(
-        queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
+        queryProvider === 'atsumaru' || queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
           ? (queryProvider as MangaProvider)
           : (safeGetItem('manga-provider-preference') as MangaProvider) || 'mangahere',
       );
@@ -1104,10 +1104,12 @@ const Info: React.FC = () => {
         if (detectedHentaiManga || explicitHentaiProvider) {
           candidates.push('hentaireadio', 'hentai20');
         } else {
-          if (provider === 'mangapill' || queryProvider === 'mangapill') {
-            candidates.push('mangapill', 'mangahere');
+          if (provider === 'atsumaru' || queryProvider === 'atsumaru') {
+            candidates.push('atsumaru', 'mangahere', 'mangapill');
+          } else if (provider === 'mangapill' || queryProvider === 'mangapill') {
+            candidates.push('mangapill', 'atsumaru', 'mangahere');
           } else {
-            candidates.push('mangahere', 'mangapill');
+            candidates.push('mangahere', 'atsumaru', 'mangapill');
           }
         }
 
@@ -1180,16 +1182,18 @@ const Info: React.FC = () => {
           candidates = preferredHentai === 'watchhentai'
             ? ['watchhentai', 'hentaimama']
             : ['hentaimama', 'watchhentai'];
+        } else if (provider === 'animeparadies') {
+          candidates = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
         } else if (provider === 'xanime') {
-          candidates = ['xanime', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
+          candidates = ['xanime', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
         } else if (provider === 'animepahe') {
-          candidates = ['animepahe', 'anikoto', 'reanime', 'kickassanime', 'xanime'];
+          candidates = ['animepahe', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'xanime'];
         } else if (provider === 'kickassanime') {
-          candidates = ['kickassanime', 'anikoto', 'reanime', 'animepahe', 'xanime'];
+          candidates = ['kickassanime', 'animeparadies', 'anikoto', 'reanime', 'animepahe', 'xanime'];
         } else if (provider === 'reanime') {
-          candidates = ['reanime', 'anikoto', 'kickassanime', 'animepahe', 'xanime'];
+          candidates = ['reanime', 'animeparadies', 'anikoto', 'kickassanime', 'animepahe', 'xanime'];
         } else {
-          candidates = ['anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          candidates = ['anikoto', 'animeparadies', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
         }
 
         let loaded = false;
@@ -1758,12 +1762,13 @@ const Info: React.FC = () => {
 
                             {availableMangaProviders.size > 1 && (
                               <ProviderSwitcher>
-                                {(['mangahere', 'mangapill', 'hentaireadio', 'hentai20'] as MangaProvider[])
+                                {(['atsumaru', 'mangahere', 'mangapill', 'hentaireadio', 'hentai20'] as MangaProvider[])
                                   .filter(p => availableMangaProviders.has(p))
                                   .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
                                   .map(p => (
                                     <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
-                                      {p === 'mangahere' ? 'MangaHere'
+                                      {p === 'atsumaru' ? 'Atsumaru'
+                                        : p === 'mangahere' ? 'MangaHere'
                                         : p === 'mangapill' ? 'MangaPill'
                                         : p === 'hentai20' ? 'Hentai20'
                                         : 'HentaiRadio'}
@@ -1809,12 +1814,13 @@ const Info: React.FC = () => {
 
                         {isManga && availableMangaProviders.size > 1 && (
                           <ProviderSwitcher>
-                            {(['mangahere', 'mangapill', 'hentaireadio', 'hentai20'] as MangaProvider[])
+                            {(['atsumaru', 'mangahere', 'mangapill', 'hentaireadio', 'hentai20'] as MangaProvider[])
                               .filter(p => availableMangaProviders.has(p))
                               .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
                               .map(p => (
                                 <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
-                                  {p === 'mangahere' ? 'MangaHere'
+                                  {p === 'atsumaru' ? 'Atsumaru'
+                                    : p === 'mangahere' ? 'MangaHere'
                                     : p === 'mangapill' ? 'MangaPill'
                                     : p === 'hentai20' ? 'Hentai20'
                                     : 'HentaiRadio'}
