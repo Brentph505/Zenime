@@ -378,7 +378,6 @@ export const SearchFilters: React.FC<{
   setSelectedSort: React.Dispatch<React.SetStateAction<Option>>;
   sortDirection: 'DESC' | 'ASC';
   setSortDirection: React.Dispatch<React.SetStateAction<'DESC' | 'ASC'>>;
-  updateSearchParams: () => void; // Added prop for updating search params
 }> = ({
   query,
   setQuery,
@@ -396,13 +395,13 @@ export const SearchFilters: React.FC<{
   setSelectedSort,
   sortDirection,
   setSortDirection,
-  updateSearchParams,
 }) => {
   // State to track if any filter is changed from its default value
   const [filtersChanged, setFiltersChanged] = useState(false);
-  
+
   // State for dynamic genres loaded from AniList
-  const [dynamicGenreOptions, setDynamicGenreOptions] = useState<Option[]>(defaultGenreOptions);
+  const [dynamicGenreOptions, setDynamicGenreOptions] =
+    useState<Option[]>(defaultGenreOptions);
   const [genresLoading, setGenresLoading] = useState(true);
 
   // Load genres from AniList on mount
@@ -423,7 +422,9 @@ export const SearchFilters: React.FC<{
   }, []);
 
   // Use dynamic genres if loaded, otherwise fall back to defaults
-  const effectiveGenreOptions = genresLoading ? defaultGenreOptions : dynamicGenreOptions;
+  const effectiveGenreOptions = genresLoading
+    ? defaultGenreOptions
+    : dynamicGenreOptions;
 
   const handleResetFilters = () => {
     setSelectedGenres([]);
@@ -434,7 +435,6 @@ export const SearchFilters: React.FC<{
     setSelectedSort({ value: 'POPULARITY_DESC', label: 'Popularity' });
     setSortDirection('DESC');
     setQuery('');
-    updateSearchParams(); // Also reset URL parameters
   };
 
   useEffect(() => {
@@ -473,7 +473,6 @@ export const SearchFilters: React.FC<{
         React.SetStateAction<string>,
     ) => {
       setter(newValue);
-      updateSearchParams();
     };
 
   return (
@@ -528,7 +527,6 @@ export const SearchFilters: React.FC<{
         <Button
           onClick={() => {
             setSortDirection(sortDirection === 'DESC' ? 'ASC' : 'DESC');
-            updateSearchParams(); // Ensure sort direction changes also update URL
           }}
         >
           {sortDirection === 'DESC' ? (
