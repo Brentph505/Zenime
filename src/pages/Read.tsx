@@ -1621,7 +1621,7 @@ function Read() {
                       <MangaImg
                         src={
                           (provider === 'hentaireadio' || provider === 'hentai20'
-                            ? buildHentaiImageProxyUrl(page.img, page.headerForImage?.Referer)
+                            ? buildHentaiImageProxyUrl(page.img, provider, page.headerForImage?.Referer)
                             : buildImageProxyUrl(page.img, provider, page.headerForImage?.Referer)) +
                           (ps?.retryTs ? `&_t=${ps.retryTs}` : '')
                         }

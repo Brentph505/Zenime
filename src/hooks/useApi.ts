@@ -475,6 +475,7 @@ export function buildImageProxyUrl(
  */
 export function buildHentaiImageProxyUrl(
   imageUrl: string,
+  provider: 'hentaireadio' | 'hentai20' = 'hentaireadio',
   referer?: string,
 ): string {
   // If no dedicated hentai proxy, return the image URL directly
@@ -493,7 +494,7 @@ export function buildHentaiImageProxyUrl(
   }
 
   const proxyBase = HENTAI_IMAGE_PROXY_URL.replace(/\/$/, '');
-  let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=hentaireadio`;
+  let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=${encodeURIComponent(provider)}`;
 
   if (referer) {
     proxied += `&referer=${encodeURIComponent(referer)}`;

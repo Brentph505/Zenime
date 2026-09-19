@@ -25,7 +25,6 @@ const Container = styled.div`
 const Search = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
-
   const sortParam = searchParams.get('sort');
   // Directly initialize state from URL parameters
   const initialQuery = searchParams.get('query') || '';
@@ -105,8 +104,9 @@ const Search = () => {
     };
   }, [query]);
 
-  const updateSearchParams = useCallback(() => {
+  useEffect(() => {
     if (!isMounted.current) return;
+
     const params = new URLSearchParams();
     params.set('query', query);
     if (selectedGenres.length > 0) {
@@ -117,12 +117,23 @@ const Search = () => {
     if (selectedFormat.value) params.set('format', selectedFormat.value);
     if (selectedStatus.value) params.set('status', selectedStatus.value);
     const sortBase = selectedSort.value.replace(/(_DESC|_ASC)$/, '');
-    const sortParam =
-      sortDirection === 'DESC' ? `${sortBase}_DESC` : `${sortBase}_ASC`;
-    params.set('sort', sortParam);
+    params.set(
+      'sort',
+      sortDirection === 'DESC' ? `${sortBase}_DESC` : `${sortBase}_ASC`,
+    );
 
     setSearchParams(params, { replace: true });
-  }, [query, selectedGenres, selectedYear, selectedSeason, selectedFormat, selectedStatus, selectedSort, sortDirection, setSearchParams]);
+  }, [
+    query,
+    selectedGenres,
+    selectedYear,
+    selectedSeason,
+    selectedFormat,
+    selectedStatus,
+    selectedSort,
+    sortDirection,
+    setSearchParams,
+  ]);
 
   useEffect(() => {
     setPage(1);
@@ -228,12 +239,11 @@ const Search = () => {
         setSelectedSort={setSelectedSort}
         sortDirection={sortDirection}
         setSortDirection={setSortDirection}
-        updateSearchParams={updateSearchParams}
       />
 
       <div>
         {(isLoading && page === 1) ||
-          (isLoading && page === 1 && animeData.length === 0) ? (
+        (isLoading && page === 1 && animeData.length === 0) ? (
           <StyledCardGrid>
             {Array.from({ length: 17 }).map((_, index) => (
               <SkeletonCard key={index} />
