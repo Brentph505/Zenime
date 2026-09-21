@@ -169,17 +169,20 @@ const ListItem = styled.button<{
   }
 
   @media (hover: none) and (pointer: coarse) {
-    &:hover,
-    &:active,
-    &:focus {
+    &:hover {
       background-color: ${({ $isSelected }) =>
-        $isSelected ? 'var(--primary-accent) !important' : 'inherit !important'};
-      color: ${({ $isSelected }) =>
-        $isSelected ? 'var(--global-text) !important' : 'inherit !important'};
+        $isSelected
+          ? 'var(--primary-accent) !important'
+          : 'var(--global-tertiary-bg) !important'};
+      color: ${({ $isSelected, $isWatched }) =>
+        $isSelected
+          ? 'var(--global-text) !important'
+          : $isWatched
+            ? 'var(--primary-accent) !important'
+            : 'grey !important'};
       filter: none !important;
-      box-shadow: none !important;
-      outline: none !important;
-      padding-left: ${({ $isRowLayout }) => ($isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0')};
+      padding: ${({ $isRowLayout }) =>
+        $isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0'};
     }
   }
 `;
