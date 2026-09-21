@@ -94,6 +94,22 @@ const EmbeddedIframe = styled.iframe`
   backface-visibility: hidden;
 `;
 
+const PlayerViewport = styled.div`
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 12rem;
+  position: relative;
+  overflow: hidden;
+  background-color: black;
+  border-radius: var(--global-border-radius);
+
+  > .player,
+  > iframe {
+    width: 100%;
+    height: 100%;
+  }
+`;
+
 type PlayerProps = {
   episodeId: string;
   episodeNumber?: number;
@@ -1111,15 +1127,17 @@ export function Player({
   return (
     <div style={{ animation: 'popIn 0.25s ease-in-out' }}>
       {/* Embedded iframe player — key forces full remount when URL changes */}
-      {isEmbedded && builtEmbeddedUrl && (
+      {isEmbedded && (
         <EmbeddedPlayerWrapper>
           <EmbeddedIframeWrapper key={stableIframeKey}>
-            <EmbeddedIframe
-              src={builtEmbeddedUrl}
-              allowFullScreen
-              allow="accelerometer; gyroscope; magnetometer; autoplay; fullscreen; picture-in-picture; screen-wake-lock"
-              title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
-            />
+            {builtEmbeddedUrl && (
+              <EmbeddedIframe
+                src={builtEmbeddedUrl}
+                allowFullScreen
+                allow="accelerometer; gyroscope; magnetometer; autoplay; fullscreen; picture-in-picture; screen-wake-lock"
+                title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
+              />
+            )}
           </EmbeddedIframeWrapper>
           <div
             className='player-menu'
@@ -1152,67 +1170,69 @@ export function Player({
       {/* HLS video player — only shown when NOT in embedded mode */}
       {!isEmbedded && (
         <>
-          <MediaPlayer
-            key={`player-${episodeId}-${sourceType}-${hlsDirectUrl || serverUrl}`}
-            className='player'
-            title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
-            src={src}
-            autoplay={autoPlay && userInteracted}
-            muted={false}
-            playsinline
-            onLoadedMetadata={onLoadedMetadata}
-            onCanPlay={onCanPlay}
-            onError={onMediaError}
-            onProviderChange={onProviderChange}
-            onTimeUpdate={onTimeUpdate}
-            ref={player}
-            aspectRatio='16/9'
-            load='eager'
-            posterLoad='eager'
-            streamType='on-demand'
-            storage='storage-key'
-            keyTarget='player'
-            onEnded={handlePlaybackEnded}
-          >
-            <MediaProvider>
-              <Poster
-                className='vds-poster'
-                src={banner}
-                alt=''
-                onClick={() => animeId && navigate(`/info/${animeId}`)}
-                style={{ cursor: 'pointer' }}
-              />
-              {vttUrl && (
-                <Track kind='chapters' src={vttUrl} default label='Skip Times' />
-              )}
-              {subtitles &&
-                subtitles.length > 0 &&
-                subtitles.map((subtitle, index) => {
-                  const language = subtitle.lang || 'Unknown';
-                  const duplicateCount = subtitles
-                    .slice(0, index)
-                    .filter((item) => item.lang === language).length;
-                  const hasDuplicateLanguage = subtitles.some(
-                    (item) => item.lang === language,
-                  ) && subtitles.filter((item) => item.lang === language).length > 1;
-                  const label = hasDuplicateLanguage
-                    ? `${language} ${duplicateCount + 1}`
-                    : language;
+          <PlayerViewport>
+            <MediaPlayer
+              key={`player-${episodeId}-${sourceType}-${hlsDirectUrl || serverUrl}`}
+              className='player'
+              title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
+              src={src}
+              autoplay={autoPlay && userInteracted}
+              muted={false}
+              playsinline
+              onLoadedMetadata={onLoadedMetadata}
+              onCanPlay={onCanPlay}
+              onError={onMediaError}
+              onProviderChange={onProviderChange}
+              onTimeUpdate={onTimeUpdate}
+              ref={player}
+              aspectRatio='16/9'
+              load='eager'
+              posterLoad='eager'
+              streamType='on-demand'
+              storage='storage-key'
+              keyTarget='player'
+              onEnded={handlePlaybackEnded}
+            >
+              <MediaProvider>
+                <Poster
+                  className='vds-poster'
+                  src={banner}
+                  alt=''
+                  onClick={() => animeId && navigate(`/info/${animeId}`)}
+                  style={{ cursor: 'pointer' }}
+                />
+                {vttUrl && (
+                  <Track kind='chapters' src={vttUrl} default label='Skip Times' />
+                )}
+                {subtitles &&
+                  subtitles.length > 0 &&
+                  subtitles.map((subtitle, index) => {
+                    const language = subtitle.lang || 'Unknown';
+                    const duplicateCount = subtitles
+                      .slice(0, index)
+                      .filter((item) => item.lang === language).length;
+                    const hasDuplicateLanguage = subtitles.some(
+                      (item) => item.lang === language,
+                    ) && subtitles.filter((item) => item.lang === language).length > 1;
+                    const label = hasDuplicateLanguage
+                      ? `${language} ${duplicateCount + 1}`
+                      : language;
 
-                  return (
-                    <Track
-                      key={`subtitle-${index}-${subtitle.url}`}
-                      kind='subtitles'
-                      src={subtitle.url}
-                      label={label}
-                      default={index === 0}
-                    />
-                  );
-                })}
-            </MediaProvider>
-            <DefaultAudioLayout icons={defaultLayoutIcons} />
-            <DefaultVideoLayout icons={defaultLayoutIcons} />
-          </MediaPlayer>
+                    return (
+                      <Track
+                        key={`subtitle-${index}-${subtitle.url}`}
+                        kind='subtitles'
+                        src={subtitle.url}
+                        label={label}
+                        default={index === 0}
+                      />
+                    );
+                  })}
+              </MediaProvider>
+              <DefaultAudioLayout icons={defaultLayoutIcons} />
+              <DefaultVideoLayout icons={defaultLayoutIcons} />
+            </MediaPlayer>
+          </PlayerViewport>
           <div
             className='player-menu'
             style={{
