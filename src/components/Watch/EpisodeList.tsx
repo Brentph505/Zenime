@@ -142,6 +142,9 @@ const ListItem = styled.button<{
         : 'grey'}; // Not selected and not watched
 
   display: flex;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
   padding: ${({ $isRowLayout }) =>
     $isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0'};
   text-align: ${({ $isRowLayout }) => ($isRowLayout ? 'left' : 'center')};
@@ -282,7 +285,7 @@ const EpisodeDescription = styled.span`
   font-size: 0.82rem;
   line-height: 1.3;
   opacity: 0.85;
-  max-width: 22rem;
+  max-width: 100%;
   max-height: calc(2 * 1.3em);
 `;
 
@@ -654,6 +657,8 @@ export const EpisodeList: React.FC<Props> = ({
                       alignItems: 'center',
                       gap: '0.75rem',
                       flex: 1,
+                      minWidth: 0,
+                      width: '100%',
                     }}
                   >
                     <EpisodeImageWrapper>
@@ -667,7 +672,7 @@ export const EpisodeList: React.FC<Props> = ({
                         onError={() => handleImageLoad(episode.id)}
                       />
                     </EpisodeImageWrapper>
-                    <div>
+                    <div style={{ minWidth: 0, overflow: 'hidden' }}>
                       <EpisodeHeading>
                         <EpisodeNumber>{episode.number}. </EpisodeNumber>
                         <EpisodeTitle $isSelected={$isSelected}>
