@@ -124,10 +124,10 @@ const ListItem = styled.button<{
   background-color: ${({ $isSelected, $isWatched }) =>
     $isSelected
       ? $isWatched
-        ? 'var(--primary-accent)' // Selected and watched
-        : 'var(--primary-accent-bg)' // Selected but not watched
+        ? 'var(--primary-accent)'
+        : 'var(--primary-accent-bg)'
       : $isWatched
-        ? 'var(--primary-accent-bg); filter: brightness(0.8);' // Not selected but watched
+        ? 'var(--primary-accent-bg)'
         : 'var(--global-tertiary-bg)'};
 
   border: none;
@@ -138,7 +138,7 @@ const ListItem = styled.button<{
         ? 'var(--global-text)' // Selected and watched
         : 'var(--global-text)' // Selected but not watched
       : $isWatched
-        ? 'var(--primary-accent); filter: brightness(0.8);' // Not selected but watched
+        ? 'var(--primary-accent)' // Not selected but watched
         : 'grey'}; // Not selected and not watched
 
   display: flex;
@@ -172,8 +172,10 @@ const ListItem = styled.button<{
     &:hover,
     &:active,
     &:focus {
-      background-color: inherit !important;
-      color: inherit !important;
+      background-color: ${({ $isSelected }) =>
+        $isSelected ? 'var(--primary-accent) !important' : 'inherit !important'};
+      color: ${({ $isSelected }) =>
+        $isSelected ? 'var(--global-text) !important' : 'inherit !important'};
       filter: none !important;
       box-shadow: none !important;
       outline: none !important;
