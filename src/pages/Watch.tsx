@@ -613,7 +613,7 @@ const Watch: React.FC = () => {
         if (!mounted || mergedEpisodes.length === 0) return;
 
         const transformed: WatchEpisode[] = mergedEpisodes.map((mergedEp) => {
-          let title = mergedEp.title || '';
+          let title = mergedEp.title?.trim() || '';
           if (title) title = title.replace(/^\d+-\d+\.\s+/, '');
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
@@ -629,6 +629,7 @@ const Watch: React.FC = () => {
           }
 
           const primaryProviderData = mergedEp.providers[primaryProviderKey];
+          title = title || primaryProviderData?.title?.trim() || `Episode ${epNumber}`;
 
           return {
             id: primaryProviderData?.id || String(epNumber),

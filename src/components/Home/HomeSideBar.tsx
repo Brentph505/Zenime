@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
 import { TbCards } from 'react-icons/tb';
@@ -38,6 +37,13 @@ const SidebarStyled = styled.div`
 
   @media (max-width: 1000px) {
     max-width: unset;
+  }
+
+  @media (max-width: 500px) {
+    max-height: calc((6.5rem + 0.5rem) * 5);
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
   }
 `;
 
@@ -213,21 +219,9 @@ const SideBarAnimeCard: React.FC<{ anime: Anime; index: number }> = ({ anime, in
 export const HomeSideBar: React.FC<{ animeData: Anime[] }> = ({
   animeData,
 }) => {
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Determine how many items to render. We render up to 10 items for
-  // desktop sizes so CSS can control visibility/scrolling. On small
-  // screens render only 5 to keep the UI compact.
-  const desiredRenderCount = windowWidth <= 500 ? 5 : Math.min(10, animeData.length);
+  // Render the same up-to-10 item set at every viewport size. CSS controls
+  // the compact scrolling viewport on smaller screens.
+  const desiredRenderCount = Math.min(10, animeData.length);
   const displayedAnime = animeData.slice(0, desiredRenderCount);
 
   return (

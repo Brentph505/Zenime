@@ -141,13 +141,15 @@ const ListItem = styled.button<{
         ? 'var(--primary-accent); filter: brightness(0.8);' // Not selected but watched
         : 'grey'}; // Not selected and not watched
 
+  display: flex;
   padding: ${({ $isRowLayout }) =>
     $isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0'};
   text-align: ${({ $isRowLayout }) => ($isRowLayout ? 'left' : 'center')};
   cursor: pointer;
   justify-content: ${({ $isRowLayout }) =>
     $isRowLayout ? 'space-between' : 'center'};
-  align-items: center;
+  align-items: ${({ $isRowLayout }) =>
+    $isRowLayout ? 'flex-start' : 'center'};
 
   &:hover,
   &:active,
@@ -255,11 +257,19 @@ const Icon = styled.div`
   }
 `;
 
-const EpisodeNumber = styled.span``;
+const EpisodeNumber = styled.span`
+  flex: 0 0 auto;
+  padding: 0.5rem 0;
+`;
 const EpisodeTitle = styled.span<{ $isSelected?: boolean }>`
   padding: 0.5rem;
   color: ${({ $isSelected }) =>
     $isSelected ? 'var(--global-text)' : 'inherit'};
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 `;
 
 const EpisodeDescription = styled.span`
@@ -273,6 +283,25 @@ const EpisodeDescription = styled.span`
   line-height: 1.3;
   opacity: 0.85;
   max-width: 22rem;
+  max-height: calc(2 * 1.3em);
+`;
+
+const EpisodeListContent = styled.div`
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+`;
+
+const EpisodeListPlayIcon = styled(FontAwesomeIcon)`
+  flex: 0 0 auto;
+  align-self: flex-end;
+  margin: 0 0 0.15rem 0.4rem;
+`;
+
+const EpisodeHeading = styled.div`
+  display: flex;
+  align-items: center;
+  min-width: 0;
 `;
 
 // The updated EpisodeList component
@@ -639,10 +668,12 @@ export const EpisodeList: React.FC<Props> = ({
                       />
                     </EpisodeImageWrapper>
                     <div>
-                      <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                      <EpisodeTitle $isSelected={$isSelected}>
-                        {episode.title}
-                      </EpisodeTitle>
+                      <EpisodeHeading>
+                        <EpisodeNumber>{episode.number}. </EpisodeNumber>
+                        <EpisodeTitle $isSelected={$isSelected}>
+                          {episode.title}
+                        </EpisodeTitle>
+                      </EpisodeHeading>
                       {episode.description ? (
                         <EpisodeDescription>
                           {episode.description}
@@ -673,7 +704,7 @@ export const EpisodeList: React.FC<Props> = ({
                 // Render for 'list' layout
                 <>
                   <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                  <div>
+                  <EpisodeListContent>
                     <EpisodeTitle $isSelected={$isSelected}>
                       {episode.title}
                     </EpisodeTitle>
@@ -682,8 +713,8 @@ export const EpisodeList: React.FC<Props> = ({
                         {episode.description}
                       </EpisodeDescription>
                     ) : null}
-                  </div>
-                  {$isSelected && <FontAwesomeIcon icon={faPlay} />}
+                  </EpisodeListContent>
+                  {$isSelected && <EpisodeListPlayIcon icon={faPlay} />}
                 </>
               )}
             </ListItem>

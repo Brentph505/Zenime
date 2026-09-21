@@ -1996,11 +1996,12 @@ export async function fetchEpisodesFromMultipleProviders(
 
         const episodeNumber = extractEpisodeNumber(ep.id, epIndex);
         const episodeKey = episodeNumber;
+        const episodeTitle = typeof ep.title === 'string' ? ep.title.trim() : '';
 
         if (!episodeMap.has(episodeKey)) {
           episodeMap.set(episodeKey, {
             number: episodeNumber,
-            title: ep.title || `Episode ${episodeNumber}`,
+            title: episodeTitle || `Episode ${episodeNumber}`,
             image: ep.image || '',
             description: ep.description || '',
             imageHash: ep.imageHash || '',
@@ -2015,7 +2016,7 @@ export async function fetchEpisodesFromMultipleProviders(
         merged.providers[actualProvider] = {
           id: ep.id,
           provider: actualProvider,
-          title: ep.title || `Episode ${episodeNumber}`,
+          title: episodeTitle || `Episode ${episodeNumber}`,
           image: ep.image || '',
           description: ep.description || '',
           imageHash: ep.imageHash || '',
@@ -2024,6 +2025,9 @@ export async function fetchEpisodesFromMultipleProviders(
 
         if (!merged.image && ep.image) {
           merged.image = ep.image;
+        }
+        if ((!merged.title || merged.title === `Episode ${episodeNumber}`) && episodeTitle) {
+          merged.title = episodeTitle;
         }
         if (!merged.description && ep.description) {
           merged.description = ep.description;
