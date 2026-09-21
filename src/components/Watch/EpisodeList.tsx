@@ -673,9 +673,16 @@ export const EpisodeList: React.FC<Props> = ({
                 // Render for 'list' layout
                 <>
                   <EpisodeNumber>{episode.number}. </EpisodeNumber>
-                  <EpisodeTitle $isSelected={$isSelected}>
-                    {episode.title}
-                  </EpisodeTitle>
+                  <div>
+                    <EpisodeTitle $isSelected={$isSelected}>
+                      {episode.title}
+                    </EpisodeTitle>
+                    {episode.description ? (
+                      <EpisodeDescription>
+                        {episode.description}
+                      </EpisodeDescription>
+                    ) : null}
+                  </div>
                   {$isSelected && <FontAwesomeIcon icon={faPlay} />}
                 </>
               )}

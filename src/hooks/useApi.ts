@@ -567,12 +567,13 @@ const BASIC_MEDIA_QUERY = `
       id
       genres
       isAdult
+      description(asHtml: true)
     }
   }
 `;
 
 export async function fetchAniListMediaBase(animeId: string): Promise<any> {
-  const cacheKey = generateCacheKey('aniListMediaBase', animeId);
+  const cacheKey = generateCacheKey('aniListMediaBase-v2', animeId);
 
   const cached = await cacheManager.get<any>('AniListMediaBase', cacheKey);
   if (cached) {
@@ -1050,7 +1051,7 @@ export async function fetchAnimeData(
   const attemptFetch = async (prov: string) => {
     const params = new URLSearchParams({ provider: prov });
     const url = `${BASE_URL}meta/anilist/data/${animeId}?${params.toString()}`;
-    const cacheKey = generateCacheKey('animeData', animeId, prov);
+    const cacheKey = generateCacheKey('animeData-v2', animeId, prov);
     return await fetchFromProxy(url, 'Data', cacheKey);
   };
 
@@ -1085,6 +1086,7 @@ export async function fetchAnimeData(
       ...data,
       genres: firstData?.genres || data?.genres,
       isAdult: firstData?.isAdult !== undefined ? firstData.isAdult : data?.isAdult,
+      description: data?.description || firstData?.description || '',
     };
   };
 
@@ -1170,27 +1172,44 @@ export async function fetchAnimeInfo(
   const attemptFetch = async (prov: string) => {
     const params = new URLSearchParams({ provider: prov });
     const url = `${BASE_URL}meta/anilist/info/${animeId}?${params.toString()}`;
-    const cacheKey = generateCacheKey('animeInfo', animeId, prov);
+    const cacheKey = generateCacheKey('animeInfo-v2', animeId, prov);
     return await fetchFromProxy(url, 'Info', cacheKey);
   };
 
   let finalProvider = provider || 'anikoto';
   let isHentai = false;
+  let aniListBase: any = null;
+
+  try {
+    aniListBase = await fetchAniListMediaBase(animeId);
+  } catch (error) {
+    console.log(`⚠️ Error fetching AniList fallback metadata...`, error);
+  }
+
+  const mergeInfoDescription = (data: any) => {
+    if (!data || typeof data !== 'object') return data;
+
+    return {
+      ...data,
+      description: data.description || aniListBase?.description || '',
+    };
+  };
 
   const handleData = async (data: any, currentProv: string) => {
     if (!data || (typeof data === 'object' && Object.keys(data).length === 0)) {
       return null;
     }
-    isHentai = data?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
+    const enrichedData = mergeInfoDescription(data);
+    isHentai = enrichedData?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
     if (isHentai && currentProv !== 'watchhentai' && currentProv !== 'hentaimama') {
       console.log(`⚠️ Anime is Hentai, switching provider to watchhentai...`);
-      return await attemptFetch('watchhentai');
+      return mergeInfoDescription(await attemptFetch('watchhentai'));
     }
     if (!isHentai && (currentProv === 'watchhentai' || currentProv === 'hentaimama')) {
       console.log(`⚠️ Anime is NOT Hentai, switching provider to kickassanime...`);
-      return await attemptFetch('kickassanime');
+      return mergeInfoDescription(await attemptFetch('kickassanime'));
     }
-    return data;
+    return enrichedData;
   };
 
   let lastError: any;

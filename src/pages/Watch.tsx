@@ -977,8 +977,8 @@ const Watch: React.FC = () => {
 
           // Hentai providers can expose playable entries through `servers`
           // instead of `sources`; keep both HM and WH visible in the selector.
-          const hasHentaiMamaSources =
-            provider === 'hentaimama' &&
+          const hasHentaiSources =
+            isHentaiProvider &&
             Array.isArray(response?.sources) &&
             response.sources.length > 0;
 
@@ -986,7 +986,7 @@ const Watch: React.FC = () => {
             response?.servers &&
             Array.isArray(response.servers) &&
             response.servers.length > 0 &&
-            !hasHentaiMamaSources
+            !hasHentaiSources
           ) {
             const seenProviderName = new Set<string>();
 
@@ -1020,7 +1020,7 @@ const Watch: React.FC = () => {
             let dubCount = 0;
             const providerServerNames = new Map<string, string>();
 
-            if (provider === 'hentaimama' && Array.isArray(response?.servers)) {
+            if (isHentaiProvider && Array.isArray(response?.servers)) {
               response.servers.forEach((server: any) => {
                 const serverUrl = String(server?.url || '').trim();
                 const serverName = String(server?.name || '').trim();
