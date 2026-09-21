@@ -256,8 +256,12 @@ export function Player({
     ? embeddedServerKeys.has(sourceType)
     : sourceType === 'embedded';
 
-  // Detect ReAnime's flixcloud.cc player specifically.
-  const isFlixcloudEmbed = isEmbedded && Boolean(embeddedUrl?.includes('flixcloud.cc'));
+  // ReAnime is the only provider whose FlixCloud iframe gets this bridge.
+  const isFlixcloudEmbed =
+    isEmbedded &&
+    episodeProvider === 'reanime' &&
+    Boolean(embeddedUrl?.includes('flixcloud.cc'));
+  const isReanimeEmbed = isEmbedded && episodeProvider === 'reanime';
   const animePaheIframeProxy = (import.meta.env.VITE_EMBEDDED_PROXY_ANIMEPAHE as string) || '';
 
   const shouldProxyAnimePaheEmbeddedUrl = (url: string) => {
@@ -306,18 +310,22 @@ export function Player({
     }
   }, [embeddedUrl, autoPlay, autoSkip, animePaheIframeProxy]);
 
-  useEffect(() => {
-    if (isEmbedded && isFlixcloudEmbed) {
-      console.log('[Player] ReAnime/flixcloud not working');
-    }
-  }, [isEmbedded, isFlixcloudEmbed]);
-
   // ─── iframe postMessage event bridge ────────────────────────────────────────
   useEffect(() => {
     if (!isEmbedded) return;
 
     const handlePlaybackEndedRef = {
       current: async () => {
+        if (
+          playbackTransitionRef.current ||
+          Date.now() < playbackTransitionLockUntilRef.current
+        ) {
+          return;
+        }
+
+        playbackTransitionRef.current = true;
+        playbackTransitionLockUntilRef.current = Date.now() + 2_000;
+
         try {
           if (propEpisodeNumber) {
             await saveAniListProgressRef.current?.(propEpisodeNumber);
@@ -328,6 +336,11 @@ export function Player({
           await onEpisodeEndRef.current();
         } catch (err) {
           console.error('[Player] auto-next error:', err);
+        } finally {
+          window.setTimeout(() => {
+            playbackTransitionRef.current = false;
+            playbackTransitionLockUntilRef.current = 0;
+          }, 2_200);
         }
       },
     };
@@ -384,6 +397,10 @@ export function Player({
     const handleMessage = (event: MessageEvent) => {
       let data = event.data;
       if (typeof data === 'string') {
+        if (isReanimeEmbed && data.trim().toLowerCase() === 'ended') {
+          void handlePlaybackEndedRef.current();
+          return;
+        }
         try {
           data = JSON.parse(data);
         } catch {
@@ -391,6 +408,11 @@ export function Player({
         }
       }
       if (!data || typeof data !== 'object') return;
+
+      // Some ArtPlayer bridges wrap the event in `detail` or `data`.
+      // Flatten that envelope before applying the provider-specific checks.
+      if (data.detail && typeof data.detail === 'object') data = data.detail;
+      if (data.data && typeof data.data === 'object') data = data.data;
 
       const normalized = {
         ...data,
@@ -400,6 +422,7 @@ export function Player({
         query: String(data.query || '').toLowerCase(),
         action: String(data.action || '').toLowerCase(),
         name: String(data.name || '').toLowerCase(),
+        playerStatus: String(data.playerStatus || '').toLowerCase(),
         currentTime:
           typeof data.currentTime === 'number'
             ? data.currentTime
@@ -419,9 +442,17 @@ export function Player({
         query: string;
         action: string;
         name: string;
+        playerStatus: string;
         currentTime?: number;
         duration?: number;
       };
+
+      // FlixCloud's ArtPlayer bridge reports completion as
+      // { playerStatus: 'Ended' } rather than an `ended` event payload.
+      if (isReanimeEmbed && normalized.playerStatus === 'ended') {
+        void handlePlaybackEndedRef.current();
+        return;
+      }
 
       // ── MegaCloud channel ──────────────────────────────────────────────────
       if (normalized.channel === 'megacloud') {
@@ -526,7 +557,7 @@ export function Player({
       window.removeEventListener('pagehide', saveIframeProgressOnUnload);
       window.removeEventListener('beforeunload', saveIframeProgressOnUnload);
     };
-  }, [isEmbedded, episodeId, settings, isLoggedIn, animeId, propEpisodeNumber]);
+  }, [isEmbedded, isReanimeEmbed, episodeId, settings, isLoggedIn, animeId, propEpisodeNumber]);
 
   const prevIsEmbeddedRef = useRef<boolean>(isEmbedded);
 
