@@ -192,6 +192,13 @@ const sourceIsDub = (source: StreamingSource): boolean | undefined => {
   return undefined;
 };
 
+const isHlsSource = (source: StreamingSource): boolean =>
+  Boolean(
+    source.isM3U8 ||
+      /\.m3u8(\?|$|#)/i.test(source.url) ||
+      /\/m3u8(\?|$|#)/i.test(source.url),
+  );
+
 export function Player({
   episodeId,
   episodeNumber: propEpisodeNumber,
@@ -875,7 +882,8 @@ export function Player({
       hlsDirectUrl &&
       (isDirectMediaUrl(hlsDirectUrl) ||
         /\.mp4/i.test(hlsDirectUrl) ||
-        /\.m3u8/i.test(hlsDirectUrl));
+        /\.m3u8/i.test(hlsDirectUrl) ||
+        /\/m3u8(?:\?|$|#)/i.test(hlsDirectUrl));
 
     if (isValidHlsDirectUrl) {
       if (fetchToken !== fetchAbortRef.current) return;
@@ -1007,14 +1015,14 @@ export function Player({
         // (the Dub track) regardless of which one the user picked.
         const candidateSources = response.sources.filter(
           (source) =>
-            (source.isM3U8 || source.url?.endsWith('.m3u8')) &&
+            isHlsSource(source) &&
             (isDubServer === undefined || sourceIsDub(source) === isDubServer),
         );
         const m3u8Sources =
           candidateSources.length > 0
             ? candidateSources
             : response.sources.filter(
-                (source) => source.isM3U8 || source.url?.endsWith('.m3u8'),
+                isHlsSource,
               );
 
         if (m3u8Sources.length > 0) {

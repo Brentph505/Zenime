@@ -246,6 +246,7 @@ export function isDirectMediaUrl(url: string): boolean {
   if (!url) return false;
   return (
     /\.m3u8(\?|$|#)/i.test(url) ||
+    /\/m3u8(\?|$|#)/i.test(url) ||
     /\.mp4(\?|$|#)/i.test(url) ||
     /\/manifest\//i.test(url)
   );
