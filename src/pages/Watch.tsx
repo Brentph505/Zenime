@@ -292,6 +292,8 @@ const Watch: React.FC = () => {
     new Set(['embedded']),
   );
   const [hlsDirectUrl, setHlsDirectUrl] = useState<string>('');
+  const [serverRefreshKey, setServerRefreshKey] = useState(0);
+  const [isRefreshingServers, setIsRefreshingServers] = useState(false);
 
   // ── Embedded player config ────────────────────────────────────────────────
   const EMBEDDED_PLAYER_1 = (import.meta.env.VITE_EMBEDDED_PLAYER_1 as string) || '';
@@ -787,6 +789,7 @@ const Watch: React.FC = () => {
     if (!currentEpisode.id || currentEpisode.id === '0') return;
 
     const fetchAvailableServers = async () => {
+      setIsRefreshingServers(true);
       const episodesByProvider: Record<string, string> = {};
       const providers = currentEpisode.providers || EMPTY_PROVIDERS;
       if (providers && Object.keys(providers).length > 0) {
@@ -811,6 +814,7 @@ const Watch: React.FC = () => {
       if (providerList.length === 0) {
         console.warn('[Watch] No providers available for this episode');
         setAvailableServers([]);
+        setIsRefreshingServers(false);
         return;
       }
 
@@ -971,7 +975,19 @@ const Watch: React.FC = () => {
             });
           }
 
-          if (!isHentaiProvider && response?.servers && Array.isArray(response.servers) && response.servers.length > 0) {
+          // Hentai providers can expose playable entries through `servers`
+          // instead of `sources`; keep both HM and WH visible in the selector.
+          const hasHentaiMamaSources =
+            provider === 'hentaimama' &&
+            Array.isArray(response?.sources) &&
+            response.sources.length > 0;
+
+          if (
+            response?.servers &&
+            Array.isArray(response.servers) &&
+            response.servers.length > 0 &&
+            !hasHentaiMamaSources
+          ) {
             const seenProviderName = new Set<string>();
 
             response.servers.forEach((srv: any) => {
@@ -1002,23 +1018,59 @@ const Watch: React.FC = () => {
           if (!isKickassanimeProvider && response?.sources && Array.isArray(response.sources)) {
             let subCount = 0;
             let dubCount = 0;
+            const providerServerNames = new Map<string, string>();
+
+            if (provider === 'hentaimama' && Array.isArray(response?.servers)) {
+              response.servers.forEach((server: any) => {
+                const serverUrl = String(server?.url || '').trim();
+                const serverName = String(server?.name || '').trim();
+                if (serverUrl && serverName) providerServerNames.set(serverUrl, serverName);
+              });
+            }
 
             const providerPrefix = provider === 'watchhentai' ? 'WH ' : provider === 'hentaimama' ? 'HM ' : '';
 
             response.sources.forEach((source: any) => {
               const sourceUrl = source?.url || '';
-              if (!sourceUrl || !isDirectMediaUrl(sourceUrl)) return;
+              if (!sourceUrl) return;
               if (provider === 'anikoto' && sourceUrl.includes('.m3u8')) return;
 
+              let isUsableHentaiUrl = false;
+              if (isHentaiProvider) {
+                try {
+                  isUsableHentaiUrl = new URL(sourceUrl).protocol.startsWith('http');
+                } catch {
+                  isUsableHentaiUrl = false;
+                }
+              }
+
+              const isDirectSource = isDirectMediaUrl(sourceUrl);
+              if (!isDirectSource && !isUsableHentaiUrl) return;
+
               const isDub = source.isDub === true;
-              const type = sourceUrl.includes('.mp4') ? 'mp4' : 'hls';
+              const type = sourceUrl.includes('.mp4')
+                ? 'mp4'
+                : sourceUrl.includes('.m3u8')
+                  ? 'hls'
+                  : 'iframe';
               const qualityLabel = source?.quality || '';
-              const sourceName = provider === 'anikoto'
-                ? 'Zen Sub'
-                : isDub
-                  ? `${providerPrefix}Dub${++dubCount}`
-                  : `${providerPrefix}Sub${++subCount}`;
-              addServer(sourceName, sourceUrl, provider, type, false, qualityLabel);
+              const matchedHentaiServerName = providerServerNames.get(sourceUrl);
+              const sourceName = provider === 'hentaimama'
+                ? matchedHentaiServerName || source?.name || source?.server || source?.label ||
+                  (isDub ? `${providerPrefix}Dub${++dubCount}` : `${providerPrefix}Sub${++subCount}`)
+                : provider === 'anikoto'
+                  ? 'Zen Sub'
+                  : isDub
+                    ? `${providerPrefix}Dub${++dubCount}`
+                    : `${providerPrefix}Sub${++subCount}`;
+              addServer(
+                sourceName,
+                sourceUrl,
+                provider,
+                type,
+                type === 'iframe',
+                qualityLabel,
+              );
             });
           }
         });
@@ -1059,6 +1111,17 @@ const Watch: React.FC = () => {
           try {
             const response = await fetchAnimeStreamingLinksProxied(episodeId, provider);
             const servers = response?.servers || [];
+            if (provider === 'hentaimama' || provider === 'watchhentai') {
+              console.log('[Watch] Hentai provider response:', {
+                provider,
+                serverCount: servers.length,
+                sourceCount: Array.isArray(response?.sources) ? response.sources.length : 0,
+                serverNames: servers.map((server: any) => server?.name).filter(Boolean),
+                sourceUrls: Array.isArray(response?.sources)
+                  ? response.sources.map((source: any) => source?.url).filter(Boolean)
+                  : [],
+              });
+            }
             partialProviderResults.push({ provider, servers, response });
             rebuildServerEntries(partialProviderResults);
           } catch (err) {
@@ -1069,11 +1132,13 @@ const Watch: React.FC = () => {
         await Promise.all(providerFetches);
       } catch (err) {
         console.error('[Watch] Error fetching servers from multiple providers:', err);
+      } finally {
+        setIsRefreshingServers(false);
       }
     };
 
     fetchAvailableServers();
-  }, [currentEpisode.id, currentEpisode.providers, animeId, language]);
+  }, [currentEpisode.id, currentEpisode.providers, animeId, language, serverRefreshKey]);
 
   // ── Resolve player URL when selected server changes ───────────────────────
   useEffect(() => {
@@ -1333,6 +1398,9 @@ const Watch: React.FC = () => {
               availableServers={availableServers}
               embeddedServerName={embeddedServerName}
               embeddedServerKeys={embeddedServerKeys}
+              onRefreshServers={() => setServerRefreshKey((key) => key + 1)}
+              isRefreshingServers={isRefreshingServers}
+              isLoadingServers={isRefreshingServers}
             />
           )}
           {animeInfo && <AnimeData animeData={animeInfo} />}

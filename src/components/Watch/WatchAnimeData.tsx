@@ -201,6 +201,12 @@ const ShowTrailerButton = styled(Button)`
     background-color: var(--primary-accent);
     z-index: 2;
   }
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+    background-color: var(--global-div);
+    transform: none;
+  }
   @media (max-width: 500px) {
     font-size: 0.8rem;
     width: 8.5rem;
@@ -238,6 +244,16 @@ const MalAnilistSvg = styled.div`
     width: 4rem;
     height: 2rem;
   }
+`;
+
+const DisabledMalButton = styled(MalAnilistSvg).attrs({
+  as: 'button',
+  type: 'button',
+})`
+  border: none;
+  padding: 0;
+  cursor: not-allowed;
+  opacity: 0.55;
 `;
 
 const ShowMoreButton = styled.button`
@@ -403,13 +419,15 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                   <FaExternalLinkAlt size={24} />
                 </InfoIconOverlay>
               </ImageWrapper>
-              {animeData.trailer && animeData.status !== 'Not yet aired' && (
-                <ShowTrailerButton onClick={toggleTrailer}>
-                  <p>
-                    <strong>TRAILER</strong>
-                  </p>
-                </ShowTrailerButton>
-              )}
+              <ShowTrailerButton
+                onClick={toggleTrailer}
+                disabled={!animeData.trailer || animeData.status === 'Not yet aired'}
+                aria-label={animeData.trailer ? 'Show trailer' : 'Trailer unavailable'}
+              >
+                <p>
+                  <strong>TRAILER</strong>
+                </p>
+              </ShowTrailerButton>
               {showTrailer && (
                 <TrailerOverlay onClick={toggleTrailer}>
                   <TrailerOverlayContent onClick={(e) => e.stopPropagation()}>
@@ -442,6 +460,11 @@ export const WatchAnimeData: React.FC<{ animeData: Anime }> = ({
                       <SiMyanimelist size={'2.75rem'} />
                     </MalAnilistSvg>
                   </a>
+                )}
+                {!animeData.malId && (
+                  <DisabledMalButton aria-label='MyAnimeList unavailable'>
+                    <SiMyanimelist size={'2.75rem'} />
+                  </DisabledMalButton>
                 )}
               </MalAniContainer>
             </div>

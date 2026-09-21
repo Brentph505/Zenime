@@ -5,6 +5,7 @@ import {
   FaDownload,
   FaShare,
   FaServer,
+  FaSyncAlt,
 } from 'react-icons/fa';
 
 // Props interface
@@ -19,6 +20,9 @@ interface MediaSourceProps {
   embeddedServerName?: string;
   /** Server keys that should display with the EM (iframe) badge */
   embeddedServerKeys?: Set<string>;
+  onRefreshServers?: () => void;
+  isRefreshingServers?: boolean;
+  isLoadingServers?: boolean;
 }
 
 const UpdatedContainer = styled.div`
@@ -41,10 +45,49 @@ const ServerTitle = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
   font-weight: bold;
   color: var(--global-text);
   font-size: 0.95rem;
+`;
+
+const RefreshServersButton = styled.button`
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--global-border-radius);
+  cursor: pointer;
+  background-color: var(--global-div);
+  color: var(--global-text);
+
+  &:hover {
+    background-color: var(--primary-accent);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+
+  svg {
+    animation: ${({ disabled }: { disabled?: boolean }) =>
+      disabled ? 'server-refresh-spin 0.9s linear infinite' : 'none'};
+  }
+
+  @keyframes server-refresh-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 `;
 
 // Row height is pinned via ServerButton's height so the grid can be sized
@@ -101,6 +144,7 @@ const ServerGrid = styled.div`
 
 const ServerButton = styled.button`
   box-sizing: border-box;
+  min-width: 7rem;
   height: ${SERVER_ROW_HEIGHT};
   padding: 0.4rem 0.6rem;
   border: 2px solid transparent;
@@ -125,6 +169,7 @@ const ServerButton = styled.button`
   /* Reset back to natural sizing on mobile — the fixed row height above
      is only needed to compute the desktop 2-row scroll cutoff. */
   @media (max-width: 500px) {
+    min-width: auto;
     height: auto;
     min-height: 2.5rem;
     padding: 0.6rem;
@@ -147,6 +192,35 @@ const ServerButton = styled.button`
   }
 `;
 
+const ServerSkeleton = styled.div`
+  min-width: 7rem;
+  height: ${SERVER_ROW_HEIGHT};
+  border-radius: var(--global-border-radius);
+  background: linear-gradient(
+    90deg,
+    var(--global-div) 25%,
+    var(--global-secondary-bg) 50%,
+    var(--global-div) 75%
+  );
+  background-size: 200% 100%;
+  animation: server-skeleton-shimmer 1.4s ease-in-out infinite;
+
+  @keyframes server-skeleton-shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  @media (max-width: 500px) {
+    min-width: auto;
+    min-height: 2.5rem;
+    height: auto;
+  }
+`;
+
 const ServerLabel = styled.span`
   display: inline-flex;
   align-items: center;
@@ -162,13 +236,6 @@ const ServerLabel = styled.span`
     font-weight: bold;
     text-transform: uppercase;
   }
-`;
-
-const LoadingServers = styled.div`
-  font-size: 0.8rem;
-  color: var(--global-text);
-  opacity: 0.6;
-  padding: 0.4rem 0;
 `;
 
 const DownloadLink = styled.a`
@@ -268,6 +335,9 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   availableServers = [],
   embeddedServerName = 'Embedded',
   embeddedServerKeys,
+  onRefreshServers,
+  isRefreshingServers = false,
+  isLoadingServers = false,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
 
@@ -308,8 +378,9 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   };
 
   const serverButtons = buildServerButtons();
-  const isLoadingServers =
-    availableServers.length === 0 && !embeddedServerName && !sourceType;
+  const showLoadingServers =
+    isLoadingServers ||
+    (availableServers.length === 0 && !embeddedServerName && !sourceType);
 
   return (
     <UpdatedContainer>
@@ -355,10 +426,23 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
       <ServerContainer>
         <ServerTitle>
           <FaServer /> Server
+          <RefreshServersButton
+            type='button'
+            onClick={onRefreshServers}
+            disabled={!onRefreshServers || isRefreshingServers}
+            aria-label='Refresh available servers'
+            title='Refresh available servers'
+          >
+            <FaSyncAlt />
+          </RefreshServersButton>
         </ServerTitle>
 
-        {isLoadingServers ? (
-          <LoadingServers>Checking available servers…</LoadingServers>
+        {showLoadingServers ? (
+          <ServerGrid aria-label='Loading available servers'>
+            {Array.from({ length: 6 }, (_, index) => (
+              <ServerSkeleton key={`server-skeleton-${index}`} />
+            ))}
+          </ServerGrid>
         ) : (
           <ServerGrid>
             {serverButtons.map((server) => (

@@ -982,9 +982,6 @@ const Info: React.FC = () => {
   // Track which manga providers actually returned chapters (for button visibility)
   const [availableMangaProviders, setAvailableMangaProviders] = useState<Set<MangaProvider>>(new Set());
 
-  // Track which hentai providers are available (hentaimama is default, watchhentai is extra)
-  const [availableHentaiProviders, setAvailableHentaiProviders] = useState<Set<AnimeProvider>>(new Set());
-
   // Track if the current manga is hentai to enforce provider restrictions
   const [isHentaiManga, setIsHentaiManga] = useState(false);
 
@@ -1003,7 +1000,6 @@ const Info: React.FC = () => {
   // ── Sync state when URL params change ────────────────────────────────────────
   useEffect(() => {
     setAvailableMangaProviders(new Set());
-    setAvailableHentaiProviders(new Set());
     setIsHentaiManga(false);
     setEpRange(0);
     setEpSearch('');
@@ -1280,11 +1276,6 @@ const Info: React.FC = () => {
           setError('Failed to load anime information.');
         }
 
-        // Expose which hentai providers are available for the UI switcher
-        if (detectedHentai) {
-          const available = new Set<AnimeProvider>(candidates as AnimeProvider[]);
-          setAvailableHentaiProviders(available);
-        }
       }
 
       if (!cancelled) setLoading(false);
@@ -1318,19 +1309,6 @@ const Info: React.FC = () => {
       setEpSearch('');
     } catch (err) {
       console.warn(`⚠️ Provider switch to ${newProvider} failed:`, err);
-    }
-  };
-
-  // ── Manual hentai provider switch ─────────────────────────────────────────
-  const handleHentaiProviderSwitch = async (newProvider: AnimeProvider) => {
-    if (!animeId || newProvider === provider) return;
-    setProvider(newProvider);
-    safeSetItem('hentai-provider-preference', newProvider);
-    try {
-      const data = await fetchAnimeInfo(animeId, newProvider);
-      if (data) setAnimeInfo(data as any);
-    } catch (err) {
-      console.warn(`⚠️ Hentai provider switch to ${newProvider} failed:`, err);
     }
   };
 
@@ -1797,19 +1775,6 @@ const Info: React.FC = () => {
                             <SegmentOption $active={epView === 'list'} onClick={() => setEpView('list')} title="List view"><MdViewList size={16} /></SegmentOption>
                             <SegmentOption $active={epView === 'number'} onClick={() => setEpView('number')} title="Number view"><MdGridOn size={15} /></SegmentOption>
                           </SegmentedControl>
-                        )}
-
-                        {/* Hentai provider switcher — only shown for hentai content */}
-                        {!isManga && availableHentaiProviders.size > 1 && (
-                          <ProviderSwitcher>
-                            {(['hentaimama', 'watchhentai'] as AnimeProvider[])
-                              .filter(p => availableHentaiProviders.has(p))
-                              .map(p => (
-                                <ProviderButton key={p} $active={provider === p} onClick={() => handleHentaiProviderSwitch(p)}>
-                                  {p === 'hentaimama' ? 'HentaiMama' : 'WatchHentai'}
-                                </ProviderButton>
-                              ))}
-                          </ProviderSwitcher>
                         )}
 
                         {isManga && availableMangaProviders.size > 1 && (
