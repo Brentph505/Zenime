@@ -976,8 +976,9 @@ const Watch: React.FC = () => {
             });
           }
 
-          // Hentai providers can expose playable entries through `servers`
-          // instead of `sources`; keep both HM and WH visible in the selector.
+          // HentaiMama may expose playable entries through `servers` when it
+          // has no sources. WatchHentai is source-only to avoid adding the
+          // same stream once as `watchhentai` and again as a `WH` entry.
           const hasHentaiSources =
             isHentaiProvider &&
             Array.isArray(response?.sources) &&
@@ -987,6 +988,7 @@ const Watch: React.FC = () => {
             response?.servers &&
             Array.isArray(response.servers) &&
             response.servers.length > 0 &&
+            provider !== 'watchhentai' &&
             !hasHentaiSources
           ) {
             const seenProviderName = new Set<string>();
@@ -1021,7 +1023,7 @@ const Watch: React.FC = () => {
             let dubCount = 0;
             const providerServerNames = new Map<string, string>();
 
-            if (isHentaiProvider && Array.isArray(response?.servers)) {
+            if (provider === 'hentaimama' && Array.isArray(response?.servers)) {
               response.servers.forEach((server: any) => {
                 const serverUrl = String(server?.url || '').trim();
                 const serverName = String(server?.name || '').trim();
