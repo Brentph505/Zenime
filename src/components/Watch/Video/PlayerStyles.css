@@ -60,56 +60,16 @@
   background-color: rgba(255, 255, 255, 0.42) !important;
 }
 
-/* Match the embedded player's readable caption treatment. Vidstack renders
-   WebVTT text under .vds-captions [data-part='cue']. */
 .player {
-  --app-caption-font: 'Trebuchet MS', sans-serif;
-  --app-caption-weight: 700;
-  --media-user-font-family: var(--app-caption-font);
-  --media-user-font-size: 1;
-  --media-user-text-opacity: 1;
-  --media-user-text-color: rgb(255 255 255);
-  --media-user-text-bg-opacity: 0;
-  --media-user-text-bg: rgb(0 0 0 / var(--media-user-text-bg-opacity, 1));
-  --media-user-display-bg-opacity: 0;
-  --media-user-display-bg: rgb(0 0 0 / var(--media-user-display-bg-opacity, 1));
-  --media-cue-padding-x: 0.35em;
-  --media-cue-padding-y: 0.12em;
-  --media-cue-border-radius: 0;
+  --media-user-text-bg: rgb(0 0 0 / var(--media-user-text-bg-opacity, 0));
+  --media-cue-backdrop: none;
 }
 
 .player .vds-captions [data-part='cue'] {
-  border-radius: 0;
-  backdrop-filter: none;
-  font-weight: var(--app-caption-weight);
-  text-shadow:
-    0 0 2px #000,
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    2px 2px 0 #000 !important;
-}
-
-/* Native browser captions are used by some HLS/browser combinations. */
-.player video::cue {
-  color: #fff;
-  background-color: transparent;
-  font-family: 'Trebuchet MS', sans-serif;
-  font-size: 100%;
-  font-weight: 700;
-  text-shadow:
-    0 0 2px #000,
-    -2px -2px 0 #000,
-    2px -2px 0 #000,
-    -2px 2px 0 #000,
-    2px 2px 0 #000;
+  font-weight: var(--media-user-font-weight, 400);
 }
 
 @media (max-width: 768px) {
-  .player {
-    --media-user-font-size: 1;
-  }
-  
   /* Disable hover effects on mobile */
   .player-menu button:hover,
   .player-menu button:active,

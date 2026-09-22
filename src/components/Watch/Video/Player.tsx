@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import './PlayerStyles.css';
 import { useNavigate } from 'react-router-dom';
 import {
   isHLSProvider,
   MediaPlayer,
   MediaProvider,
+  Menu,
   Poster,
+  Slider,
   Track,
   TimeSlider,
   type MediaErrorDetail,
@@ -27,6 +30,12 @@ import { useAuth } from '../../../client/useAuth';
 import { syncWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
 import {
   DefaultAudioLayout,
+  DefaultMenuButton,
+  DefaultMenuRadioGroup,
+  DefaultMenuSection,
+  DefaultMenuSliderItem,
+  DefaultSliderParts,
+  DefaultSliderSteps,
   defaultLayoutIcons,
   DefaultVideoLayout,
 } from '@vidstack/react/player/layouts/default';
@@ -259,11 +268,6 @@ const getEpisodeNumber = (episodeId: string): string => {
   return match ? match[1] : '1';
 };
 
-const outlineCaptionTextShadow =
-  'rgb(34 34 34) 0 0 1.86389px, rgb(34 34 34) 0 0 1.86389px, ' +
-  'rgb(34 34 34) 0 0 1.86389px, rgb(34 34 34) 0 0 1.86389px, ' +
-  'rgb(34 34 34) 0 0 1.86389px';
-
 // ─── Dub/Sub detection helper ────────────────────────────────────────────────
 // Some providers (e.g. AniDB) don't populate `source.isDub` at all — they only
 // give a human-readable `quality` string like "English Dub" / "Japanese Sub".
@@ -286,6 +290,120 @@ const isHlsSource = (source: StreamingSource): boolean =>
       /\.m3u8(\?|$|#)/i.test(source.url) ||
       /\/m3u8(\?|$|#)/i.test(source.url),
   );
+
+const captionWeightOptions = [
+  { label: 'Bold', value: '700' },
+];
+
+const DEFAULT_CAPTION_FONT_WEIGHT = '700';
+const DEFAULT_CAPTION_OUTLINE_WIDTH = 2;
+
+const getStoredCaptionFontWeight = (): string => {
+  const storedWeight = localStorage.getItem('zenime-caption-font-weight');
+  return storedWeight === DEFAULT_CAPTION_FONT_WEIGHT
+    ? storedWeight
+    : DEFAULT_CAPTION_FONT_WEIGHT;
+};
+
+const getStoredCaptionOutlineWidth = (): number => {
+  const storedValue = localStorage.getItem('zenime-caption-outline-width');
+  if (storedValue === null) return DEFAULT_CAPTION_OUTLINE_WIDTH;
+
+  const storedWidth = Number(storedValue);
+  return Number.isInteger(storedWidth) && storedWidth >= 0 && storedWidth <= 4
+    ? storedWidth
+    : DEFAULT_CAPTION_OUTLINE_WIDTH;
+};
+
+const createCaptionTextShadow = (outlineWidth: number): string => {
+  if (outlineWidth <= 0) return 'none';
+
+  const shadows: string[] = [];
+  for (let x = -outlineWidth; x <= outlineWidth; x += 1) {
+    for (let y = -outlineWidth; y <= outlineWidth; y += 1) {
+      if (x !== 0 || y !== 0) shadows.push(`${x}px ${y}px 0 #000`);
+    }
+  }
+  return shadows.join(', ');
+};
+
+type CaptionStyleExtensionsProps = {
+  player: RefObject<MediaPlayerInstance | null>;
+  fontWeight: string;
+  outlineWidth: number;
+  onFontWeightChange: (value: string) => void;
+  onOutlineWidthChange: (value: number) => void;
+};
+
+const CaptionStyleExtensions = ({
+  player,
+  fontWeight,
+  outlineWidth,
+  onFontWeightChange,
+  onOutlineWidthChange,
+}: CaptionStyleExtensionsProps) => {
+  const [captionStylesMenu, setCaptionStylesMenu] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const playerElement = player.current?.el;
+    if (!playerElement) return;
+
+    const findCaptionStylesMenu = () => {
+      const menu = playerElement.querySelector<HTMLElement>('.vds-font-style-items');
+      if (menu) setCaptionStylesMenu(menu);
+    };
+
+    findCaptionStylesMenu();
+    const observer = new MutationObserver(findCaptionStylesMenu);
+    observer.observe(playerElement, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [player, fontWeight, outlineWidth]);
+
+  if (!captionStylesMenu) return null;
+
+  return createPortal(
+    <DefaultMenuSection label='Zenime'>
+      <Menu.Root className='vds-font-weight-menu vds-menu'>
+        <DefaultMenuButton
+          label='Weight'
+          hint={
+            captionWeightOptions.find((option) => option.value === fontWeight)?.label ||
+            'Black'
+          }
+        />
+        <Menu.Items className='vds-menu-items'>
+          <DefaultMenuRadioGroup
+            value={fontWeight}
+            options={captionWeightOptions}
+            onChange={onFontWeightChange}
+          />
+        </Menu.Items>
+      </Menu.Root>
+      <DefaultMenuSliderItem
+        label='Outline'
+        value={`${outlineWidth}px`}
+        isMin={outlineWidth === 0}
+        isMax={outlineWidth === 4}
+      >
+        <Slider.Root
+          aria-label='Caption outline thickness'
+          className='vds-slider'
+          min={0}
+          max={4}
+          value={outlineWidth}
+          onValueChange={(value) => onOutlineWidthChange(value)}
+        >
+          <DefaultSliderParts />
+          <DefaultSliderSteps />
+        </Slider.Root>
+      </DefaultMenuSliderItem>
+    </DefaultMenuSection>,
+    captionStylesMenu,
+  );
+};
 
 export function Player({
   episodeId,
@@ -321,7 +439,10 @@ export function Player({
   const [canPlay, setCanPlay] = useState<boolean>(false);
   const [userInteracted, setUserInteracted] = useState<boolean>(false);
   const [builtEmbeddedUrl, setBuiltEmbeddedUrl] = useState<string>('');
-
+  const [captionFontWeight, setCaptionFontWeight] = useState(getStoredCaptionFontWeight);
+  const [captionOutlineWidth, setCaptionOutlineWidth] = useState(
+    getStoredCaptionOutlineWidth,
+  );
   // Incrementing token — any in-flight fetchAndSetAnimeSource whose token doesn't
   // match the current value is considered stale and must not call setSrc.
   const fetchAbortRef = useRef<number>(0);
@@ -347,14 +468,6 @@ export function Player({
     playbackTransitionLockUntilRef.current = 0;
     autoplayAttemptKeyRef.current = '';
   }, [episodeNumber]);
-
-  useEffect(() => {
-    if (localStorage.getItem('vds-player:text-shadow') !== 'outline') return;
-    player.current?.el?.style.setProperty(
-      '--media-user-text-shadow',
-      outlineCaptionTextShadow,
-    );
-  }, [episodeId, sourceType, hlsDirectUrl, serverUrl]);
 
   const animeVideoTitle = animeTitle;
 
@@ -865,10 +978,12 @@ export function Player({
     if (player.current) {
       setTotalDuration(player.current.duration);
     }
+    applyCaptionStyles();
   }
 
   function onCanPlay() {
     setCanPlay(true);
+    applyCaptionStyles();
     tryAutoPlay();
   }
 
@@ -1216,6 +1331,33 @@ export function Player({
   const toggleAutoNext = () => setSettings({ ...settings, autoNext: !autoNext });
   const toggleAutoSkip = () => setSettings({ ...settings, autoSkip: !autoSkip });
 
+  const updateCaptionFontWeight = () => {
+    setCaptionFontWeight(DEFAULT_CAPTION_FONT_WEIGHT);
+    localStorage.setItem('zenime-caption-font-weight', DEFAULT_CAPTION_FONT_WEIGHT);
+  };
+
+  const updateCaptionOutlineWidth = (value: number) => {
+    setCaptionOutlineWidth(value);
+    localStorage.setItem('zenime-caption-outline-width', String(value));
+  };
+
+  const applyCaptionStyles = () => {
+    const playerElement = player.current?.el as HTMLElement | null;
+    if (!playerElement) return;
+
+    playerElement.style.setProperty('--media-user-font-weight', captionFontWeight);
+    playerElement.style.setProperty(
+      '--media-user-text-shadow',
+      createCaptionTextShadow(captionOutlineWidth),
+    );
+  };
+
+  useEffect(() => {
+    applyCaptionStyles();
+    const frame = window.requestAnimationFrame(applyCaptionStyles);
+    return () => window.cancelAnimationFrame(frame);
+  }, [captionFontWeight, captionOutlineWidth]);
+
   const activeSkipTime = skipTimes.find(
     ({ interval }) =>
       currentTime >= interval.startTime && currentTime < interval.endTime,
@@ -1305,9 +1447,6 @@ export function Player({
             <MediaPlayer
               key={`player-${episodeId}-${sourceType}-${hlsDirectUrl || serverUrl}`}
               className='player'
-              style={{
-                '--media-user-text-shadow': outlineCaptionTextShadow,
-              }}
               title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
               src={src}
               autoplay={autoPlay && userInteracted}
@@ -1326,6 +1465,10 @@ export function Player({
               streamType='on-demand'
               storage='storage-key'
               keyTarget='player'
+              style={{
+                '--media-user-font-weight': captionFontWeight,
+                '--media-user-text-shadow': createCaptionTextShadow(captionOutlineWidth),
+              }}
               onEnded={handlePlaybackEnded}
             >
               <MediaProvider>
@@ -1367,7 +1510,18 @@ export function Player({
               <DefaultAudioLayout icons={defaultLayoutIcons} />
               <DefaultVideoLayout
                 icons={defaultLayoutIcons}
-                slots={{ timeSlider: <ChapterTimeSlider /> }}
+                slots={{
+                  timeSlider: <ChapterTimeSlider />,
+                  accessibilityMenuItemsEnd: (
+                    <CaptionStyleExtensions
+                      player={player}
+                      fontWeight={captionFontWeight}
+                      outlineWidth={captionOutlineWidth}
+                      onFontWeightChange={updateCaptionFontWeight}
+                      onOutlineWidthChange={updateCaptionOutlineWidth}
+                    />
+                  ),
+                }}
               />
               {activeSkipTime && (
                 <SkipSegmentButton type='button' onClick={skipActiveSegment}>
