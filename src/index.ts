@@ -27,6 +27,10 @@ export {
   SkeletonCard,
   SkeletonSlide,
   SkeletonPlayer,
+  SkeletonWatchVideo,
+  SkeletonEpisodeList,
+  SkeletonWatchData,
+  SkeletonSideBarList,
 } from './components/Skeletons/Skeletons';
 
 // TODO Watching Anime Functionality
