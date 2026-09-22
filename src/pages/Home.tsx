@@ -6,6 +6,7 @@ import {
   StyledCardGrid,
   SkeletonSlide,
   SkeletonCard,
+  SkeletonSideBarList,
   fetchTrendingAnime,
   fetchPopularAnime,
   fetchTopAnime,
@@ -252,8 +253,10 @@ const buildInitialLoading = (activeTab: string) => ({
   trending: activeTab === 'trending',
   popular:  activeTab === 'popular',
   topRated: activeTab === 'topRated',
-  topAiring: false,
-  Upcoming:  false,
+  // Top Airing / Upcoming sidebar lists always fetch on mount, so they start
+  // in a loading state regardless of which main tab is active.
+  topAiring: true,
+  Upcoming:  true,
   latest:   activeTab === 'latest',
 });
 
@@ -339,8 +342,14 @@ const Home = () => {
         ...prev,
         topAiring: topAiring.results.slice(0, 10),
         Upcoming:  Upcoming.results.slice(0, 10),
+        loading: { ...prev.loading, topAiring: false, Upcoming: false },
       }));
-    }).catch(() => {});
+    }).catch(() => {
+      setState((prev) => ({
+        ...prev,
+        loading: { ...prev.loading, topAiring: false, Upcoming: false },
+      }));
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -602,11 +611,19 @@ const Home = () => {
           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', padding: '0.75rem 0' }}>
             TOP AIRING
           </div>
-          <HomeSideBar animeData={state.topAiring} />
+          {state.loading.topAiring ? (
+            <SkeletonSideBarList count={10} />
+          ) : (
+            <HomeSideBar animeData={state.topAiring} />
+          )}
           <div style={{ fontSize: '1.25rem', fontWeight: 'bold', padding: '0.75rem 0' }}>
             UPCOMING {SEASON}
           </div>
-          <HomeSideBar animeData={state.Upcoming} />
+          {state.loading.Upcoming ? (
+            <SkeletonSideBarList count={10} />
+          ) : (
+            <HomeSideBar animeData={state.Upcoming} />
+          )}
         </div>
       </ContentSidebarLayout>
 

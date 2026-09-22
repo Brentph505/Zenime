@@ -808,3 +808,93 @@ export const SkeletonWatchData = React.memo(() => (
     <SkeletonRelations />
   </WatchDataWrapperSkeleton>
 ));
+
+// ─── Home Page: Sidebar List Skeleton ────────────────────────────────────────
+// Mirrors HomeSideBar / AnimeCard exactly: a 24rem-max-width column of rows,
+// each row min-height 6.5rem with 0.5rem margin-bottom (matching
+// SidebarStyled's own `(6.5rem + 0.5rem) * n` scroll-height math), a
+// 4.25rem x 6rem thumbnail, and a text column sized like TitleWithDot
+// (two-line title) + Details (one meta line). Plain rectangles only.
+
+const SideBarListSkeletonWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  width: 24rem;
+  max-width: 100%;
+  box-sizing: border-box;
+
+  @media (max-width: 1000px) {
+    width: 100%;
+  }
+`;
+
+const SideBarRowSkeletonWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 6.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: var(--global-border-radius);
+  box-sizing: border-box;
+  overflow: hidden;
+`;
+
+const SideBarThumbSkeleton = styled(BaseSkeleton)`
+  width: 4.25rem;
+  height: 6rem;
+  border-radius: var(--global-border-radius);
+  flex-shrink: 0;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const SideBarTextSkeleton = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 0.75rem;
+`;
+
+const SideBarTitleBlock = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+`;
+
+const SideBarTitleLineSkeleton = styled(BaseSkeleton)<{ $width?: string }>`
+  width: ${({ $width }) => $width || '100%'};
+  height: 0.8rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const SideBarMetaLineSkeleton = styled(BaseSkeleton)<{ $width?: string }>`
+  width: ${({ $width }) => $width || '55%'};
+  height: 0.65rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+export const SkeletonSideBarRow = React.memo(() => (
+  <SideBarRowSkeletonWrapper>
+    <SideBarThumbSkeleton />
+    <SideBarTextSkeleton>
+      <SideBarTitleBlock>
+        <SideBarTitleLineSkeleton $width="95%" />
+        <SideBarTitleLineSkeleton $width="65%" />
+      </SideBarTitleBlock>
+      <SideBarMetaLineSkeleton $width="55%" />
+    </SideBarTextSkeleton>
+  </SideBarRowSkeletonWrapper>
+));
+
+export const SkeletonSideBarList: React.FC<{ count?: number }> = React.memo(
+  ({ count = 10 }) => (
+    <SideBarListSkeletonWrapper>
+      {Array.from({ length: count }, (_, i) => (
+        <SkeletonSideBarRow key={i} />
+      ))}
+    </SideBarListSkeletonWrapper>
+  ),
+);
