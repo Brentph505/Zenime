@@ -28,7 +28,9 @@ import {
   fetchAnimeStreamingLinksProxied,
   fetchEpisodesFromMultipleProviders,
   type MergedEpisode,
-  SkeletonPlayer,
+  SkeletonWatchVideo,
+  SkeletonEpisodeList,
+  SkeletonWatchData,
   useCountdown,
   useAuth,
   isDirectMediaUrl,
@@ -116,6 +118,10 @@ const VideoPlayerContainer = styled.div`
   position: relative;
   width: 100%;
   border-radius: var(--global-border-radius);
+
+  &:has(.player) .player-menu {
+    margin-top: 0.75rem;
+  }
 
   @media (min-width: 1000px) {
     flex: 3 1 0;
@@ -1361,7 +1367,7 @@ const Watch: React.FC = () => {
             <>
               <VideoPlayerContainer ref={videoPlayerContainerRef}>
                 {loading ? (
-                  <SkeletonPlayer />
+                  <SkeletonWatchVideo />
                 ) : (
                   <Player
                     episodeId={activeStream.episodeId}
@@ -1391,7 +1397,7 @@ const Watch: React.FC = () => {
                 $height={maxEpisodeListHeight}
               >
                 {loading ? (
-                  <SkeletonPlayer />
+                  <SkeletonEpisodeList height={maxEpisodeListHeight} />
                 ) : (
                   <EpisodeList
                     animeId={animeId}
@@ -1413,28 +1419,34 @@ const Watch: React.FC = () => {
       )}
 
       <DataWrapper>
-        <SourceAndData $videoPlayerWidth={videoPlayerWidth}>
-          {animeInfo && animeInfo.status !== 'Not yet aired' && (
-            <MediaSource
-              sourceType={sourceType}
-              setSourceType={setSourceType}
-              downloadLink={downloadLink}
-              episodeId={currentEpisode.number.toString()}
-              airingTime={animeInfo?.status === 'Ongoing' ? countdown : undefined}
-              nextEpisodenumber={nextEpisodenumber}
-              availableServers={availableServers}
-              embeddedServerName={embeddedServerName}
-              embeddedServerKeys={embeddedServerKeys}
-              onRefreshServers={() => setServerRefreshKey((key) => key + 1)}
-              isRefreshingServers={isRefreshingServers}
-              isLoadingServers={isRefreshingServers}
-            />
-          )}
-          {animeInfo && <AnimeData animeData={animeInfo} />}
-        </SourceAndData>
-        <RalationsTable>
-          {animeInfo && <AnimeDataList animeData={animeInfo} />}
-        </RalationsTable>
+        {animeInfo ? (
+          <>
+            <SourceAndData $videoPlayerWidth={videoPlayerWidth}>
+              {animeInfo.status !== 'Not yet aired' && (
+                <MediaSource
+                  sourceType={sourceType}
+                  setSourceType={setSourceType}
+                  downloadLink={downloadLink}
+                  episodeId={currentEpisode.number.toString()}
+                  airingTime={animeInfo?.status === 'Ongoing' ? countdown : undefined}
+                  nextEpisodenumber={nextEpisodenumber}
+                  availableServers={availableServers}
+                  embeddedServerName={embeddedServerName}
+                  embeddedServerKeys={embeddedServerKeys}
+                  onRefreshServers={() => setServerRefreshKey((key) => key + 1)}
+                  isRefreshingServers={isRefreshingServers}
+                  isLoadingServers={isRefreshingServers}
+                />
+              )}
+              <AnimeData animeData={animeInfo} />
+            </SourceAndData>
+            <RalationsTable>
+              <AnimeDataList animeData={animeInfo} />
+            </RalationsTable>
+          </>
+        ) : (
+          <SkeletonWatchData />
+        )}
       </DataWrapper>
     </WatchContainer>
   );

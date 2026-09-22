@@ -488,3 +488,323 @@ export const SkeletonInfo = React.memo(() => (
     </InfoShell>
   </InfoSkeletonContainer>
 ));
+
+// ─── Watch Page Skeletons ────────────────────────────────────────────────────
+// Mirrors Watch.tsx exactly:
+//   - WatchWrapper: flex column on mobile, flex row (video flex:3, list max 380px)
+//     from 1000px up.
+//   - EpisodeList: a scrollable stack of thumbnail + title/meta rows, not a
+//     16:9 player.
+//   - DataWrapper: 2-col grid on mobile, minmax(0,1fr) 380px grid from 1000px
+//     up, holding MediaSource (server picker) + AnimeData (title/meta/desc)
+//     on the left and AnimeDataList (relations) on the right.
+
+const WatchSkeletonWrapper = styled.div`
+  font-size: 0.9rem;
+  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+
+  @media (min-width: 1000px) {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+`;
+
+const WatchVideoSkeletonContainer = styled.div`
+  position: relative;
+  width: 100%;
+  border-radius: var(--global-border-radius);
+
+  @media (min-width: 1000px) {
+    flex: 3 1 0;
+    min-width: 0;
+  }
+`;
+
+const WatchEpisodeListSkeletonContainer = styled.div`
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+
+  @media (min-width: 1000px) {
+    flex: 1 1 320px;
+    max-width: 380px;
+  }
+`;
+
+// Header row: "Episodes 1 - 12 ▾" dropdown pill on the left, a search box
+// and a small image-filter icon on the right.
+const EpisodeListHeaderRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+`;
+
+const EpisodeListDropdownSkeleton = styled(BaseSkeleton)`
+  width: 130px;
+  height: 1.6rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const EpisodeListSearchSkeleton = styled(BaseSkeleton)`
+  flex: 1;
+  max-width: 150px;
+  height: 1.6rem;
+  border-radius: 6px;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const EpisodeListIconSkeleton = styled(BaseSkeleton)`
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+// Each row mirrors a real episode card: a squarish thumbnail, a bold title
+// line, and a two-line description snippet, all on one rounded row.
+const EpisodeRowSkeletonWrapper = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 8px;
+`;
+
+const EpisodeRowThumbSkeleton = styled(BaseSkeleton)`
+  width: 70px;
+  height: 70px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const EpisodeRowTextSkeleton = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.15rem;
+`;
+
+const EpisodeRowTitleSkeleton = styled(BaseSkeleton)<{ $width?: string }>`
+  width: ${({ $width }) => $width || '70%'};
+  height: 0.95rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const EpisodeRowLineSkeleton = styled(BaseSkeleton)<{ $width?: string }>`
+  width: ${({ $width }) => $width || '100%'};
+  height: 0.7rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+export const SkeletonEpisodeRow = React.memo(() => (
+  <EpisodeRowSkeletonWrapper>
+    <EpisodeRowThumbSkeleton />
+    <EpisodeRowTextSkeleton>
+      <EpisodeRowTitleSkeleton $width="65%" />
+      <EpisodeRowLineSkeleton $width="95%" />
+      <EpisodeRowLineSkeleton $width="80%" />
+    </EpisodeRowTextSkeleton>
+  </EpisodeRowSkeletonWrapper>
+));
+
+export const SkeletonEpisodeList: React.FC<{ height?: string }> = React.memo(
+  ({ height }) => (
+    <WatchEpisodeListSkeletonContainer style={height ? { height } : undefined}>
+      <EpisodeListHeaderRow>
+        <EpisodeListDropdownSkeleton />
+        <EpisodeListSearchSkeleton />
+        <EpisodeListIconSkeleton />
+      </EpisodeListHeaderRow>
+      {Array.from({ length: 7 }, (_, i) => (
+        <SkeletonEpisodeRow key={i} />
+      ))}
+    </WatchEpisodeListSkeletonContainer>
+  ),
+);
+
+export const SkeletonWatchVideo = React.memo(() => (
+  <WatchVideoSkeletonContainer>
+    <SkeletonPlayer />
+  </WatchVideoSkeletonContainer>
+));
+
+// Full top section, mirrors <WatchWrapper> (video + episode list side by side)
+export const SkeletonWatchTop: React.FC<{ episodeListHeight?: string }> = React.memo(
+  ({ episodeListHeight }) => (
+    <WatchSkeletonWrapper>
+      <SkeletonWatchVideo />
+      <SkeletonEpisodeList height={episodeListHeight} />
+    </WatchSkeletonWrapper>
+  ),
+);
+
+// ── Below-the-player data section (MediaSource + AnimeData + AnimeDataList) ──
+
+const WatchDataWrapperSkeleton = styled.div`
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr 1fr;
+  width: 100%;
+  margin-top: 1rem;
+
+  @media (min-width: 1000px) {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+
+  @media (max-width: 1000px) {
+    grid-template-columns: 1fr;
+    max-width: 100%;
+  }
+`;
+
+const ServerRowSkeleton = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+`;
+
+const ServerButtonSkeleton = styled(BaseSkeleton)`
+  width: 90px;
+  height: 2.2rem;
+  border-radius: 6px;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+export const SkeletonMediaSource = React.memo(() => (
+  <div>
+    <ServerRowSkeleton>
+      <ServerButtonSkeleton />
+      <ServerButtonSkeleton />
+      <ServerButtonSkeleton />
+      <ServerButtonSkeleton />
+    </ServerRowSkeleton>
+    <ServerRowSkeleton>
+      <ServerButtonSkeleton />
+      <ServerButtonSkeleton />
+    </ServerRowSkeleton>
+  </div>
+));
+
+const AnimeDataSkeletonWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+`;
+
+const AnimeDataTitleSkeleton = styled(BaseSkeleton)`
+  width: 60%;
+  height: 1.8rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const AnimeDataPillRow = styled.div`
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+`;
+
+const AnimeDataPillSkeleton = styled(BaseSkeleton)`
+  width: 65px;
+  height: 1.5rem;
+  border-radius: 99px;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const AnimeDataLineSkeleton = styled(BaseSkeleton)<{ $width?: string }>`
+  width: ${({ $width }) => $width || '100%'};
+  height: 0.9rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+export const SkeletonAnimeData = React.memo(() => (
+  <AnimeDataSkeletonWrapper>
+    <AnimeDataTitleSkeleton />
+    <AnimeDataPillRow>
+      <AnimeDataPillSkeleton />
+      <AnimeDataPillSkeleton />
+      <AnimeDataPillSkeleton />
+    </AnimeDataPillRow>
+    <AnimeDataLineSkeleton $width="100%" />
+    <AnimeDataLineSkeleton $width="95%" />
+    <AnimeDataLineSkeleton $width="80%" />
+    <AnimeDataLineSkeleton $width="60%" />
+  </AnimeDataSkeletonWrapper>
+));
+
+const RelationsSkeletonWrapper = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  margin-top: 1rem;
+`;
+
+const RelationRowSkeleton = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+`;
+
+const RelationThumbSkeleton = styled(BaseSkeleton)`
+  width: 50px;
+  height: 70px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const RelationTextSkeleton = styled.div`
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+`;
+
+const RelationLineSkeleton = styled(BaseSkeleton)<{ $width?: string }>`
+  width: ${({ $width }) => $width || '100%'};
+  height: 0.8rem;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+export const SkeletonRelations = React.memo(() => (
+  <RelationsSkeletonWrapper>
+    {Array.from({ length: 5 }, (_, i) => (
+      <RelationRowSkeleton key={i}>
+        <RelationThumbSkeleton />
+        <RelationTextSkeleton>
+          <RelationLineSkeleton $width="80%" />
+          <RelationLineSkeleton $width="40%" />
+        </RelationTextSkeleton>
+      </RelationRowSkeleton>
+    ))}
+  </RelationsSkeletonWrapper>
+));
+
+// Full below-player section, mirrors <DataWrapper>
+export const SkeletonWatchData = React.memo(() => (
+  <WatchDataWrapperSkeleton>
+    <div>
+      <SkeletonMediaSource />
+      <SkeletonAnimeData />
+    </div>
+    <SkeletonRelations />
+  </WatchDataWrapperSkeleton>
+));
