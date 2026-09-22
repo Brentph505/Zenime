@@ -296,7 +296,7 @@ const captionWeightOptions = [
 ];
 
 const DEFAULT_CAPTION_FONT_WEIGHT = '700';
-const DEFAULT_CAPTION_OUTLINE_WIDTH = 2;
+const DEFAULT_CAPTION_OUTLINE_WIDTH = 1;
 
 const getStoredCaptionFontWeight = (): string => {
   const storedWeight = localStorage.getItem('zenime-caption-font-weight');
