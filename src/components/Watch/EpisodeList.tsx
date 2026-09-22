@@ -41,6 +41,7 @@ const ListContainer = styled.div<{ $maxHeight: string }>`
   border-radius: var(--global-border-radius);
   overflow: hidden;
   flex-grow: 1;
+  height: 100%;
   display: flex;
   flex-direction: column;
   max-height: ${({ $maxHeight }) => $maxHeight};
@@ -60,6 +61,7 @@ const EpisodeGrid = styled.div<{ $isRowLayout: boolean }>`
   padding: 0.4rem;
   overflow-y: auto;
   flex-grow: 1;
+  align-content: ${({ $isRowLayout }) => ($isRowLayout ? 'normal' : 'start')};
 
   @media (max-width: 640px) {
     grid-template-columns: ${({ $isRowLayout }) =>
@@ -77,16 +79,16 @@ const EpisodeImageWrapper = styled.div`
   min-width: 100px;
   min-height: 60px;
   @media (max-width: 640px) {
-    width: 70px;
-    height: 42px;
-    min-width: 70px;
-    min-height: 42px;
+    width: 100px;
+    height: 60px;
+    min-width: 100px;
+    min-height: 60px;
   }
   @media (max-width: 400px) {
-    width: 60px;
-    height: 36px;
-    min-width: 60px;
-    min-height: 36px;
+    width: 82px;
+    height: 48px;
+    min-width: 82px;
+    min-height: 48px;
   }
 `;
 
@@ -116,6 +118,7 @@ const ListItem = styled.button<{
   $isSelected: boolean;
   $isRowLayout: boolean;
   $isWatched: boolean;
+  $isImageList: boolean;
 }>`
   transition:
     padding 0.3s ease-in-out,
@@ -141,12 +144,13 @@ const ListItem = styled.button<{
         ? 'var(--primary-accent)' // Not selected but watched
         : 'grey'}; // Not selected and not watched
 
-  display: flex;
+  display: ${({ $isRowLayout }) => ($isRowLayout ? 'flex' : 'block')};
   box-sizing: border-box;
   min-width: 0;
   max-width: 100%;
+  justify-self: stretch;
   padding: ${({ $isRowLayout }) =>
-    $isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0'};
+    $isRowLayout ? '0.4rem 0.5rem' : '0.4rem 0'};
   text-align: ${({ $isRowLayout }) => ($isRowLayout ? 'left' : 'center')};
   cursor: pointer;
   justify-content: ${({ $isRowLayout }) =>
@@ -182,8 +186,14 @@ const ListItem = styled.button<{
             : 'grey !important'};
       filter: none !important;
       padding: ${({ $isRowLayout }) =>
-        $isRowLayout ? '0.6rem 0.5rem' : '0.4rem 0'};
+        $isRowLayout ? '0.4rem 0.5rem' : '0.4rem 0'};
     }
+  }
+
+
+  @media (max-width: 640px) {
+    padding: ${({ $isImageList, $isRowLayout }) =>
+      $isImageList && $isRowLayout ? '0.1rem 0.5rem' : undefined};
   }
 `;
 
@@ -267,10 +277,10 @@ const Icon = styled.div`
 
 const EpisodeNumber = styled.span`
   flex: 0 0 auto;
-  padding: 0.5rem 0;
+  padding: 0.25rem 0;
 `;
 const EpisodeTitle = styled.span<{ $isSelected?: boolean }>`
-  padding: 0.5rem;
+  padding: 0.15rem 0.5rem 0.05rem;
   color: ${({ $isSelected }) =>
     $isSelected ? 'var(--global-text)' : 'inherit'};
   display: inline-block;
@@ -287,7 +297,7 @@ const EpisodeDescription = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: normal;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   line-height: 1.3;
   opacity: 0.85;
   max-width: 100%;
@@ -302,8 +312,8 @@ const EpisodeListContent = styled.div`
 
 const EpisodeListPlayIcon = styled(FontAwesomeIcon)`
   flex: 0 0 auto;
-  align-self: flex-end;
-  margin: 0 0 0.15rem 0.4rem;
+  align-self: center;
+  margin-left: 0.4rem;
 `;
 
 const EpisodeHeading = styled.div`
@@ -649,6 +659,7 @@ export const EpisodeList: React.FC<Props> = ({
               $isRowLayout={
                 displayMode === 'list' || displayMode === 'imageList'
               }
+              $isImageList={displayMode === 'imageList'}
               $isWatched={$isWatched}
               onClick={() => handleEpisodeSelect(episode.id)}
               aria-selected={$isSelected}
@@ -713,16 +724,13 @@ export const EpisodeList: React.FC<Props> = ({
               ) : (
                 // Render for 'list' layout
                 <>
-                  <EpisodeNumber>{episode.number}. </EpisodeNumber>
                   <EpisodeListContent>
-                    <EpisodeTitle $isSelected={$isSelected}>
-                      {episode.title}
-                    </EpisodeTitle>
-                    {episode.description ? (
-                      <EpisodeDescription>
-                        {episode.description}
-                      </EpisodeDescription>
-                    ) : null}
+                    <EpisodeHeading>
+                      <EpisodeNumber>{episode.number}. </EpisodeNumber>
+                      <EpisodeTitle $isSelected={$isSelected}>
+                        {episode.title}
+                      </EpisodeTitle>
+                    </EpisodeHeading>
                   </EpisodeListContent>
                   {$isSelected && <EpisodeListPlayIcon icon={faPlay} />}
                 </>

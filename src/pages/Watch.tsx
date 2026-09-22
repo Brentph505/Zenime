@@ -78,6 +78,11 @@ const DataWrapper = styled.div`
   gap: 1rem;
   grid-template-columns: 1fr 1fr;
   width: 100%;
+
+  @media (min-width: 1000px) {
+    grid-template-columns: minmax(0, 1fr) 380px;
+  }
+
   @media (max-width: 1000px) {
     grid-template-columns: 1fr;
     max-width: 100%;
@@ -85,7 +90,7 @@ const DataWrapper = styled.div`
 `;
 
 const SourceAndData = styled.div<{ $videoPlayerWidth: string }>`
-  width: ${({ $videoPlayerWidth }) => $videoPlayerWidth};
+  width: 100%;
   @media (max-width: 1000px) {
     width: 100%;
   }
@@ -94,8 +99,16 @@ const SourceAndData = styled.div<{ $videoPlayerWidth: string }>`
 const RalationsTable = styled.div`
   padding: 0;
   margin-top: 1rem;
+
+  @media (min-width: 1000px) {
+    width: 100%;
+    max-width: 380px;
+    justify-self: end;
+  }
+
   @media (max-width: 1000px) {
     margin-top: 0rem;
+    width: 100%;
   }
 `;
 
