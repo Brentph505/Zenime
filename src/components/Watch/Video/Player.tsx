@@ -7,6 +7,7 @@ import {
   MediaProvider,
   Poster,
   Track,
+  TimeSlider,
   type MediaErrorDetail,
   type MediaErrorEvent,
   type MediaProviderAdapter,
@@ -15,7 +16,7 @@ import {
   type PlayerSrc,
   formatTime,
 } from '@vidstack/react';
-import styled from 'styled-components';
+import styled, { keyframes } from 'styled-components';
 import {
   fetchSkipTimes,
   fetchAnimeStreamingLinksProxied,
@@ -110,6 +111,88 @@ const PlayerViewport = styled.div`
   }
 `;
 
+const skipButtonFill = keyframes`
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+`;
+
+const skipButtonSlideLeft = keyframes`
+  from { transform: translateX(10px); }
+  to { transform: translateX(0); }
+`;
+
+const SkipSegmentButton = styled.button`
+  position: absolute;
+  left: 1rem;
+  bottom: 4.5rem;
+  z-index: 2;
+  border: 1px solid #fff;
+  border-radius: 0.45rem;
+  padding: 0.6rem 1rem;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0.5) 50%, rgba(255, 255, 255, 0.7) 50%) 100% 0 / 200% 100%;
+  backdrop-filter: blur(10px);
+  color: #333;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  animation:
+    ${skipButtonFill} 8s cubic-bezier(0.25, 1, 0.25, 1) forwards,
+    ${skipButtonSlideLeft} 0.4s ease-in-out;
+  transition: opacity 0.2s ease-out;
+
+  &:hover,
+  &:focus-visible {
+    background: #fff;
+    color: #000;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  @media (max-width: 600px) {
+    left: 0.6rem;
+    bottom: 3.5rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.75rem;
+  }
+`;
+
+const ChapterTimeSlider = () => (
+  <TimeSlider.Root className='vds-time-slider vds-slider' aria-label='Seek'>
+    <TimeSlider.Chapters className='vds-slider-chapters'>
+      {(cues, forwardRef) =>
+        cues.map((cue) => {
+          const cueLabel = cue.text.toLowerCase();
+          const chapterClass = cueLabel.includes('opening')
+            ? 'zenime-chapter-opening'
+            : cueLabel.includes('outro') || cueLabel.includes('ending')
+              ? 'zenime-chapter-ending'
+              : undefined;
+
+          return (
+            <div
+              key={cue.startTime}
+              ref={forwardRef}
+              className={`vds-slider-chapter ${chapterClass || ''}`}
+            >
+              <TimeSlider.Track className='vds-slider-track'>
+                <TimeSlider.TrackFill className='vds-slider-track-fill vds-slider-track' />
+                <TimeSlider.Progress className='vds-slider-progress vds-slider-track' />
+              </TimeSlider.Track>
+            </div>
+          );
+        })
+      }
+    </TimeSlider.Chapters>
+    <TimeSlider.Thumb className='vds-slider-thumb' />
+    <TimeSlider.Preview className='vds-slider-preview'>
+      <TimeSlider.ChapterTitle className='vds-slider-chapter-title' />
+      <TimeSlider.Value className='vds-slider-value' />
+    </TimeSlider.Preview>
+  </TimeSlider.Root>
+);
+
 type PlayerProps = {
   episodeId: string;
   episodeNumber?: number;
@@ -175,6 +258,11 @@ const getEpisodeNumber = (episodeId: string): string => {
   const match = episodeId.match(/(\d+)$/);
   return match ? match[1] : '1';
 };
+
+const outlineCaptionTextShadow =
+  'rgb(34 34 34) 0 0 1.86389px, rgb(34 34 34) 0 0 1.86389px, ' +
+  'rgb(34 34 34) 0 0 1.86389px, rgb(34 34 34) 0 0 1.86389px, ' +
+  'rgb(34 34 34) 0 0 1.86389px';
 
 // ─── Dub/Sub detection helper ────────────────────────────────────────────────
 // Some providers (e.g. AniDB) don't populate `source.isDub` at all — they only
@@ -259,6 +347,14 @@ export function Player({
     playbackTransitionLockUntilRef.current = 0;
     autoplayAttemptKeyRef.current = '';
   }, [episodeNumber]);
+
+  useEffect(() => {
+    if (localStorage.getItem('vds-player:text-shadow') !== 'outline') return;
+    player.current?.el?.style.setProperty(
+      '--media-user-text-shadow',
+      outlineCaptionTextShadow,
+    );
+  }, [episodeId, sourceType, hlsDirectUrl, serverUrl]);
 
   const animeVideoTitle = animeTitle;
 
@@ -606,6 +702,9 @@ export function Player({
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
     setSrc('');
     setSubtitles([]);
+    setSkipTimes([]);
+    setVttUrl('');
+    setVttGenerated(false);
     fetchAndSetAnimeSource();
     fetchAndProcessSkipTimes();
 
@@ -615,6 +714,11 @@ export function Player({
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
   }, [episodeId, malId, updateDownloadLink, sourceType, serverUrl, hlsDirectUrl]);
+
+  useEffect(() => {
+    if (!episodeId || !malId || totalDuration <= 0 || vttGenerated) return;
+    fetchAndProcessSkipTimes();
+  }, [episodeId, malId, totalDuration, vttGenerated]);
 
   useEffect(() => {
     return () => {
@@ -808,6 +912,12 @@ export function Player({
     }
   }
 
+  function onSeeked() {
+    if (player.current) {
+      setCurrentTime(player.current.currentTime);
+    }
+  }
+
   function generateWebVTTFromSkipTimes(
     skipTimes: FetchSkipTimesResponse,
     totalDuration: number,
@@ -853,7 +963,8 @@ export function Player({
         const filteredSkipTimes = response.results.filter(
           ({ skipType }) => skipType === 'op' || skipType === 'ed',
         );
-        if (!vttGenerated) {
+        setSkipTimes(filteredSkipTimes);
+        if (!vttGenerated && totalDuration > 0) {
           const vttContent = generateWebVTTFromSkipTimes(
             { results: filteredSkipTimes },
             totalDuration,
@@ -1105,6 +1216,18 @@ export function Player({
   const toggleAutoNext = () => setSettings({ ...settings, autoNext: !autoNext });
   const toggleAutoSkip = () => setSettings({ ...settings, autoSkip: !autoSkip });
 
+  const activeSkipTime = skipTimes.find(
+    ({ interval }) =>
+      currentTime >= interval.startTime && currentTime < interval.endTime,
+  );
+
+  const skipActiveSegment = () => {
+    if (activeSkipTime && player.current) {
+      player.current.currentTime = activeSkipTime.interval.endTime;
+      setCurrentTime(activeSkipTime.interval.endTime);
+    }
+  };
+
   const handlePlaybackEnded = async () => {
     const transitionLockUntil = playbackTransitionLockUntilRef.current;
     if (playbackTransitionRef.current || (transitionLockUntil > 0 && Date.now() < transitionLockUntil)) {
@@ -1182,6 +1305,9 @@ export function Player({
             <MediaPlayer
               key={`player-${episodeId}-${sourceType}-${hlsDirectUrl || serverUrl}`}
               className='player'
+              style={{
+                '--media-user-text-shadow': outlineCaptionTextShadow,
+              }}
               title={`${animeVideoTitle || 'Anime'} - Episode ${episodeNumber}`}
               src={src}
               autoplay={autoPlay && userInteracted}
@@ -1192,6 +1318,7 @@ export function Player({
               onError={onMediaError}
               onProviderChange={onProviderChange}
               onTimeUpdate={onTimeUpdate}
+              onSeeked={onSeeked}
               ref={player}
               aspectRatio='16/9'
               load='eager'
@@ -1238,7 +1365,15 @@ export function Player({
                   })}
               </MediaProvider>
               <DefaultAudioLayout icons={defaultLayoutIcons} />
-              <DefaultVideoLayout icons={defaultLayoutIcons} />
+              <DefaultVideoLayout
+                icons={defaultLayoutIcons}
+                slots={{ timeSlider: <ChapterTimeSlider /> }}
+              />
+              {activeSkipTime && (
+                <SkipSegmentButton type='button' onClick={skipActiveSegment}>
+                  Skip {activeSkipTime.skipType === 'op' ? 'Intro' : 'Outro'}
+                </SkipSegmentButton>
+              )}
             </MediaPlayer>
           </PlayerViewport>
           <div
