@@ -932,7 +932,7 @@ export function Player({
     sortedSkipTimes.forEach((skipTime, index) => {
       const { startTime, endTime } = skipTime.interval;
       const skipType =
-        skipTime.skipType.toUpperCase() === 'OP' ? 'Opening' : 'Outro';
+        skipTime.skipType.toUpperCase() === 'OP' ? 'Intro' : 'Outro';
 
       if (previousEndTime < startTime) {
         vttString += `${formatTime(previousEndTime)} --> ${formatTime(startTime)}\n`;
