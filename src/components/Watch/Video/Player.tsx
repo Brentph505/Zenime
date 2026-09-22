@@ -8,7 +8,6 @@ import {
   MediaProvider,
   Menu,
   Poster,
-  Slider,
   Track,
   TimeSlider,
   type MediaErrorDetail,
@@ -32,10 +31,6 @@ import {
   DefaultAudioLayout,
   DefaultMenuButton,
   DefaultMenuRadioGroup,
-  DefaultMenuSection,
-  DefaultMenuSliderItem,
-  DefaultSliderParts,
-  DefaultSliderSteps,
   defaultLayoutIcons,
   DefaultVideoLayout,
 } from '@vidstack/react/player/layouts/default';
@@ -297,22 +292,34 @@ const captionWeightOptions = [
 
 const DEFAULT_CAPTION_FONT_WEIGHT = '700';
 const DEFAULT_CAPTION_OUTLINE_WIDTH = 1;
+const DEFAULT_CAPTION_PREFERENCES: Record<string, string> = {
+  'vds-player:font-size': '125%',
+  'vds-player:font-family': 'pro-sans',
+  'vds-player:text-color': '#ffffff',
+  'vds-player:text-opacity': '100%',
+  'vds-player:text-shadow': 'none',
+  'vds-player:text-bg': '#000000',
+  'vds-player:text-bg-opacity': '100%',
+  'vds-player:display-bg': '#000000',
+  'vds-player:display-bg-opacity': '0%',
+};
+
+const ensureCaptionPreferences = () => {
+  Object.entries(DEFAULT_CAPTION_PREFERENCES).forEach(([key, value]) => {
+    if (localStorage.getItem(key) === null) {
+      localStorage.setItem(key, value);
+    }
+  });
+  if (localStorage.getItem('zenime-caption-font-weight') === null) {
+    localStorage.setItem('zenime-caption-font-weight', DEFAULT_CAPTION_FONT_WEIGHT);
+  }
+};
 
 const getStoredCaptionFontWeight = (): string => {
   const storedWeight = localStorage.getItem('zenime-caption-font-weight');
   return storedWeight === DEFAULT_CAPTION_FONT_WEIGHT
     ? storedWeight
     : DEFAULT_CAPTION_FONT_WEIGHT;
-};
-
-const getStoredCaptionOutlineWidth = (): number => {
-  const storedValue = localStorage.getItem('zenime-caption-outline-width');
-  if (storedValue === null) return DEFAULT_CAPTION_OUTLINE_WIDTH;
-
-  const storedWidth = Number(storedValue);
-  return Number.isInteger(storedWidth) && storedWidth >= 0 && storedWidth <= 4
-    ? storedWidth
-    : DEFAULT_CAPTION_OUTLINE_WIDTH;
 };
 
 const createCaptionTextShadow = (outlineWidth: number): string => {
@@ -330,21 +337,19 @@ const createCaptionTextShadow = (outlineWidth: number): string => {
 type CaptionStyleExtensionsProps = {
   player: RefObject<MediaPlayerInstance | null>;
   fontWeight: string;
-  outlineWidth: number;
   onFontWeightChange: (value: string) => void;
-  onOutlineWidthChange: (value: number) => void;
 };
 
 const CaptionStyleExtensions = ({
   player,
   fontWeight,
-  outlineWidth,
   onFontWeightChange,
-  onOutlineWidthChange,
 }: CaptionStyleExtensionsProps) => {
   const [captionStylesMenu, setCaptionStylesMenu] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
+    ensureCaptionPreferences();
+
     const playerElement = player.current?.el;
     if (!playerElement) return;
 
@@ -360,47 +365,32 @@ const CaptionStyleExtensions = ({
     return () => {
       observer.disconnect();
     };
-  }, [player, fontWeight, outlineWidth]);
+  }, [player, fontWeight]);
 
   if (!captionStylesMenu) return null;
 
   return createPortal(
-    <DefaultMenuSection label='Zenime'>
-      <Menu.Root className='vds-font-weight-menu vds-menu'>
-        <DefaultMenuButton
-          label='Weight'
-          hint={
-            captionWeightOptions.find((option) => option.value === fontWeight)?.label ||
-            'Black'
-          }
-        />
-        <Menu.Items className='vds-menu-items'>
-          <DefaultMenuRadioGroup
-            value={fontWeight}
-            options={captionWeightOptions}
-            onChange={onFontWeightChange}
+    <Menu.Root className='vds-zenime-caption-menu vds-menu'>
+      <DefaultMenuButton label='Zenime' />
+      <Menu.Items className='vds-menu-items'>
+        <Menu.Root className='vds-font-weight-menu vds-menu'>
+          <DefaultMenuButton
+            label='Weight'
+            hint={
+              captionWeightOptions.find((option) => option.value === fontWeight)?.label ||
+              'Black'
+            }
           />
-        </Menu.Items>
-      </Menu.Root>
-      <DefaultMenuSliderItem
-        label='Outline'
-        value={`${outlineWidth}px`}
-        isMin={outlineWidth === 0}
-        isMax={outlineWidth === 4}
-      >
-        <Slider.Root
-          aria-label='Caption outline thickness'
-          className='vds-slider'
-          min={0}
-          max={4}
-          value={outlineWidth}
-          onValueChange={(value) => onOutlineWidthChange(value)}
-        >
-          <DefaultSliderParts />
-          <DefaultSliderSteps />
-        </Slider.Root>
-      </DefaultMenuSliderItem>
-    </DefaultMenuSection>,
+          <Menu.Items className='vds-menu-items'>
+            <DefaultMenuRadioGroup
+              value={fontWeight}
+              options={captionWeightOptions}
+              onChange={onFontWeightChange}
+            />
+          </Menu.Items>
+        </Menu.Root>
+      </Menu.Items>
+    </Menu.Root>,
     captionStylesMenu,
   );
 };
@@ -440,9 +430,6 @@ export function Player({
   const [userInteracted, setUserInteracted] = useState<boolean>(false);
   const [builtEmbeddedUrl, setBuiltEmbeddedUrl] = useState<string>('');
   const [captionFontWeight, setCaptionFontWeight] = useState(getStoredCaptionFontWeight);
-  const [captionOutlineWidth, setCaptionOutlineWidth] = useState(
-    getStoredCaptionOutlineWidth,
-  );
   // Incrementing token — any in-flight fetchAndSetAnimeSource whose token doesn't
   // match the current value is considered stale and must not call setSrc.
   const fetchAbortRef = useRef<number>(0);
@@ -1336,11 +1323,6 @@ export function Player({
     localStorage.setItem('zenime-caption-font-weight', DEFAULT_CAPTION_FONT_WEIGHT);
   };
 
-  const updateCaptionOutlineWidth = (value: number) => {
-    setCaptionOutlineWidth(value);
-    localStorage.setItem('zenime-caption-outline-width', String(value));
-  };
-
   const applyCaptionStyles = () => {
     const playerElement = player.current?.el as HTMLElement | null;
     if (!playerElement) return;
@@ -1348,7 +1330,7 @@ export function Player({
     playerElement.style.setProperty('--media-user-font-weight', captionFontWeight);
     playerElement.style.setProperty(
       '--media-user-text-shadow',
-      createCaptionTextShadow(captionOutlineWidth),
+      createCaptionTextShadow(DEFAULT_CAPTION_OUTLINE_WIDTH),
     );
   };
 
@@ -1356,7 +1338,7 @@ export function Player({
     applyCaptionStyles();
     const frame = window.requestAnimationFrame(applyCaptionStyles);
     return () => window.cancelAnimationFrame(frame);
-  }, [captionFontWeight, captionOutlineWidth]);
+  }, [captionFontWeight]);
 
   const activeSkipTime = skipTimes.find(
     ({ interval }) =>
@@ -1467,7 +1449,9 @@ export function Player({
               keyTarget='player'
               style={{
                 '--media-user-font-weight': captionFontWeight,
-                '--media-user-text-shadow': createCaptionTextShadow(captionOutlineWidth),
+                '--media-user-text-shadow': createCaptionTextShadow(
+                  DEFAULT_CAPTION_OUTLINE_WIDTH,
+                ),
               }}
               onEnded={handlePlaybackEnded}
             >
@@ -1516,9 +1500,7 @@ export function Player({
                     <CaptionStyleExtensions
                       player={player}
                       fontWeight={captionFontWeight}
-                      outlineWidth={captionOutlineWidth}
                       onFontWeightChange={updateCaptionFontWeight}
-                      onOutlineWidthChange={updateCaptionOutlineWidth}
                     />
                   ),
                 }}

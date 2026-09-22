@@ -5,6 +5,7 @@
 .player {
   --brand-color: #f5f5f5;
   --focus-color: #4e9cf6;
+  --media-user-font-size: 1.25;
 
   --audio-brand: var(--brand-color);
   --audio-focus-ring-color: var(--focus-color);
@@ -93,6 +94,16 @@
 
 /* Touch device hover fix - disable hover effects on devices without hover capability */
 @media (hover: none) and (pointer: coarse) {
+  /* Give the caption font-size slider a reliable touch target on mobile. */
+  .player .vds-font-style-items > .vds-menu-section:first-child .vds-menu-slider-item {
+    min-height: 48px;
+  }
+
+  .player .vds-font-style-items > .vds-menu-section:first-child .vds-menu-slider-item .vds-slider {
+    --media-menu-slider-height: 48px;
+    --media-slider-thumb-size: 20px;
+  }
+
   .player-menu button:hover,
   .player-menu button:active,
   .player button:hover,
