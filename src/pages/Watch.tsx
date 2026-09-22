@@ -123,14 +123,17 @@ const VideoPlayerContainer = styled.div`
   }
 `;
 
-const EpisodeListContainer = styled.div`
+const EpisodeListContainer = styled.div<{ $height: string }>`
   width: 100%;
+  min-height: 0;
+  overflow: hidden;
   max-height: 100%;
 
   @media (min-width: 1000px) {
     flex: 1 1 320px;
     max-width: 380px;
     max-height: 100%;
+    height: ${({ $height }) => $height};
   }
 
   @media (max-width: 1000px) {
@@ -571,9 +574,15 @@ const Watch: React.FC = () => {
       }
     };
     update();
+    const videoPlayer = videoPlayerContainerRef.current;
+    const observer = videoPlayer ? new ResizeObserver(update) : null;
     window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
+    observer?.observe(videoPlayer!);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [loading]);
 
   // ── Fetch anime info ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1378,7 +1387,9 @@ const Watch: React.FC = () => {
                 )}
               </VideoPlayerContainer>
 
-              <EpisodeListContainer style={{ maxHeight: maxEpisodeListHeight }}>
+              <EpisodeListContainer
+                $height={maxEpisodeListHeight}
+              >
                 {loading ? (
                   <SkeletonPlayer />
                 ) : (

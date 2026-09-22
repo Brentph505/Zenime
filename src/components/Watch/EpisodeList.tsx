@@ -39,17 +39,16 @@ const ListContainer = styled.div<{ $maxHeight: string }>`
   background-color: var(--global-secondary-bg);
   color: var(--global-text);
   border-radius: var(--global-border-radius);
+  box-sizing: border-box;
   overflow: hidden;
   flex-grow: 1;
+  min-height: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
   max-height: ${({ $maxHeight }) => $maxHeight};
   @media (max-width: 1000px) {
     max-height: 18rem;
-  }
-  @media (max-width: 500px) {
-    max-height: ${({ $maxHeight }) => $maxHeight};
   }
 `;
 
@@ -61,6 +60,7 @@ const EpisodeGrid = styled.div<{ $isRowLayout: boolean }>`
   padding: 0.4rem;
   overflow-y: auto;
   flex-grow: 1;
+  min-height: 0;
   align-content: ${({ $isRowLayout }) => ($isRowLayout ? 'normal' : 'start')};
 
   @media (max-width: 640px) {
