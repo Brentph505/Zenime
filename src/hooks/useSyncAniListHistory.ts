@@ -8,7 +8,7 @@
  * and EpisodeList can read a consistent shape.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../client/useAuth';
 import { fetchUserList } from '../client/authService';
 import { safeLocalStorageSet } from '../lib/safeStorage';
@@ -16,6 +16,7 @@ import { useSettings } from '../components/Profile/SettingsProvider';
 import {
   WATCHED_EPISODES_KEY,
   LAST_ANIME_VISITED_KEY,
+  WATCH_HISTORY_CHANGED_EVENT,
   buildSyntheticEpisode,
   getWatchedCount,
   normalizeToEpisodeArray,
@@ -29,17 +30,37 @@ export function useSyncAniListHistory() {
   const { settings } = useSettings();
   const hasSyncedRef = useRef(false);
   const [syncTrigger, setSyncTrigger] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Re-run sync whenever an AniList entry is saved/deleted so the UI
-  // reflects the changes on any device without requiring a full re-login.
-  useEffect(() => {
-    const onEntryChanged = () => {
-      hasSyncedRef.current = false;
-      setSyncTrigger((n) => n + 1);
-    };
-    window.addEventListener('anilist-entry-changed', onEntryChanged);
-    return () => window.removeEventListener('anilist-entry-changed', onEntryChanged);
+  const requestSync = useCallback(() => {
+    hasSyncedRef.current = false;
+    setSyncTrigger((n) => n + 1);
   }, []);
+
+  useEffect(() => {
+    const onEntryChanged = () => requestSync();
+    const onWatchHistoryChanged = () => requestSync();
+    const onStorage = (event: StorageEvent) => {
+      if (
+        event.key === null ||
+        event.key === WATCHED_EPISODES_KEY ||
+        event.key === LAST_ANIME_VISITED_KEY ||
+        event.key === HISTORY_SYNCED_KEY
+      ) {
+        requestSync();
+      }
+    };
+
+    window.addEventListener('anilist-entry-changed', onEntryChanged);
+    window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, onWatchHistoryChanged);
+    window.addEventListener('storage', onStorage);
+
+    return () => {
+      window.removeEventListener('anilist-entry-changed', onEntryChanged);
+      window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, onWatchHistoryChanged);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, [requestSync]);
 
   const isHentaiAnime = (genres: string[] = []) =>
     genres.some((g) => g.toLowerCase() === 'hentai');
@@ -64,6 +85,7 @@ export function useSyncAniListHistory() {
     let cancelled = false;
 
     const syncHistory = async () => {
+      setIsSyncing(true);
       try {
         const token = localStorage.getItem('accessToken');
         if (!token) {
@@ -163,19 +185,12 @@ export function useSyncAniListHistory() {
             localProgress,
             existingAnilistProgress,
           );
-          // A stale provider cache can contain future episodes (for example,
-          // 12 while AniList says episode 8 is the latest released episode).
-          // Keep the progress metadata within AniList's airing boundary while
-          // preserving the local episode records for the upload sync to repair.
           const effectiveProgress =
             airingEpisodeLimit == null
               ? mergedProgress
               : Math.min(mergedProgress, airingEpisodeLimit);
 
-          // Convert AniList updatedAt (Unix seconds) to milliseconds for local storage
           const anilistUpdatedAt = entry.updatedAt ? entry.updatedAt * 1000 : null;
-
-          // Always enrich last-anime-visited (titles, status, AniList progress, cover).
           const mergedVisited = {
             ...existingVisited,
             timestamp: anilistUpdatedAt ?? existingVisited.timestamp ?? Date.now(),
@@ -196,9 +211,6 @@ export function useSyncAniListHistory() {
               entry.media?.episodes != null
                 ? entry.media.episodes
                 : existingVisited.totalEpisodes ?? null,
-            // Store AniList cover image so History works cross-device.
-            // Prefer any existing coverImage (e.g. episode thumbnail from local playback),
-            // but always fall back to the AniList cover when it's missing.
             coverImage:
               existingVisited.coverImage ||
               entry.media?.coverImage?.large ||
@@ -213,13 +225,17 @@ export function useSyncAniListHistory() {
             visitedChanged = true;
           }
 
-          // Update watched-episodes when AniList is ahead of local episode data.
           if (effectiveProgress > localProgress) {
             const current = localWatchedEpisodes[animeId];
             if (Array.isArray(current)) {
               const localMax = getWatchedCount(current);
               if (effectiveProgress > localMax) {
-                // Keep real episode objects; History reads anilistProgress from last-anime-visited.
+                localWatchedEpisodes[animeId] = normalizeToEpisodeArray(
+                  animeId,
+                  current,
+                  effectiveProgress,
+                );
+                historyChanged = true;
               }
             } else {
               localWatchedEpisodes[animeId] = [
@@ -231,7 +247,6 @@ export function useSyncAniListHistory() {
             typeof localWatchedEpisodes[animeId] === 'number' &&
             effectiveProgress > 0
           ) {
-            // Migrate legacy bare-number entries to Episode[] shape.
             localWatchedEpisodes[animeId] = normalizeToEpisodeArray(
               animeId,
               localWatchedEpisodes[animeId],
@@ -266,6 +281,10 @@ export function useSyncAniListHistory() {
         console.log('[HistorySync] Successfully synced AniList history to local storage');
       } catch (error) {
         console.error('[HistorySync] Failed to sync AniList history:', error);
+      } finally {
+        if (!cancelled) {
+          setIsSyncing(false);
+        }
       }
     };
 
@@ -273,6 +292,12 @@ export function useSyncAniListHistory() {
 
     return () => {
       cancelled = true;
+      setIsSyncing(false);
     };
-  }, [isLoggedIn, userData?.name, syncTrigger]);
+  }, [isLoggedIn, userData?.name, settings.saveHentaiHistory, settings.saveNSFWHistory, syncTrigger]);
+
+  return {
+    syncNow: requestSync,
+    isSyncing,
+  };
 }

@@ -1203,7 +1203,13 @@ const Watch: React.FC = () => {
       }
     } else {
       const entry = serverEntries.find((s) => {
-        const nameMatch = s.name.toLowerCase() === baseName.toLowerCase();
+        const nameMatch = s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase();
+        const typeMatch = s.type === 'hls' || s.type === 'mp4' || s.url?.includes('.m3u8') || s.url?.includes('.mp4');
+        const providerMatch =
+          currentEpisode.provider && s.provider?.toLowerCase() === currentEpisode.provider.toLowerCase();
+        return nameMatch && typeMatch && (!currentEpisode.provider || providerMatch || !serverEntries.some((other) => other !== s && other.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase() && other.provider?.toLowerCase() === currentEpisode.provider?.toLowerCase()));
+      }) ?? serverEntries.find((s) => {
+        const nameMatch = s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase();
         const typeMatch = s.type === 'hls' || s.type === 'mp4' || s.url?.includes('.m3u8') || s.url?.includes('.mp4');
         return nameMatch && typeMatch;
       });

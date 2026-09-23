@@ -21,6 +21,29 @@ if (PROXY_URL) {
 
 const API_KEY = import.meta.env.VITE_API_KEY as string;
 
+const PROVIDER_REFERER_MAP: Record<string, string> = {
+  kickassanime: 'https://krussdomi.com',
+  animeparadies: 'https://stream.animeparadise.moe',
+  reanime: 'https://reanime.to',
+  xanime: 'https://xanime',
+  anidb: 'https://anidb.net',
+  anikoto: 'https://anikoto.to',
+  animepahe: 'https://animepahe.com',
+};
+
+function resolveProviderReferer(provider?: string, fallback?: string): string {
+  const normalized = provider?.toLowerCase();
+  if (normalized && PROVIDER_REFERER_MAP[normalized]) {
+    return PROVIDER_REFERER_MAP[normalized];
+  }
+
+  if (fallback && /^https?:\/\//i.test(fallback)) {
+    return fallback;
+  }
+
+  return 'https://krussdomi.com';
+}
+
 // M3U8 Proxy configuration
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
 const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
@@ -309,6 +332,7 @@ export function buildM3U8ProxyUrl(
   referer: string,
   proxyUrl?: string,
   includeHeaders: boolean = true,
+  provider?: string,
 ): string {
   const selectedProxy = proxyUrl || M3U8_PROXY_URL;
 
@@ -330,9 +354,16 @@ export function buildM3U8ProxyUrl(
   let proxied = `${proxyBase}/m3u8-proxy?url=${encodeURIComponent(sourceUrl)}`;
 
   if (includeHeaders) {
-    const origin = new URL(referer).origin;
+    const resolvedReferer = resolveProviderReferer(provider, referer);
+    const origin = (() => {
+      try {
+        return new URL(resolvedReferer).origin;
+      } catch {
+        return new URL('https://krussdomi.com').origin;
+      }
+    })();
     const proxyHeaders = JSON.stringify({
-      Referer: referer,
+      Referer: resolvedReferer,
       Origin: origin,
     });
     proxied += `&headers=${encodeURIComponent(proxyHeaders)}`;
@@ -416,6 +447,7 @@ export function proxyM3U8Sources(
   referer: string,
   proxyUrl?: string,
   includeHeaders: boolean = true,
+  provider?: string,
 ): any[] {
   const selectedProxy = proxyUrl || M3U8_PROXY_URL;
   if (!selectedProxy) return sources;
@@ -427,7 +459,7 @@ export function proxyM3U8Sources(
       }
       return {
         ...source,
-        url: buildM3U8ProxyUrl(source.url, referer, proxyUrl, includeHeaders),
+        url: buildM3U8ProxyUrl(source.url, referer, proxyUrl, includeHeaders, provider),
       };
     }
     return source;
@@ -1726,19 +1758,21 @@ export async function fetchAnimeStreamingLinksProxied(
   }
 
   const REANIME_REFERER = 'https://reanime.to';
+  const providerReferer = resolveProviderReferer(finalProvider, referer || REANIME_REFERER);
 
-  let serverUrl = finalProvider === 'reanime' ? REANIME_REFERER : referer;
-  if (!serverUrl && data?.servers?.length > 0) {
-    if (server) {
-      const matchingServer = data.servers.find(
-        (s: any) => s.name?.toLowerCase() === server.toLowerCase(),
-      );
-      if (matchingServer?.url) {
-        serverUrl = matchingServer.url;
-      }
-    }
-    if (!serverUrl && data.servers[0]?.url) {
-      serverUrl = data.servers[0].url;
+  let serverUrl = providerReferer;
+  if (Array.isArray(data?.servers) && data.servers.length > 0) {
+    const preferredMatch =
+      (server &&
+        data.servers.find(
+          (s: any) =>
+            s.name?.toLowerCase() === server.toLowerCase() &&
+            (finalProvider === 'kickassanime' ? s.url?.includes('kickassanime') || s.name?.toLowerCase().includes('kaa') : true),
+        )) ||
+      data.servers.find((s: any) => s.url && s.url.startsWith('http'));
+
+    if (preferredMatch?.url) {
+      serverUrl = preferredMatch.url;
     }
   }
 
@@ -1747,16 +1781,18 @@ export async function fetchAnimeStreamingLinksProxied(
     return data;
   }
 
+  const refererForProvider = resolveProviderReferer(finalProvider, serverUrl);
   console.log(
-    `[fetchAnimeStreamingLinksProxied] Using server URL as referer: ${serverUrl} (provider=${finalProvider})`,
+    `[fetchAnimeStreamingLinksProxied] Using referer/origin for provider=${finalProvider}: ${refererForProvider}`,
   );
 
   if (Array.isArray(data?.sources)) {
     data.sources = proxyM3U8Sources(
       data.sources,
-      serverUrl,
+      refererForProvider,
       proxyUrl,
       true,
+      finalProvider,
     );
   }
 
@@ -1764,9 +1800,9 @@ export async function fetchAnimeStreamingLinksProxied(
     data = proxyDirectMediaUrls(
       data,
       finalProvider,
-      serverUrl,
+      refererForProvider,
       (sourceUrl: string, referer: string) =>
-        buildM3U8ProxyUrl(sourceUrl, referer, proxyUrl, true),
+        buildM3U8ProxyUrl(sourceUrl, referer, proxyUrl, true, finalProvider),
     );
   }
 

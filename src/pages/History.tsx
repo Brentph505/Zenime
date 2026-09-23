@@ -20,6 +20,9 @@ import {
   resolveLastEpisodeNumber,
 } from '../lib/watchHistory';
 import { useSettings } from '../components/Profile/SettingsProvider';
+import { useAuth } from '../client/useAuth';
+import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
+import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
 
 type AniListStatus =
   | 'CURRENT'
@@ -351,6 +354,35 @@ const ClearAllButton = styled.button<{ $disabled?: boolean }>`
   }
 `;
 
+const SyncAniListButton = styled.button<{ $disabled?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--global-border);
+  background: ${({ $disabled }) => ($disabled ? 'var(--global-tertiary-bg)' : 'var(--global-card-bg)')};
+  color: ${({ $disabled }) => ($disabled ? 'var(--global-text-muted)' : 'var(--global-text)')};
+  cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
+  font-size: 0.8rem;
+  font-weight: 700;
+  transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
+  opacity: ${({ $disabled }) => ($disabled ? 0.7 : 1)};
+
+  &:hover {
+    border-color: ${({ $disabled }) => ($disabled ? 'var(--global-border)' : 'var(--primary-accent)')};
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  @media (min-width: 768px) {
+    order: 6;
+  }
+`;
+
 // ── ANIME / MANGA tabs ────────────────────────────────────────────────────────
 
 const TabGroup = styled.div`
@@ -527,6 +559,10 @@ const EmptyState = styled.div`
 
 const History: React.FC = () => {
   const { settings } = useSettings();
+  const { isLoggedIn } = useAuth();
+  const { syncNow: pushToAniList, isSyncing: isPushingToAniList } = useAnimeProgressSync();
+  const { syncNow: pullFromAniList, isSyncing: isPullingFromAniList } = useSyncAniListHistory();
+
   // Separate state for anime and manga so each tab re-renders independently
   const [animeStorageData, setAnimeStorageData] = useState(
     () => localStorage.getItem(WATCHED_EPISODES_KEY),
@@ -836,6 +872,20 @@ const History: React.FC = () => {
     removeFromHistory(activeList.map((item) => item.animeId));
   }, [contentType, activeList, removeFromHistory]);
 
+  const handleManualAniListSync = useCallback(async () => {
+    if (!isLoggedIn || isPushingToAniList || isPullingFromAniList) return;
+
+    try {
+      await pushToAniList();
+      await pullFromAniList();
+      setAnimeStorageData(localStorage.getItem(WATCHED_EPISODES_KEY));
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent(WATCH_HISTORY_CHANGED_EVENT));
+    } catch (error) {
+      console.error('[HistorySync] Manual AniList sync failed:', error);
+    }
+  }, [isLoggedIn, isPushingToAniList, isPullingFromAniList, pushToAniList, pullFromAniList]);
+
   // ── Render helpers ────────────────────────────────────────────────────────
 
   const renderAnimeCard = (anime: AnimeWatchData) => {
@@ -949,6 +999,18 @@ const History: React.FC = () => {
               >
                 <FaTrashAlt aria-hidden='true' />
               </ClearAllButton>
+
+              {isLoggedIn && (
+                <SyncAniListButton
+                  $disabled={isPushingToAniList || isPullingFromAniList}
+                  onClick={handleManualAniListSync}
+                  disabled={isPushingToAniList || isPullingFromAniList}
+                  title='Sync local history with AniList now'
+                  aria-label='Sync AniList now'
+                >
+                  {isPushingToAniList || isPullingFromAniList ? 'Syncing…' : 'Sync AniList'}
+                </SyncAniListButton>
+              )}
             </FilterTop>
 
             <FilterBottom>

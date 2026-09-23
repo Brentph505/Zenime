@@ -6,7 +6,7 @@
  * Uses syncWatchProgress so entries are created automatically (PLANNING→CURRENT).
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '../client/useAuth';
 import { useSettings } from '../components/Profile/SettingsProvider';
 import { syncWatchProgress } from '../client/authService';
@@ -40,6 +40,7 @@ export function useAnimeProgressSync() {
   const { isLoggedIn } = useAuth();
   const { settings } = useSettings();
   const syncIntervalRef = useRef<NodeJS.Timeout>();
+  const [isSyncing, setIsSyncing] = useState(false);
   const lastSyncRef = useRef<SyncedProgress>((() => {
     try {
       const stored = localStorage.getItem(PROGRESS_SYNCED_KEY);
@@ -50,7 +51,7 @@ export function useAnimeProgressSync() {
   })());
 
   const syncProgressToAniList = useCallback(
-    async (animeId: string, watchedEpisodes: number, _totalEpisodes: number | null) => {
+    async (animeId: string, watchedEpisodes: number, totalEpisodes: number | null) => {
       if (!isLoggedIn) return;
 
       const token = getAccessToken();
@@ -97,9 +98,11 @@ export function useAnimeProgressSync() {
     [isLoggedIn],
   );
 
-  const syncAllProgress = useCallback(async () => {
-    if (!isLoggedIn || !settings.aniListSync) return;
+  const syncAllProgress = useCallback(async (force = false) => {
+    if (!isLoggedIn) return;
+    if (!settings.aniListSync && !force) return;
 
+    setIsSyncing(true);
     try {
       const watchedEpisodes = await getAllWatchedAnimeMap();
       const lastAnimeVisited = getLastAnimeVisitedMap();
@@ -122,8 +125,14 @@ export function useAnimeProgressSync() {
       }
     } catch (error) {
       console.error('[AnimeSync] Failed to sync all progress:', error);
+    } finally {
+      setIsSyncing(false);
     }
   }, [isLoggedIn, settings.aniListSync, syncProgressToAniList]);
+
+  useEffect(() => {
+    return () => setIsSyncing(false);
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn || !settings.aniListSync) {
@@ -159,4 +168,9 @@ export function useAnimeProgressSync() {
       window.removeEventListener('storage', handleChange);
     };
   }, [isLoggedIn, settings.aniListSync, syncAllProgress]);
+
+  return {
+    syncNow: () => syncAllProgress(true),
+    isSyncing,
+  };
 }
