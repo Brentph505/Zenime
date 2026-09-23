@@ -66,10 +66,6 @@ const AccentBar = styled.span<{ $from: string; $to: string; $vertical?: boolean 
           bottom: 0;
           width: 3px;
           background-size: 100% 200%;
-          background-image: linear-gradient(
-            180deg,
-            ${({ theme }) => ''}
-          );
         `
       : css`
           top: 0;

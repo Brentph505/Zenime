@@ -33,17 +33,16 @@ const ANILIST_REQUEST_INTERVAL_MS = 2000;
 let anilistRequestGate: Promise<void> = Promise.resolve();
 let lastAniListRequestAt = 0;
 
-function waitForAniListRateLimit(): Promise<void> {
-  const now = Date.now();
-  const elapsed = now - lastAniListRequestAt;
+/**
+ * FIX: the timestamp is now ALWAYS updated after the wait. Previously it was
+ * only updated when no wait was needed, so after a delayed request the stored
+ * time stayed old and the next request could fire immediately.
+ */
+async function waitForAniListRateLimit(): Promise<void> {
+  const elapsed = Date.now() - lastAniListRequestAt;
   const waitMs = Math.max(0, ANILIST_REQUEST_INTERVAL_MS - elapsed);
-
-  if (waitMs > 0) {
-    return new Promise((resolve) => setTimeout(resolve, waitMs));
-  }
-
-  lastAniListRequestAt = now;
-  return Promise.resolve();
+  if (waitMs > 0) await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+  lastAniListRequestAt = Date.now();
 }
 
 async function withAniListRateLimit<T>(fn: () => Promise<T>): Promise<T> {
@@ -180,13 +179,27 @@ async function gql<T = any>(
 
       return res.data.data;
     } catch (err) {
-      if (axios.isAxiosError(err) && err.response?.status === 429) {
-        const retryAfter = Number(err.response.headers['retry-after'] ?? '60');
-        const rateLimitErr = Object.assign(new Error('AniList rate limited'), {
-          isRateLimit: true as const,
-          retryAfter,
-        });
-        throw rateLimitErr;
+      if (axios.isAxiosError(err)) {
+        const status = err.response?.status;
+
+        if (status === 429) {
+          const retryAfter = Number(err.response?.headers?.['retry-after'] ?? '60');
+          const rateLimitErr = Object.assign(new Error('AniList rate limited'), {
+            isRateLimit: true as const,
+            retryAfter,
+          });
+          throw rateLimitErr;
+        }
+
+        // FIX: AniList sends the real reason for a 400 (invalid field, query
+        // complexity, bad variable…) in the response body. Axios only says
+        // "Request failed with status code 400", so surface the body instead.
+        const body = err.response?.data as { errors?: { message: string }[] } | undefined;
+        if (Array.isArray(body?.errors) && body!.errors!.length) {
+          const msg = body!.errors!.map((e) => e.message).join(', ');
+          console.error(`[authService] AniList ${status} error:`, body!.errors);
+          throw new Error(`AniList GraphQL error (${status}): ${msg}`);
+        }
       }
       throw err;
     }
@@ -227,13 +240,81 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
 
 // ─── User data ────────────────────────────────────────────────────────────────
 
+/**
+ * FIX (400 Bad Request on profile stats):
+ * AniList's `Staff` type has NO `media` field, so `staff { media { nodes } }`
+ * and `voiceActor { media { nodes } }` made the whole query invalid.
+ *
+ *  - Staff:        `staffMedia`      (works they worked on)
+ *  - Voice actors: `characterMedia`  (works they voiced in)
+ *
+ * Both are aliased to `media`, so the response still has `media.nodes` and
+ * ProfileStatsPage.tsx needs no changes.
+ *
+ * `limit` + `sort` cap the number of people returned. Without a limit AniList
+ * returns every person, each with a nested media list, which can exceed its
+ * query-complexity cap (also a 400). If you ever see a "complexity" error,
+ * lower STATS_PEOPLE_LIMIT / STATS_WORKS_PER_PERSON.
+ */
+const STATS_PEOPLE_LIMIT = 20;
+const STATS_WORKS_PER_PERSON = 6;
+
+const MEDIA_NODES = /* GraphQL */ `
+  nodes { id type title { romaji english userPreferred } coverImage { large medium } }
+`;
+
+const STAFF_STATS = /* GraphQL */ `
+  staff(limit: ${STATS_PEOPLE_LIMIT}, sort: COUNT_DESC) {
+    staff {
+      id
+      name { full }
+      image { large medium }
+      media: staffMedia(perPage: ${STATS_WORKS_PER_PERSON}, sort: POPULARITY_DESC) { ${MEDIA_NODES} }
+    }
+    count
+    meanScore
+  }
+`;
+
+const VOICE_ACTOR_STATS = /* GraphQL */ `
+  voiceActors(limit: ${STATS_PEOPLE_LIMIT}, sort: COUNT_DESC) {
+    voiceActor {
+      id
+      name { full }
+      image { large medium }
+      languageV2
+      media: characterMedia(perPage: ${STATS_WORKS_PER_PERSON}, sort: POPULARITY_DESC) { ${MEDIA_NODES} }
+    }
+    count
+    meanScore
+  }
+`;
+
 const VIEWER_QUERY = /* GraphQL */ `
   query Viewer {
     Viewer {
       id
       name
       bannerImage
+      about
+      siteUrl
+      donatorTier
+      donatorBadge
+      createdAt
+      updatedAt
       avatar { large medium }
+      options {
+        titleLanguage
+        displayAdultContent
+        airingNotifications
+        profileColor
+      }
+      mediaListOptions {
+        scoreFormat
+        rowOrder
+        animeList { sectionOrder splitCompletedSectionByFormat }
+        mangaList { sectionOrder splitCompletedSectionByFormat }
+      }
       statistics {
         anime {
           count
@@ -241,10 +322,18 @@ const VIEWER_QUERY = /* GraphQL */ `
           standardDeviation
           minutesWatched
           episodesWatched
-          formats { format count }
-          statuses { status count }
-          scores   { score count }
-          genres   { genre count }
+          formats { format count meanScore }
+          statuses { status count meanScore }
+          scores { score count meanScore }
+          lengths { length count meanScore }
+          releaseYears { releaseYear count meanScore }
+          startYears { startYear count meanScore }
+          genres { genre count meanScore }
+          tags { tag { id name } count meanScore }
+          countries { country count meanScore }
+          ${STAFF_STATS}
+          studios { studio { id name } count meanScore }
+          ${VOICE_ACTOR_STATS}
         }
         manga {
           count
@@ -252,11 +341,25 @@ const VIEWER_QUERY = /* GraphQL */ `
           standardDeviation
           chaptersRead
           volumesRead
-          formats { format count }
-          statuses { status count }
-          scores   { score count }
-          genres   { genre count }
+          formats { format count meanScore }
+          statuses { status count meanScore }
+          scores { score count meanScore }
+          lengths { length count meanScore }
+          releaseYears { releaseYear count meanScore }
+          startYears { startYear count meanScore }
+          genres { genre count meanScore }
+          tags { tag { id name } count meanScore }
+          countries { country count meanScore }
+          ${STAFF_STATS}
+          studios { studio { id name } count meanScore }
         }
+      }
+      favourites {
+        anime { nodes { id title { romaji english } coverImage { large medium } } }
+        manga { nodes { id title { romaji english } coverImage { large medium } } }
+        characters { nodes { id name { full } } }
+        staff { nodes { id name { full } image { large medium } } }
+        studios { nodes { id name } }
       }
     }
   }
@@ -270,44 +373,7 @@ export async function fetchUserData(token: string): Promise<UserData> {
 
 /** Extended user profile including favourites and preferences */
 export async function fetchAniListUser(token: string): Promise<AniListUserFull> {
-  const FULL_VIEWER_QUERY = /* GraphQL */ `
-    query FullViewer {
-      Viewer {
-        id name bannerImage about siteUrl
-        donatorTier donatorBadge createdAt updatedAt
-        avatar { large medium }
-        options {
-          titleLanguage displayAdultContent
-          airingNotifications profileColor
-        }
-        mediaListOptions {
-          scoreFormat rowOrder
-          animeList { sectionOrder splitCompletedSectionByFormat }
-          mangaList { sectionOrder splitCompletedSectionByFormat }
-        }
-        statistics {
-          anime {
-            count meanScore standardDeviation minutesWatched episodesWatched
-            formats { format count } statuses { status count }
-            scores  { score count  } genres  { genre  count }
-          }
-          manga {
-            count meanScore standardDeviation chaptersRead volumesRead
-            formats { format count } statuses { status count }
-            scores  { score count  } genres  { genre  count }
-          }
-        }
-        favourites {
-          anime      { nodes { id title { romaji english } } }
-          manga      { nodes { id title { romaji english } } }
-          characters { nodes { id name  { full } } }
-          staff      { nodes { id name  { full } } }
-          studios    { nodes { id name } }
-        }
-      }
-    }
-  `;
-  const data = await gql<{ Viewer: AniListUserFull }>(FULL_VIEWER_QUERY, {}, token);
+  const data = await gql<{ Viewer: AniListUserFull }>(VIEWER_QUERY, {}, token);
   if (!data?.Viewer) throw new Error('No Viewer in response');
   return data.Viewer;
 }

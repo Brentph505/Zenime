@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled, { keyframes, css, createGlobalStyle } from 'styled-components';
 import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
 import { ProfilePreviewModal } from '../components/Profile/ProfilePreviewModal';
@@ -203,6 +204,34 @@ const HeroContent = styled.div`
 
   @media (min-width: 560px) { padding: 1.25rem 1.5rem 1.4rem; gap: 1.1rem; }
   @media (min-width: 900px) { padding: 1.6rem 1.9rem 1.7rem; gap: 1.35rem; }
+`;
+
+const ProfileStatsActionButton = styled.button`
+  position: absolute;
+  top: 0.8rem;
+  left: 0.8rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(10, 14, 22, 0.42);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.54rem 0.8rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255,255,255,0.3);
+    background: rgba(10, 14, 22, 0.54);
+  }
 `;
 
 const SyncAniListButton = styled.button<{ $disabled?: boolean }>`
@@ -658,6 +687,7 @@ const ContentWrap = styled.div`
 
 /* ─────────── Component ─────────── */
 export const Profile: React.FC = () => {
+  const navigate = useNavigate();
   const { isLoggedIn, userData, login, refreshUserData } = useAuth();
   const railRef = useRef<HTMLDivElement>(null);
   const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
@@ -704,6 +734,15 @@ export const Profile: React.FC = () => {
             <HeroScrimTop />
             <HeroScrimBottom />
             <HeroFloorLine />
+
+            <ProfileStatsActionButton
+              type='button'
+              onClick={() => navigate('/profile/stats?mediaType=anime&tab=overview')}
+              aria-label='View profile stats'
+            >
+              <SiAnilist size={12} />
+              View stats
+            </ProfileStatsActionButton>
 
             <SyncAniListButton
               $disabled={isPushingToAniList || isPullingFromAniList}

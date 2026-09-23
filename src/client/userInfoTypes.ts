@@ -38,12 +38,50 @@ type UserStatisticsSort =
 // ─── Core user data (returned by Viewer query) ────────────────────────────────
 
 export interface UserData {
+  id?: number;
   name: string;
   avatar: {
     large: string;
     medium?: string;
   };
   bannerImage: string | null;
+  about?: string | null;
+  siteUrl?: string | null;
+  donatorTier?: number | null;
+  donatorBadge?: string | null;
+  createdAt?: number | null;
+  updatedAt?: number | null;
+  options?: {
+    titleLanguage?: string;
+    displayAdultContent?: boolean;
+    airingNotifications?: boolean;
+    profileColor?: string;
+  };
+  mediaListOptions?: {
+    scoreFormat?: string;
+    rowOrder?: string;
+    animeList?: { sectionOrder?: string[]; splitCompletedSectionByFormat?: boolean };
+    mangaList?: { sectionOrder?: string[]; splitCompletedSectionByFormat?: boolean };
+  };
+  favourites?: {
+    anime?: {
+      nodes?: Array<{
+        id: number;
+        title?: { romaji?: string; english?: string | null };
+        coverImage?: { large?: string; medium?: string } | null;
+      }>;
+    };
+    manga?: {
+      nodes?: Array<{
+        id: number;
+        title?: { romaji?: string; english?: string | null };
+        coverImage?: { large?: string; medium?: string } | null;
+      }>;
+    };
+    characters?: { nodes?: Array<{ id: number; name?: { full?: string } }> };
+    staff?: { nodes?: Array<{ id: number; name?: { full?: string } }> };
+    studios?: { nodes?: Array<{ id: number; name?: string }> };
+  };
   statistics: UserStatistics;
 }
 
@@ -65,6 +103,7 @@ interface BaseStatistics {
   lengths: UserLengthStatistic[];
   releaseYears: UserReleaseYearStatistic[];
   startYears: UserStartYearStatistic[];
+  sources: UserSourceStatistic[];
   genres: UserGenreStatistic[];
   tags: UserTagStatistic[];
   countries: UserCountryStatistic[];
@@ -168,12 +207,20 @@ export interface UserCountryStatistic {
   minutesWatched?: number;
 }
 
+export interface UserSourceStatistic {
+  source: string;
+  count: number;
+  meanScore?: number;
+  minutesWatched?: number;
+}
+
 export interface UserVoiceActorStatistic {
   voiceActor: {
     id: number;
     name: { full: string; native?: string };
-    language: string;
+    image?: { large?: string; medium?: string } | null;
   };
+  language: string;
   count: number;
   meanScore?: number;
   minutesWatched?: number;
@@ -183,6 +230,7 @@ export interface UserStaffStatistic {
   staff: {
     id: number;
     name: { full: string; native?: string };
+    image?: { large?: string; medium?: string } | null;
   };
   count: number;
   meanScore?: number;

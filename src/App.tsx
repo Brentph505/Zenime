@@ -26,6 +26,7 @@ import {
   Info,
   Studio,
   History,
+  ProfileStats,
   useSettings,
 } from './index';
 import { MangaSyncActivator } from './components/MangaSyncActivator';
@@ -83,6 +84,8 @@ function App() {
                   <Route path='/studio/:studioId' element={<Studio />} />
                   <Route path='/history' element={<History />} />
                   <Route path='/profile' element={<Profile />} />
+                  <Route path='/profile/stats' element={<ProfileStats />} />
+                  <Route path='/profile/stats/:mediaType/:tab' element={<ProfileStats />} />
                   <Route path='/about' element={<About />} />
                   <Route path='/pptos' element={<PolicyTerms />} />
                   <Route path='/callback' element={<Callback />} />

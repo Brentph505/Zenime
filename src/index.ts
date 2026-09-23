@@ -101,6 +101,7 @@ export { default as Home } from './pages/Home';
 export { default as Search } from './pages/Search';
 export { default as Watch } from './pages/Watch';
 export { default as Profile } from './pages/Profile';
+export { default as ProfileStats } from './pages/ProfileStats';
 export { default as About } from './pages/About';
 export { default as PolicyTerms } from './pages/PolicyTerms';
 export { default as Page404 } from './pages/404';
