@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { Link } from 'react-router-dom';
-import { FaSortAmountDown, FaSortAmountUp, FaSearch, FaTrashAlt } from 'react-icons/fa';
+import { FaSortAmountDown, FaSortAmountUp, FaSearch, FaSyncAlt, FaTrashAlt } from 'react-icons/fa';
 import { IoIosCloseCircleOutline, IoIosArrowDown } from 'react-icons/io';
 import { Episode } from '../index';
 import { MangaGrid } from '../components/Home/MangaGrid';
@@ -19,7 +19,6 @@ import {
   normalizeToEpisodeArray,
   resolveLastEpisodeNumber,
 } from '../lib/watchHistory';
-import { useSettings } from '../components/Profile/SettingsProvider';
 import { useAuth } from '../client/useAuth';
 import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
 import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
@@ -98,11 +97,25 @@ const Container = styled.div`
   }
 `;
 
+const PageHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+`;
+
 const PageTitle = styled.h2`
   color: var(--global-text);
   font-size: 1.25rem;
   font-weight: bold;
-  margin-bottom: 1rem;
+  margin: 0;
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 `;
 
 const ControlBar = styled.div`
@@ -358,17 +371,20 @@ const SyncAniListButton = styled.button<{ $disabled?: boolean }>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
-  padding: 0.5rem 0.8rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
   border-radius: 0.5rem;
   border: 1px solid var(--global-border);
   background: ${({ $disabled }) => ($disabled ? 'var(--global-tertiary-bg)' : 'var(--global-card-bg)')};
   color: ${({ $disabled }) => ($disabled ? 'var(--global-text-muted)' : 'var(--global-text)')};
   cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
-  font-size: 0.8rem;
-  font-weight: 700;
   transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease;
   opacity: ${({ $disabled }) => ($disabled ? 0.7 : 1)};
+
+  svg {
+    font-size: 0.9rem;
+  }
 
   &:hover {
     border-color: ${({ $disabled }) => ($disabled ? 'var(--global-border)' : 'var(--primary-accent)')};
@@ -378,9 +394,18 @@ const SyncAniListButton = styled.button<{ $disabled?: boolean }>`
     transform: scale(0.98);
   }
 
-  @media (min-width: 768px) {
-    order: 6;
-  }
+  ${({ $disabled }) =>
+    $disabled &&
+    `
+      svg {
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `}
 `;
 
 // ── ANIME / MANGA tabs ────────────────────────────────────────────────────────
@@ -558,7 +583,6 @@ const EmptyState = styled.div`
 // ─── Component ────────────────────────────────────────────────────────────────
 
 const History: React.FC = () => {
-  const { settings } = useSettings();
   const { isLoggedIn } = useAuth();
   const { syncNow: pushToAniList, isSyncing: isPushingToAniList } = useAnimeProgressSync();
   const { syncNow: pullFromAniList, isSyncing: isPullingFromAniList } = useSyncAniListHistory();
@@ -935,11 +959,27 @@ const History: React.FC = () => {
   const isManga = contentType !== 'anime';
     return (
       <Container>
-        <PageTitle>
-          {isManga
-            ? 'READING HISTORY'
-            : 'WATCH HISTORY'}
-        </PageTitle>
+        <PageHeader>
+          <PageTitle>
+            {isManga
+              ? 'READING HISTORY'
+              : 'WATCH HISTORY'}
+          </PageTitle>
+
+          {isLoggedIn && (
+            <HeaderActions>
+              <SyncAniListButton
+                $disabled={isPushingToAniList || isPullingFromAniList}
+                onClick={handleManualAniListSync}
+                disabled={isPushingToAniList || isPullingFromAniList}
+                title={isPushingToAniList || isPullingFromAniList ? 'Syncing history with AniList…' : 'Sync local history with AniList now'}
+                aria-label='Sync AniList now'
+              >
+                <FaSyncAlt aria-hidden='true' />
+              </SyncAniListButton>
+            </HeaderActions>
+          )}
+        </PageHeader>
 
         <ControlBar>
           {/* ── Search ───────────────────────────────────────────────── */}
@@ -1000,17 +1040,6 @@ const History: React.FC = () => {
                 <FaTrashAlt aria-hidden='true' />
               </ClearAllButton>
 
-              {isLoggedIn && (
-                <SyncAniListButton
-                  $disabled={isPushingToAniList || isPullingFromAniList}
-                  onClick={handleManualAniListSync}
-                  disabled={isPushingToAniList || isPullingFromAniList}
-                  title='Sync local history with AniList now'
-                  aria-label='Sync AniList now'
-                >
-                  {isPushingToAniList || isPullingFromAniList ? 'Syncing…' : 'Sync AniList'}
-                </SyncAniListButton>
-              )}
             </FilterTop>
 
             <FilterBottom>
@@ -1085,11 +1114,27 @@ const History: React.FC = () => {
 
   return (
     <Container>
-      <PageTitle>
-        {isManga
-          ? 'READING HISTORY'
-          : 'WATCH HISTORY'}
-      </PageTitle>
+      <PageHeader>
+        <PageTitle>
+          {isManga
+            ? 'READING HISTORY'
+            : 'WATCH HISTORY'}
+        </PageTitle>
+
+        {isLoggedIn && (
+          <HeaderActions>
+            <SyncAniListButton
+              $disabled={isPushingToAniList || isPullingFromAniList}
+              onClick={handleManualAniListSync}
+              disabled={isPushingToAniList || isPullingFromAniList}
+              title={isPushingToAniList || isPullingFromAniList ? 'Syncing history with AniList…' : 'Sync local history with AniList now'}
+              aria-label='Sync AniList now'
+            >
+              <FaSyncAlt aria-hidden='true' />
+            </SyncAniListButton>
+          </HeaderActions>
+        )}
+      </PageHeader>
 
       <ControlBar>
         {/* ── Search ───────────────────────────────────────────────── */}

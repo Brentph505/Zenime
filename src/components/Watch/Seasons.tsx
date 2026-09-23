@@ -95,7 +95,7 @@ interface SeasonCardItemProps {
 }
 
 const SeasonCardItem: React.FC<SeasonCardItemProps> = ({ relation }) => {
-  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(relation.title);
+  const { title: displayTitle } = useTitleWithSubtitle(relation.title);
 
   return (
     <SeasonCard

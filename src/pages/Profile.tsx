@@ -1,9 +1,7 @@
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 import styled, { keyframes, css } from 'styled-components';
 import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
 import { ANILIST_ENTRY_CHANGED_EVENT } from '../hooks/useAniListEntry';
-import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
-import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
 import { SiAnilist } from 'react-icons/si';
 import { CgProfile } from 'react-icons/cg';
 import { FiClock, FiStar, FiTv, FiFilm, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
@@ -527,35 +525,6 @@ const LoginBtn = styled.button`
   }
 `;
 
-const SyncButton = styled.button<{ $disabled?: boolean }>`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.85rem;
-  border-radius: var(--global-border-radius);
-  border: 1px solid var(--global-border);
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--global-text);
-  font-size: 0.72rem;
-  font-weight: 700;
-  cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
-  opacity: ${({ $disabled }) => ($disabled ? 0.7 : 1)};
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: transform 0.16s ease, border-color 0.16s ease, opacity 0.16s ease;
-
-  &:hover:not(:disabled) {
-    border-color: var(--primary-accent);
-    transform: translateY(-1px);
-  }
-
-  @media (min-width: 560px) {
-    padding: 0.6rem 1rem;
-    font-size: 0.78rem;
-  }
-`;
-
 /* ── Content section ── */
 const ContentWrap = styled.div`
   width: 100%;
@@ -567,22 +536,6 @@ const ContentWrap = styled.div`
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, refreshUserData } = useAuth();
   const railRef = useRef<HTMLDivElement>(null);
-  const { syncNow: pushToAniList, isSyncing: isPushingToAniList } = useAnimeProgressSync();
-  const { syncNow: pullFromAniList, isSyncing: isPullingFromAniList } = useSyncAniListHistory();
-
-  const handleManualAniListSync = useCallback(async () => {
-    if (!isLoggedIn || isPushingToAniList || isPullingFromAniList) return;
-
-    try {
-      await pushToAniList();
-      await pullFromAniList();
-      await refreshUserData();
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('watch-history-changed'));
-    } catch (error) {
-      console.error('[Profile] Manual AniList sync failed:', error);
-    }
-  }, [isLoggedIn, isPushingToAniList, isPullingFromAniList, pushToAniList, pullFromAniList, refreshUserData]);
 
   // Refresh stats (counts, mean score, …) when a list entry changes elsewhere
   // (e.g. status/score set on the Info page) so the numbers don't go stale.
@@ -619,17 +572,6 @@ export const Profile: React.FC = () => {
               <IdentityBlock>
                 <MemberBadge><SiAnilist size={10} /> AniList Member</MemberBadge>
                 <Username>{userData.name}</Username>
-                {isLoggedIn && (
-                  <SyncButton
-                    type='button'
-                    $disabled={isPushingToAniList || isPullingFromAniList}
-                    onClick={handleManualAniListSync}
-                    disabled={isPushingToAniList || isPullingFromAniList}
-                    aria-label='Sync watch history with AniList'
-                  >
-                    {isPushingToAniList || isPullingFromAniList ? 'Syncing…' : 'Sync AniList'}
-                  </SyncButton>
-                )}
               </IdentityBlock>
             </HeroContent>
           </Hero>

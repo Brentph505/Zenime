@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { SiAnilist, SiMyanimelist } from 'react-icons/si';
-import { FaArrowLeft } from 'react-icons/fa6';
 import {
   CardGrid,
   StyledCardGrid,
@@ -201,32 +200,6 @@ const Dot = styled.span`
   background: ${A.muted};
   opacity: 0.5;
   flex-shrink: 0;
-`;
-
-// Top-right corner: back action as a quiet ghost icon button
-const HeaderActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  flex-shrink: 0;
-`;
-
-const IconBtn = styled.button`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: transparent;
-  border: none;
-  color: ${A.muted};
-  cursor: pointer;
-  transition: background 0.2s ease, color 0.2s ease;
-  &:hover {
-    background: ${A.accentDim};
-    color: ${A.accent};
-  }
 `;
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────

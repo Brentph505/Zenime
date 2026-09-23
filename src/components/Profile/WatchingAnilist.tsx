@@ -151,24 +151,6 @@ const Message = styled.div`
   color: var(--global-text-muted);
 `;
 
-const NotLoggedIn = styled.div`
-  margin: 5rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  text-align: center;
-  font-size: 1.5rem;
-  font-weight: bold;
-  max-width: 100%;
-
-  @media (max-width: 600px) {
-    margin: 1rem 0;
-    padding: 0.85rem;
-    font-size: 0.95rem;
-    font-weight: 600;
-  }
-`;
-
 export const WatchingAnilist = () => {
   const { isLoggedIn, userData } = useAuth();
 

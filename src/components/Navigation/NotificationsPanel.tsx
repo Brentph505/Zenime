@@ -19,7 +19,6 @@ import {
   FaUserPlus, FaHeart, FaAt, FaTv, FaArrowsRotate, FaExclamation,
 } from 'react-icons/fa6';
 import { useNotifications } from '../../hooks/useNotifications';
-import { useSettings } from '../Profile/SettingsProvider';
 import type { AniListNotification } from '../../client/authService';
 
 type NotificationItem = AniListNotification & { read: boolean };
@@ -448,8 +447,6 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
     load, loadMore, markAllRead, markItemRead,
   } = useNotifications(isLoggedIn, getToken, markRead);
 
-  const { settings } = useSettings();
-
   const bodyPrev = useRef<string>('');
   // Fetch on first open.
   useEffect(() => {
@@ -482,7 +479,8 @@ export const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
     
     const isHentai = n.media?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
     const isNsfw = n.media?.isAdult || n.media?.genres?.some((g: string) => g.toLowerCase() === 'ecchi');
-    const shouldBlur = Boolean((isHentai && settings.blurHentai) || (!isHentai && isNsfw && settings.blurNSFW));
+    void isHentai;
+    void isNsfw;
 
     const thumb = r.cover
       ? <Cover src={r.cover} alt='' loading='lazy' />

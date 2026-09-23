@@ -162,7 +162,7 @@ const Details = styled.p`
 
 // Sub-component to use useTitleWithSubtitle hook for each anime
 const SideBarAnimeCard: React.FC<{ anime: Anime; index: number }> = ({ anime, index }) => {
-  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(anime.title);
+  const { title: displayTitle } = useTitleWithSubtitle(anime.title);
 
   return (
     <Link

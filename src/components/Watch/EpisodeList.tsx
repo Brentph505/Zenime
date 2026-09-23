@@ -336,10 +336,6 @@ export const EpisodeList: React.FC<Props> = ({
   const episodeGridRef = useRef<HTMLDivElement>(null);
   const episodeRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
   const [interval, setInterval] = useState<[number, number]>([0, 99]);
-  const [isRowLayout, setIsRowLayout] = useState(true);
-  const [userLayoutPreference, setUserLayoutPreference] = useState<
-    boolean | null
-  >(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [watchedEpisodes, setWatchedEpisodes] = useState<Episode[]>([]);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
@@ -538,22 +534,13 @@ export const EpisodeList: React.FC<Props> = ({
     return filteredEpisodes;
   }, [episodes, filteredEpisodes, interval, searchTerm]);
 
-  // Determine layout based on episodes and user preference
+  // Determine the active interval for the selected episode.
   useEffect(() => {
-    const allTitlesNull = episodes.every((episode) => episode.title === null);
-    const defaultLayout = episodes.length <= 26 && !allTitlesNull;
-
-    setIsRowLayout(
-      userLayoutPreference !== null ? userLayoutPreference : defaultLayout,
-    );
-
-    // Find the selected episode
     if (!selectionInitiatedByUser) {
       const selectedEpisode = episodes.find(
         (episode) => episode.id === selectedEpisodeId,
       );
       if (selectedEpisode) {
-        // Find the interval containing the selected episode
         for (let i = 0; i < intervalOptions.length; i++) {
           const { start, end } = intervalOptions[i];
           if (
@@ -566,13 +553,7 @@ export const EpisodeList: React.FC<Props> = ({
         }
       }
     }
-  }, [
-    episodes,
-    userLayoutPreference,
-    selectedEpisodeId,
-    intervalOptions,
-    selectionInitiatedByUser,
-  ]);
+  }, [episodes, selectedEpisodeId, intervalOptions, selectionInitiatedByUser]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

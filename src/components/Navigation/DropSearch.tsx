@@ -137,7 +137,7 @@ interface SearchItemProps {
 }
 
 const SearchResultItem: React.FC<SearchItemProps> = ({ result, isSelected, onSelect }) => {
-  const { title: displayTitle, subtitle: displaySubtitle } = useTitleWithSubtitle(result.title);
+  const { title: displayTitle } = useTitleWithSubtitle(result.title);
 
   return (
     <Item

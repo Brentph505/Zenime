@@ -1,5 +1,5 @@
 import styled from 'styled-components';
-import { FaReddit, FaDiscord, FaTwitter, FaGithub } from 'react-icons/fa';
+import { FaReddit, FaDiscord, FaTwitter } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import { year } from '../../hooks/useTIme';
 
