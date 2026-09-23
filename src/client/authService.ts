@@ -65,6 +65,8 @@ export interface MediaListEntryResult {
     id: number;
     title: { romaji: string; english: string | null };
     episodes: number | null;
+    status?: 'FINISHED' | 'RELEASING' | 'NOT_YET_RELEASED' | 'CANCELLED' | 'HIATUS' | 'UNKNOWN' | null;
+    nextAiringEpisode?: { episode: number } | null;
     chapters: number | null;
     type: 'ANIME' | 'MANGA';
     coverImage?: { large?: string; medium?: string } | null;
@@ -457,7 +459,7 @@ const ENTRY_FIELDS = /* GraphQL */ `
   startedAt   { year month day }
   completedAt { year month day }
   media {
-    id episodes chapters type
+    id episodes status nextAiringEpisode { episode } chapters type
     title { romaji english }
     coverImage { large medium }
     genres isAdult
@@ -603,6 +605,9 @@ const SAVE_MUTATION = /* GraphQL */ `
   }
 `;
 
+// Keep progress writes for one title ordered when playback emits close events.
+const animeProgressQueues = new Map<number, Promise<unknown>>();
+
 export async function saveMediaListEntry(
   token: string,
   input: SaveEntryInput,
@@ -699,46 +704,82 @@ export async function syncWatchProgress(
   token: string,
   mediaId: number,
   progress: number,
-  totalEpisodes?: number | null,
+  _totalEpisodes?: number | null,
 ): Promise<MediaListEntryResult | null> {
+  const previous = animeProgressQueues.get(mediaId) ?? Promise.resolve();
+  const current = previous.then(async () => {
+    try {
+      const existing = await fetchMediaListEntry(token, mediaId);
+      const requestedProgress = Math.max(0, Math.floor(Number(progress) || 0));
+      const nextAiringEpisode = existing?.media?.nextAiringEpisode?.episode;
+      const releasedEpisodeLimit =
+        existing?.media?.status === 'RELEASING' && nextAiringEpisode != null
+          ? Math.max(0, nextAiringEpisode - 1)
+          : null;
+
+      // AniList metadata is authoritative for airing shows. Never push a
+      // provider's planned future episode to the user's list.
+      const requestedReleasedProgress =
+        releasedEpisodeLimit == null
+          ? requestedProgress
+          : Math.min(requestedProgress, releasedEpisodeLimit);
+      const currentStatus = existing?.status;
+      const existingProgress =
+        releasedEpisodeLimit == null
+          ? existing?.progress ?? 0
+          : Math.min(existing?.progress ?? 0, releasedEpisodeLimit);
+      // Preserve real progress, but repair an impossible value already stored
+      // above AniList's current airing episode.
+      const effectiveProgress = Math.max(requestedReleasedProgress, existingProgress);
+
+      let newStatus: MediaListStatus | undefined;
+      const finishedEpisodeCount = existing?.media?.episodes;
+      if (
+        existing?.media?.status === 'FINISHED' &&
+        finishedEpisodeCount &&
+        effectiveProgress >= finishedEpisodeCount
+      ) {
+        newStatus = 'COMPLETED';
+      } else if (!currentStatus || currentStatus === 'PLANNING') {
+        newStatus = 'CURRENT';
+      }
+
+      if (
+        existing &&
+        effectiveProgress === existing.progress &&
+        (newStatus === undefined || newStatus === currentStatus)
+      ) {
+        return existing;
+      }
+
+      const saveInput: SaveEntryInput = {
+        mediaId,
+        progress: effectiveProgress,
+        status: newStatus ?? currentStatus ?? 'CURRENT',
+      };
+
+      if (newStatus) {
+        saveInput.status = newStatus;
+      } else if (currentStatus) {
+        saveInput.status = currentStatus;
+      } else {
+        saveInput.status = 'CURRENT';
+      }
+
+      return await saveMediaListEntry(token, saveInput);
+    } catch (err) {
+      console.error('[authService] syncWatchProgress failed:', err);
+      return null;
+    }
+  });
+
+  animeProgressQueues.set(mediaId, current);
   try {
-    const existing = await fetchMediaListEntry(token, mediaId);
-    const currentStatus = existing?.status;
-    // Never regress AniList progress when rewatching earlier episodes.
-    const effectiveProgress = Math.max(progress, existing?.progress ?? 0);
-
-    let newStatus: MediaListStatus | undefined;
-    if (totalEpisodes && effectiveProgress >= totalEpisodes) {
-      newStatus = 'COMPLETED';
-    } else if (!currentStatus || currentStatus === 'PLANNING') {
-      newStatus = 'CURRENT';
+    return await current as MediaListEntryResult | null;
+  } finally {
+    if (animeProgressQueues.get(mediaId) === current) {
+      animeProgressQueues.delete(mediaId);
     }
-
-    // If no meaningful change is required, reuse the existing entry instead
-    // of sending a redundant save that could trigger unexpected AniList behavior.
-    if (
-      existing &&
-      effectiveProgress === existing.progress &&
-      (newStatus === undefined || newStatus === currentStatus)
-    ) {
-      return existing;
-    }
-
-    const saveInput: any = {
-      mediaId,
-      progress: effectiveProgress,
-    };
-
-    if (newStatus) {
-      saveInput.status = newStatus;
-    } else if (currentStatus) {
-      saveInput.status = currentStatus;
-    }
-
-    return await saveMediaListEntry(token, saveInput);
-  } catch (err) {
-    console.error('[authService] syncWatchProgress failed:', err);
-    return null;
   }
 }
 
@@ -791,12 +832,15 @@ export async function syncMangaReadProgress(
     const saveInput: any = {
       mediaId,
       progress: effectiveProgress,
+      status: newStatus ?? currentStatus ?? 'CURRENT',
     };
 
     if (newStatus) {
       saveInput.status = newStatus;
     } else if (currentStatus) {
       saveInput.status = currentStatus;
+    } else {
+      saveInput.status = 'CURRENT';
     }
 
     return await saveMediaListEntry(token, saveInput);

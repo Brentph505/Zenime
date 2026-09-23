@@ -19,6 +19,8 @@ import {
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 const PROGRESS_SYNCED_KEY = 'anime-progress-synced';
+const MAX_ANIME_PER_BATCH = 10;
+const RATE_LIMIT_DELAY_MS = 2500;
 
 interface SyncedProgress {
   [animeId: string]: {
@@ -39,7 +41,9 @@ function getAccessToken(): string | null {
 export function useAnimeProgressSync() {
   const { isLoggedIn } = useAuth();
   const { settings } = useSettings();
-  const syncIntervalRef = useRef<NodeJS.Timeout>();
+  const syncIntervalRef = useRef<number | null>(null);
+  const isSyncingRef = useRef(false);
+  const lastRequestAtRef = useRef(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const lastSyncRef = useRef<SyncedProgress>((() => {
     try {
@@ -57,9 +61,6 @@ export function useAnimeProgressSync() {
       const token = getAccessToken();
       if (!token) return;
 
-      // Upload every positive local progress value. The previous percentage
-      // gate prevented short series and early episodes from reaching AniList,
-      // so another device could not restore the user's real progress.
       if (watchedEpisodes < 1) return;
 
       const lastSync = lastSyncRef.current[animeId];
@@ -69,6 +70,13 @@ export function useAnimeProgressSync() {
 
       const numericId = parseInt(animeId, 10);
       if (Number.isNaN(numericId)) return;
+
+      const now = Date.now();
+      const elapsed = now - lastRequestAtRef.current;
+      if (elapsed < RATE_LIMIT_DELAY_MS) {
+        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS - elapsed));
+      }
+      lastRequestAtRef.current = Date.now();
 
       try {
         const result = await syncWatchProgress(
@@ -101,31 +109,45 @@ export function useAnimeProgressSync() {
   const syncAllProgress = useCallback(async (force = false) => {
     if (!isLoggedIn) return;
     if (!settings.aniListSync && !force) return;
+    if (isSyncingRef.current) return;
 
+    isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       const watchedEpisodes = await getAllWatchedAnimeMap();
       const lastAnimeVisited = getLastAnimeVisitedMap();
 
-      const animeIds = Object.keys(watchedEpisodes);
+      const animeIds = Object.keys(watchedEpisodes).filter((animeId) => {
+        const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
+        return watchedCount > 0;
+      });
+
       if (animeIds.length === 0) return;
 
-      for (const animeId of animeIds) {
-        const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
-        if (watchedCount <= 0) continue;
+      for (let i = 0; i < animeIds.length; i += MAX_ANIME_PER_BATCH) {
+        const batch = animeIds.slice(i, i + MAX_ANIME_PER_BATCH);
 
-        const meta = lastAnimeVisited[animeId];
-        const totalEpisodes =
-          (meta?.totalEpisodes as number | null | undefined) ??
-          (meta?.total_episodes as number | null | undefined) ??
-          null;
+        for (const animeId of batch) {
+          const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
+          if (watchedCount <= 0) continue;
 
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        await syncProgressToAniList(animeId, watchedCount, totalEpisodes);
+          const meta = lastAnimeVisited[animeId];
+          const totalEpisodes =
+            (meta?.totalEpisodes as number | null | undefined) ??
+            (meta?.total_episodes as number | null | undefined) ??
+            null;
+
+          await syncProgressToAniList(animeId, watchedCount, totalEpisodes);
+        }
+
+        if (i + MAX_ANIME_PER_BATCH < animeIds.length) {
+          await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+        }
       }
     } catch (error) {
       console.error('[AnimeSync] Failed to sync all progress:', error);
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
   }, [isLoggedIn, settings.aniListSync, syncProgressToAniList]);
@@ -137,20 +159,35 @@ export function useAnimeProgressSync() {
   useEffect(() => {
     if (!isLoggedIn || !settings.aniListSync) {
       if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-        syncIntervalRef.current = undefined;
+        window.clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
       }
       return;
     }
 
     void syncAllProgress();
 
-    syncIntervalRef.current = setInterval(() => {
+    syncIntervalRef.current = window.setInterval(() => {
       void syncAllProgress();
     }, SYNC_INTERVAL_MS);
 
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void syncAllProgress();
+      }
+    };
+
+    const handleFocus = () => {
+      void syncAllProgress();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('focus', handleFocus);
+
     return () => {
-      if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+      if (syncIntervalRef.current) window.clearInterval(syncIntervalRef.current);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [isLoggedIn, settings.aniListSync, syncAllProgress]);
 
@@ -163,9 +200,11 @@ export function useAnimeProgressSync() {
 
     window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, handleChange);
     window.addEventListener('storage', handleChange);
+    window.addEventListener('online', handleChange);
     return () => {
       window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, handleChange);
       window.removeEventListener('storage', handleChange);
+      window.removeEventListener('online', handleChange);
     };
   }, [isLoggedIn, settings.aniListSync, syncAllProgress]);
 
