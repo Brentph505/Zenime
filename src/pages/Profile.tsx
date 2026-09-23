@@ -1,9 +1,13 @@
-import React, { useEffect, useRef } from 'react';
-import styled, { keyframes, css } from 'styled-components';
+import React, { useCallback, useEffect, useRef } from 'react';
+import styled, { keyframes, css, createGlobalStyle } from 'styled-components';
 import { useAuth, EpisodeCard, WatchingAnilist } from '../index';
+import { ProfilePreviewModal } from '../components/Profile/ProfilePreviewModal';
 import { ANILIST_ENTRY_CHANGED_EVENT } from '../hooks/useAniListEntry';
+import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
+import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
 import { SiAnilist } from 'react-icons/si';
 import { CgProfile } from 'react-icons/cg';
+import { FaSyncAlt } from 'react-icons/fa';
 import { FiClock, FiStar, FiTv, FiFilm, FiChevronLeft, FiChevronRight } from 'react-icons/fi';
 
 /*
@@ -26,6 +30,18 @@ import { FiClock, FiStar, FiTv, FiFilm, FiChevronLeft, FiChevronRight } from 're
   the whole first screen, then grows more cinematic at larger sizes.
   Identity is overlaid directly on the gradient instead of stacked
   below in a separate card.
+
+  Avatar frame: the border is an animated, rotating conic-gradient
+  applied directly as AvatarFrame's own background (same technique as
+  the original static version — the image sits inside a 2.5px padding
+  gap, so the gradient can only ever be visible as a thin ring, never
+  a full box). Rotation is done by animating a registered custom
+  property (--border-angle) rather than transform: rotate(), so only
+  the *hue* spins — the frame's corners and the avatar image inside
+  stay put. A blurred ::before copy (using `background: inherit`, so
+  it always tracks the live animated gradient) sits behind for the
+  glow halo. No new colors: still just --primary-accent, #db2777,
+  #0891b2.
 
   Guest state mirrors the same compact banner proportions and is
   centered both axes, with its icon/title/copy scaling down on small
@@ -59,6 +75,23 @@ const bannerReveal = keyframes`
 const popIn = keyframes`
   from { opacity: 0; transform: translateY(8px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+/* rotates the conic-gradient's hue in place via a registered custom
+   property, so the border spins without rotating the box/corners */
+const spinBorder = keyframes`
+  to { --border-angle: 360deg; }
+`;
+
+/* Registers --border-angle as an animatable <angle> so the keyframes
+   above can interpolate it smoothly. Must be a top-level @property
+   rule; mounted once via <BorderAngleProperty /> in the component. */
+const BorderAngleProperty = createGlobalStyle`
+  @property --border-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
 `;
 
 /* ── Page ── */
@@ -172,6 +205,64 @@ const HeroContent = styled.div`
   @media (min-width: 900px) { padding: 1.6rem 1.9rem 1.7rem; gap: 1.35rem; }
 `;
 
+const SyncAniListButton = styled.button<{ $disabled?: boolean }>`
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(10, 14, 22, 0.38);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: ${({ $disabled }) => ($disabled ? 'var(--global-text-muted)' : '#fff')};
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  cursor: ${({ $disabled }) => ($disabled ? 'not-allowed' : 'pointer')};
+  transition: transform 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+  opacity: ${({ $disabled }) => ($disabled ? 0.7 : 1)};
+
+  &:hover {
+    border-color: ${({ $disabled }) => ($disabled ? 'rgba(255,255,255,0.18)' : 'var(--primary-accent)')};
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  svg {
+    font-size: 0.9rem;
+  }
+
+  ${({ $disabled }) =>
+    $disabled &&
+    `
+      svg {
+        animation: spin 0.9s linear infinite;
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+    `}
+`;
+
+/* ── Avatar frame: the animated ring is the frame's own background,
+   exactly like the original static version — it can only ever render
+   as a thin border because AvatarImg fills everything inside the
+   2.5px padding and physically covers the center. Rotation comes from
+   animating --border-angle (registered above), so the conic-gradient
+   spins in place without transforming the box itself. A blurred
+   ::before, using `background: inherit`, mirrors whatever the parent
+   is currently rendering (so it never falls out of sync) for the glow
+   halo behind the ring. Same three colors as before, nothing new. ── */
 const AvatarFrame = styled.div`
   position: relative;
   flex-shrink: 0;
@@ -179,15 +270,48 @@ const AvatarFrame = styled.div`
   height: 52px;
   border-radius: 14px;
   padding: 2.5px;
-  background: linear-gradient(135deg, var(--primary-accent, #7c3aed), #db2777, #0891b2);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
-  animation: ${riseIn} 0.45s ease 0.1s both;
+  background: conic-gradient(
+    from var(--border-angle, 0deg),
+    var(--primary-accent, #7c3aed),
+    #db2777,
+    #0891b2,
+    var(--primary-accent, #7c3aed)
+  );
+  animation: ${spinBorder} 4s linear infinite;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.38);
+  isolation: isolate;
 
-  @media (min-width: 560px) { width: 80px; height: 80px; border-radius: 18px; }
-  @media (min-width: 900px) { width: 96px; height: 96px; border-radius: 20px; }
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    z-index: -1;
+    border-radius: inherit;
+    background: inherit;
+    filter: blur(8px);
+    opacity: 0.48;
+  }
+
+  @media (min-width: 560px) {
+    width: 80px;
+    height: 80px;
+    border-radius: 18px;
+
+    &::before { inset: -4px; filter: blur(10px); opacity: 0.5; }
+  }
+
+  @media (min-width: 900px) {
+    width: 96px;
+    height: 96px;
+    border-radius: 20px;
+
+    &::before { inset: -5px; filter: blur(12px); opacity: 0.52; }
+  }
 `;
 
 const AvatarImg = styled.img`
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   border-radius: 11.5px;
@@ -536,6 +660,9 @@ const ContentWrap = styled.div`
 export const Profile: React.FC = () => {
   const { isLoggedIn, userData, login, refreshUserData } = useAuth();
   const railRef = useRef<HTMLDivElement>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+  const { syncNow: pushToAniList, isSyncing: isPushingToAniList } = useAnimeProgressSync();
+  const { syncNow: pullFromAniList, isSyncing: isPullingFromAniList } = useSyncAniListHistory();
 
   // Refresh stats (counts, mean score, …) when a list entry changes elsewhere
   // (e.g. status/score set on the Info page) so the numbers don't go stale.
@@ -552,10 +679,24 @@ export const Profile: React.FC = () => {
       : 'Profile';
   }, [isLoggedIn, userData]);
 
+  const handleManualAniListSync = useCallback(async () => {
+    if (!isLoggedIn || isPushingToAniList || isPullingFromAniList) return;
+
+    try {
+      await pushToAniList();
+      await pullFromAniList();
+      window.dispatchEvent(new Event('storage'));
+      window.dispatchEvent(new CustomEvent(ANILIST_ENTRY_CHANGED_EVENT));
+    } catch (error) {
+      console.error('[ProfileSync] Manual AniList sync failed:', error);
+    }
+  }, [isLoggedIn, isPushingToAniList, isPullingFromAniList, pushToAniList, pullFromAniList]);
+
   const coverSrc = userData?.bannerImage ?? null;
 
   return (
     <Page>
+      <BorderAngleProperty />
       {isLoggedIn && userData ? (
         <>
           <Hero>
@@ -564,8 +705,22 @@ export const Profile: React.FC = () => {
             <HeroScrimBottom />
             <HeroFloorLine />
 
+            <SyncAniListButton
+              $disabled={isPushingToAniList || isPullingFromAniList}
+              onClick={handleManualAniListSync}
+              disabled={isPushingToAniList || isPullingFromAniList}
+              title={isPushingToAniList || isPullingFromAniList ? 'Syncing history with AniList…' : 'Sync local history with AniList now'}
+              aria-label='Sync AniList now'
+            >
+              <FaSyncAlt aria-hidden='true' />
+            </SyncAniListButton>
+
             <HeroContent>
-              <AvatarFrame>
+              <AvatarFrame
+                onClick={() => setIsPreviewOpen(true)}
+                style={{ cursor: 'pointer' }}
+                title='View profile photo'
+              >
                 <AvatarImg src={userData.avatar.large} alt={userData.name} />
               </AvatarFrame>
 
@@ -646,6 +801,8 @@ export const Profile: React.FC = () => {
         <EpisodeCard />
         <WatchingAnilist />
       </ContentWrap>
+
+      <ProfilePreviewModal open={isPreviewOpen} onClose={() => setIsPreviewOpen(false)} user={userData} />
     </Page>
   );
 };

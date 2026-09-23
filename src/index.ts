@@ -50,6 +50,7 @@ export {
 } from './components/Profile/SettingsProvider';
 export { WatchingAnilist } from './components/Profile/WatchingAnilist';
 export { EditEntryModal } from './components/Profile/EditEntryModal';
+export { ProfilePreviewModal } from './components/Profile/ProfilePreviewModal';
 
 // * ==== Hooks ====
 // TODO Utilizing API and Other Functionalities
