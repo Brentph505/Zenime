@@ -3,13 +3,23 @@
  *
  * Background sync of local watch history → AniList. Merges legacy localStorage,
  * the size-capped cache, and IndexedDB (where Watch.tsx stores full history).
- * Uses syncWatchProgress so entries are created automatically (PLANNING→CURRENT).
+ * Uses syncWatchProgressBatch so multiple entries are pushed in a single
+ * batched AniList request (plus 1 read of the current list to resolve
+ * status/airing-episode rules), instead of up to 2 requests PER anime.
+ *
+ * Rate-limit notes:
+ *  - Listens to WATCH_HISTORY_CHANGED_EVENT only — NOT the generic 'storage'
+ *    event and NOT ANILIST_REMOTE_PATCH_EVENT — so that patches originating
+ *    from AniList itself (via useSyncAniListHistory's patchSingleEntry)
+ *    don't get pushed straight back to AniList in a loop.
+ *  - On 429, backs off using the Retry-After header instead of retrying
+ *    immediately on the next interval tick.
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuth } from '../client/useAuth';
 import { useSettings } from '../components/Profile/SettingsProvider';
-import { syncWatchProgress } from '../client/authService';
+import { syncWatchProgressBatch, isAniListRateLimitError } from '../client/authService';
 import {
   WATCH_HISTORY_CHANGED_EVENT,
   getAllWatchedAnimeMap,
@@ -18,9 +28,9 @@ import {
 } from '../lib/watchHistory';
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+const FULL_SYNC_COOLDOWN_MS = 60 * 1000;
 const PROGRESS_SYNCED_KEY = 'anime-progress-synced';
-const MAX_ANIME_PER_BATCH = 10;
-const RATE_LIMIT_DELAY_MS = 2500;
+const MAX_ANIME_PER_BATCH = 8;
 
 interface SyncedProgress {
   [animeId: string]: {
@@ -39,11 +49,12 @@ function getAccessToken(): string | null {
 }
 
 export function useAnimeProgressSync() {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, userData } = useAuth();
   const { settings } = useSettings();
   const syncIntervalRef = useRef<number | null>(null);
   const isSyncingRef = useRef(false);
-  const lastRequestAtRef = useRef(0);
+  const lastFullSyncAtRef = useRef(0);
+  const backoffUntilRef = useRef(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const lastSyncRef = useRef<SyncedProgress>((() => {
     try {
@@ -54,94 +65,79 @@ export function useAnimeProgressSync() {
     }
   })());
 
-  const syncProgressToAniList = useCallback(
-    async (animeId: string, watchedEpisodes: number, totalEpisodes: number | null) => {
-      if (!isLoggedIn) return;
-
-      const token = getAccessToken();
-      if (!token) return;
-
-      if (watchedEpisodes < 1) return;
-
-      const lastSync = lastSyncRef.current[animeId];
-      if (lastSync && lastSync.lastSyncedEpisode >= watchedEpisodes) {
-        return;
-      }
-
-      const numericId = parseInt(animeId, 10);
-      if (Number.isNaN(numericId)) return;
-
-      const now = Date.now();
-      const elapsed = now - lastRequestAtRef.current;
-      if (elapsed < RATE_LIMIT_DELAY_MS) {
-        await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS - elapsed));
-      }
-      lastRequestAtRef.current = Date.now();
-
-      try {
-        const result = await syncWatchProgress(
-          token,
-          numericId,
-          watchedEpisodes,
-          totalEpisodes,
-        );
-
-        if (result) {
-          lastSyncRef.current[animeId] = {
-            syncedAt: Date.now(),
-            lastSyncedEpisode: watchedEpisodes,
-          };
-          localStorage.setItem(
-            PROGRESS_SYNCED_KEY,
-            JSON.stringify(lastSyncRef.current),
-          );
-          console.log(
-            `[AnimeSync] Synced ${animeId} → ${result.progress} episode(s) on AniList`,
-          );
-        }
-      } catch (error) {
-        console.error(`[AnimeSync] Failed to sync anime ${animeId}:`, error);
-      }
-    },
-    [isLoggedIn],
-  );
-
   const syncAllProgress = useCallback(async (force = false) => {
     if (!isLoggedIn) return;
     if (!settings.aniListSync && !force) return;
     if (isSyncingRef.current) return;
 
+    const now = Date.now();
+    if (!force && now < backoffUntilRef.current) return;
+    if (!force && now - lastFullSyncAtRef.current < FULL_SYNC_COOLDOWN_MS) {
+      return;
+    }
+
+    const token = getAccessToken();
+    if (!token) return;
+
+    const username = userData?.name;
+    if (!username) return;
+
+    lastFullSyncAtRef.current = now;
     isSyncingRef.current = true;
     setIsSyncing(true);
     try {
       const watchedEpisodes = await getAllWatchedAnimeMap();
       const lastAnimeVisited = getLastAnimeVisitedMap();
+      void lastAnimeVisited; // kept for future use (e.g. total episode hints); not needed now that the batch fn fetches fresh state itself
 
-      const animeIds = Object.keys(watchedEpisodes).filter((animeId) => {
-        const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
-        return watchedCount > 0;
-      });
-
-      if (animeIds.length === 0) return;
-
-      for (let i = 0; i < animeIds.length; i += MAX_ANIME_PER_BATCH) {
-        const batch = animeIds.slice(i, i + MAX_ANIME_PER_BATCH);
-
-        for (const animeId of batch) {
+      const candidateIds = Object.keys(watchedEpisodes)
+        .filter((animeId) => {
           const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
-          if (watchedCount <= 0) continue;
+          const lastSynced = lastSyncRef.current[animeId]?.lastSyncedEpisode ?? 0;
+          return watchedCount > 0 && (force || watchedCount > lastSynced);
+        })
+        .sort((a, b) => {
+          const pa = getWatchedCount(watchedEpisodes[a]);
+          const pb = getWatchedCount(watchedEpisodes[b]);
+          return pb - pa;
+        });
 
-          const meta = lastAnimeVisited[animeId];
-          const totalEpisodes =
-            (meta?.totalEpisodes as number | null | undefined) ??
-            (meta?.total_episodes as number | null | undefined) ??
-            null;
+      if (candidateIds.length === 0) return;
 
-          await syncProgressToAniList(animeId, watchedCount, totalEpisodes);
-        }
+      const idsToSync = candidateIds.slice(0, MAX_ANIME_PER_BATCH);
 
-        if (i + MAX_ANIME_PER_BATCH < animeIds.length) {
-          await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_DELAY_MS));
+      const entries = idsToSync
+        .map((animeId) => {
+          const numericId = parseInt(animeId, 10);
+          const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
+          if (Number.isNaN(numericId) || watchedCount <= 0) return null;
+          return { animeId, mediaId: numericId, progress: watchedCount };
+        })
+        .filter((e): e is { animeId: string; mediaId: number; progress: number } => e !== null);
+
+      if (entries.length === 0) return;
+
+      try {
+        const result = await syncWatchProgressBatch(
+          token,
+          username,
+          entries.map(({ mediaId, progress }) => ({ mediaId, progress })),
+        );
+
+        entries.forEach(({ animeId, progress }) => {
+          lastSyncRef.current[animeId] = { syncedAt: Date.now(), lastSyncedEpisode: progress };
+        });
+        localStorage.setItem(PROGRESS_SYNCED_KEY, JSON.stringify(lastSyncRef.current));
+        console.log(
+          `[AnimeSync] Batch synced ${Object.keys(result ?? {}).length} anime in 2 requests (1 read + 1 batched write)`,
+        );
+      } catch (error: any) {
+        if (isAniListRateLimitError(error)) {
+          const waitMs = error.retryAfter * 1000;
+          backoffUntilRef.current = Date.now() + waitMs;
+          console.warn(`[AnimeSync] Rate limited, backing off ${error.retryAfter}s`);
+        } else {
+          console.error('[AnimeSync] Batch sync failed:', error);
         }
       }
     } catch (error) {
@@ -150,7 +146,7 @@ export function useAnimeProgressSync() {
       isSyncingRef.current = false;
       setIsSyncing(false);
     }
-  }, [isLoggedIn, settings.aniListSync, syncProgressToAniList]);
+  }, [isLoggedIn, settings.aniListSync, userData?.name]);
 
   useEffect(() => {
     return () => setIsSyncing(false);
@@ -191,6 +187,11 @@ export function useAnimeProgressSync() {
     };
   }, [isLoggedIn, settings.aniListSync, syncAllProgress]);
 
+  // NOTE: intentionally listening ONLY to WATCH_HISTORY_CHANGED_EVENT and
+  // 'online' here — genuine local watch-progress changes (video player,
+  // manual episode marking). We do NOT listen to the generic 'storage' event
+  // or ANILIST_REMOTE_PATCH_EVENT, since those can originate from AniList
+  // itself and would otherwise create a read→write→read loop.
   useEffect(() => {
     const handleChange = () => {
       if (isLoggedIn && settings.aniListSync) {
@@ -199,11 +200,9 @@ export function useAnimeProgressSync() {
     };
 
     window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, handleChange);
-    window.addEventListener('storage', handleChange);
     window.addEventListener('online', handleChange);
     return () => {
       window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, handleChange);
-      window.removeEventListener('storage', handleChange);
       window.removeEventListener('online', handleChange);
     };
   }, [isLoggedIn, settings.aniListSync, syncAllProgress]);

@@ -27,6 +27,41 @@ const CLIENT_SECRET = import.meta.env.VITE_CLIENT_SECRET ?? '';
 const REDIRECT_URI  = import.meta.env.VITE_REDIRECT_URI  ?? '';
 
 const ANILIST_GQL = 'https://graphql.anilist.co';
+const ANILIST_REQUEST_INTERVAL_MS = 2000;
+
+// Shared GraphQL request gate so the app does not burst requests and trip AniList 429s.
+let anilistRequestGate: Promise<void> = Promise.resolve();
+let lastAniListRequestAt = 0;
+
+function waitForAniListRateLimit(): Promise<void> {
+  const now = Date.now();
+  const elapsed = now - lastAniListRequestAt;
+  const waitMs = Math.max(0, ANILIST_REQUEST_INTERVAL_MS - elapsed);
+
+  if (waitMs > 0) {
+    return new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
+  lastAniListRequestAt = now;
+  return Promise.resolve();
+}
+
+async function withAniListRateLimit<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = anilistRequestGate;
+  let release!: () => void;
+  anilistRequestGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+  await waitForAniListRateLimit();
+
+  try {
+    return await fn();
+  } finally {
+    release();
+  }
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,26 +141,56 @@ export interface AniListUserFull extends UserData {
 
 // ─── Low-level GQL helper ────────────────────────────────────────────────────
 
+/**
+ * Thrown by `gql()` when AniList responds with HTTP 429. Carries the
+ * `Retry-After` value (seconds) so callers can back off intelligently
+ * instead of retrying immediately on the next poll/interval.
+ */
+export interface AniListRateLimitError extends Error {
+  isRateLimit: true;
+  retryAfter: number;
+}
+
+function isAniListRateLimitError(err: unknown): err is AniListRateLimitError {
+  return !!err && typeof err === 'object' && (err as any).isRateLimit === true;
+}
+
+export { isAniListRateLimitError };
+
 async function gql<T = any>(
   query: string,
   variables: Record<string, unknown> = {},
   token?: string,
 ): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return withAniListRateLimit(async () => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-  const res = await axios.post<{ data: T; errors?: { message: string }[] }>(
-    ANILIST_GQL,
-    { query, variables },
-    { headers, timeout: 12_000 },
-  );
+    try {
+      const res = await axios.post<{ data: T; errors?: { message: string }[] }>(
+        ANILIST_GQL,
+        { query, variables },
+        { headers, timeout: 12_000 },
+      );
 
-  if (res.data.errors?.length) {
-    const msg = res.data.errors.map(e => e.message).join(', ');
-    throw new Error(`AniList GraphQL error: ${msg}`);
-  }
+      if (res.data.errors?.length) {
+        const msg = res.data.errors.map(e => e.message).join(', ');
+        throw new Error(`AniList GraphQL error: ${msg}`);
+      }
 
-  return res.data.data;
+      return res.data.data;
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        const retryAfter = Number(err.response.headers['retry-after'] ?? '60');
+        const rateLimitErr = Object.assign(new Error('AniList rate limited'), {
+          isRateLimit: true as const,
+          retryAfter,
+        });
+        throw rateLimitErr;
+      }
+      throw err;
+    }
+  });
 }
 
 // ─── OAuth helpers ────────────────────────────────────────────────────────────
@@ -569,6 +634,33 @@ export async function fetchUserList(
   return data?.MediaListCollection?.lists?.flatMap(l => l.entries) ?? [];
 }
 
+/**
+ * Fetch a user's ENTIRE anime or manga list (all statuses at once) in a
+ * single GraphQL request. Use this instead of looping fetchUserList() over
+ * every MediaListStatus — that pattern costs 6 requests per sync and is a
+ * major contributor to AniList 429s.
+ */
+export async function fetchFullMediaListCollection(
+  token: string,
+  username: string,
+  type: 'ANIME' | 'MANGA',
+): Promise<MediaListEntryResult[]> {
+  const QUERY = /* GraphQL */ `
+    query FullUserList($username: String!, $type: MediaType!) {
+      MediaListCollection(userName: $username, type: $type) {
+        lists {
+          entries { ${ENTRY_FIELDS} }
+        }
+      }
+    }
+  `;
+  const data = await gql<{
+    MediaListCollection: { lists: Array<{ entries: MediaListEntryResult[] }> } | null;
+  }>(QUERY, { username, type }, token);
+
+  return data?.MediaListCollection?.lists?.flatMap(l => l.entries) ?? [];
+}
+
 // ─── Save / update media list entry ──────────────────────────────────────────
 
 const SAVE_MUTATION = /* GraphQL */ `
@@ -619,6 +711,114 @@ export async function saveMediaListEntry(
   );
   if (!data?.SaveMediaListEntry) throw new Error('SaveMediaListEntry returned null');
   return data.SaveMediaListEntry;
+}
+
+// ─── Batched save (multiple entries in ONE request via GraphQL aliases) ──────
+
+/**
+ * Push progress/status updates for multiple anime in ONE request instead of
+ * N separate SaveMediaListEntry calls. Callers are responsible for resolving
+ * status (CURRENT/COMPLETED/etc) per entry beforehand — this does not apply
+ * any of syncWatchProgress's PLANNING→CURRENT or airing-episode-clamp logic,
+ * since that logic needs each entry's *current* server state first. Use
+ * `syncWatchProgressBatch` below if you want that behavior automatically.
+ */
+export async function saveMediaListEntriesBatch(
+  token: string,
+  entries: SaveEntryInput[],
+): Promise<Record<string, MediaListEntryResult>> {
+  if (entries.length === 0) return {};
+
+  const variableDefs: string[] = [];
+  const mutationParts: string[] = [];
+  const variables: Record<string, unknown> = {};
+
+  entries.forEach((entry, i) => {
+    variableDefs.push(
+      `$mediaId${i}: Int!, $status${i}: MediaListStatus, $progress${i}: Int`,
+    );
+    mutationParts.push(
+      `e${i}: SaveMediaListEntry(mediaId: $mediaId${i}, status: $status${i}, progress: $progress${i}) { ${ENTRY_FIELDS} }`,
+    );
+    variables[`mediaId${i}`] = entry.mediaId;
+    variables[`status${i}`] = entry.status ?? null;
+    variables[`progress${i}`] = entry.progress ?? null;
+  });
+
+  const query = `mutation (${variableDefs.join(', ')}) { ${mutationParts.join(' ')} }`;
+  return gql<Record<string, MediaListEntryResult>>(query, variables, token);
+}
+
+/**
+ * Batched equivalent of syncWatchProgress for multiple anime at once.
+ * Fetches the viewer's current list ONCE (1 request), resolves the same
+ * PLANNING→CURRENT / COMPLETED / airing-episode-clamp rules that
+ * syncWatchProgress uses per-item, then pushes all changed entries in ONE
+ * aliased mutation (1 request). Total: 2 requests for the whole batch,
+ * instead of up to 2 requests PER anime.
+ */
+export async function syncWatchProgressBatch(
+  token: string,
+  username: string,
+  updates: { mediaId: number; progress: number }[],
+): Promise<Record<string, MediaListEntryResult>> {
+  if (updates.length === 0) return {};
+
+  const existingEntries = await fetchFullMediaListCollection(token, username, 'ANIME');
+  const existingById = new Map(existingEntries.map((e) => [e.media.id, e]));
+
+  const toSave: SaveEntryInput[] = [];
+
+  for (const { mediaId, progress } of updates) {
+    const existing = existingById.get(mediaId);
+    const requestedProgress = Math.max(0, Math.floor(Number(progress) || 0));
+    const nextAiringEpisode = existing?.media?.nextAiringEpisode?.episode;
+    const releasedEpisodeLimit =
+      existing?.media?.status === 'RELEASING' && nextAiringEpisode != null
+        ? Math.max(0, nextAiringEpisode - 1)
+        : null;
+    const requestedReleasedProgress =
+      releasedEpisodeLimit == null
+        ? requestedProgress
+        : Math.min(requestedProgress, releasedEpisodeLimit);
+    const currentStatus = existing?.status;
+    const existingProgress =
+      releasedEpisodeLimit == null
+        ? existing?.progress ?? 0
+        : Math.min(existing?.progress ?? 0, releasedEpisodeLimit);
+    const effectiveProgress = Math.max(requestedReleasedProgress, existingProgress);
+
+    let newStatus: MediaListStatus | undefined;
+    const finishedEpisodeCount = existing?.media?.episodes;
+    if (
+      existing?.media?.status === 'FINISHED' &&
+      finishedEpisodeCount &&
+      effectiveProgress >= finishedEpisodeCount
+    ) {
+      newStatus = 'COMPLETED';
+    } else if (!currentStatus || currentStatus === 'PLANNING') {
+      newStatus = 'CURRENT';
+    }
+
+    // No real change — skip it, keeps the batched mutation smaller.
+    if (
+      existing &&
+      effectiveProgress === existing.progress &&
+      (newStatus === undefined || newStatus === currentStatus)
+    ) {
+      continue;
+    }
+
+    toSave.push({
+      mediaId,
+      progress: effectiveProgress,
+      status: newStatus ?? currentStatus ?? 'CURRENT',
+    });
+  }
+
+  if (toSave.length === 0) return {};
+
+  return saveMediaListEntriesBatch(token, toSave);
 }
 
 // ─── Delete media list entry ──────────────────────────────────────────────────

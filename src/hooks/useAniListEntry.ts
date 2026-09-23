@@ -14,6 +14,14 @@
  *  - `saveEntry`/`toggleFav` resolve to `null`/`false` on auth or network
  *    failure; we treat that as a failed mutation and revert.
  *  - When AniList returns the updated entry, we sync from it (authoritative).
+ *
+ * Rate-limit notes:
+ *  - `dispatchEntryChanged` now carries the mediaId + updated entry in the
+ *    event detail, so listeners (useSyncAniListHistory) can patch just that
+ *    one entry into local storage instead of re-fetching the whole list.
+ *  - This event is the "remote already knows about this" signal, so it must
+ *    NOT be treated as a local watch-progress change (that would bounce back
+ *    into useAnimeProgressSync and cause a redundant push).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -24,12 +32,23 @@ import type { MediaListStatus, MediaListEntryResult } from '../client/authServic
  * Custom event dispatched whenever a list mutation succeeds, so other views
  * that read AniList list data (Profile stats, WatchingAnilist) can refresh
  * without polling. The native `storage` event only fires cross-tab.
+ *
+ * detail: { mediaId: number; entry: MediaListEntryResult | null }
+ * entry is null for deletions.
  */
 export const ANILIST_ENTRY_CHANGED_EVENT = 'anilist-entry-changed';
 
-const dispatchEntryChanged = () => {
-  try { window.dispatchEvent(new CustomEvent(ANILIST_ENTRY_CHANGED_EVENT)); }
-  catch { /* non-browser */ }
+const dispatchEntryChanged = (
+  mediaId: number,
+  entry: MediaListEntryResult | null,
+) => {
+  try {
+    window.dispatchEvent(
+      new CustomEvent(ANILIST_ENTRY_CHANGED_EVENT, { detail: { mediaId, entry } }),
+    );
+  } catch {
+    /* non-browser */
+  }
 };
 
 export interface AniListEntryState {
@@ -122,11 +141,9 @@ export function useAniListEntry(
         const result = await saveEntry({ mediaId, status });
         if (!result) {
           console.warn('[useAniListEntry] setStatus mutation returned null, reverting');
-          // Save failed — roll back to the last confirmed state.
           setState((s) => ({ ...s, status: prev.status, inList: prev.inList, saving: false }));
           return false;
         }
-        // Sync from the authoritative returned entry.
         console.log('[useAniListEntry] setStatus COMMITTED:', result.status);
         setState((s) => ({
           ...s,
@@ -138,7 +155,7 @@ export function useAniListEntry(
           listEntryId: result.id ?? s.listEntryId,
           entry: result,
         }));
-        dispatchEntryChanged();
+        dispatchEntryChanged(mediaId, result);
         return true;
       } catch (err) {
         console.error('[useAniListEntry] setStatus caught error:', err instanceof Error ? err.message : err);
@@ -186,7 +203,7 @@ export function useAniListEntry(
           listEntryId: result.id ?? s.listEntryId,
           entry: result,
         }));
-        dispatchEntryChanged();
+        dispatchEntryChanged(mediaId, result);
         return true;
       } catch (err) {
         console.error('[useAniListEntry] setScore caught error:', err instanceof Error ? err.message : err);
@@ -216,13 +233,14 @@ export function useAniListEntry(
         });
         if (!ok) {
           console.warn('[useAniListEntry] toggleFavourite mutation returned false, reverting');
-          // Toggle failed — revert the heart.
           setState((s) => ({ ...s, isFavourite: prev.isFavourite, saving: false }));
           return false;
         }
         console.log(`[useAniListEntry] toggleFavourite COMMITTED: ${nextFav}`);
         setState((s) => ({ ...s, isFavourite: nextFav, saving: false }));
-        dispatchEntryChanged();
+        // Favourite toggles don't change list progress/status, so there's no
+        // "entry" payload to patch — pass null and let listeners no-op on it.
+        dispatchEntryChanged(mediaId, null);
         return true;
       } catch (err) {
         console.error('[useAniListEntry] toggleFavourite caught error:', err instanceof Error ? err.message : err);
@@ -238,6 +256,10 @@ export function useAniListEntry(
     const prev = stateRef.current;
     if (!prev.listEntryId) {
       console.warn('[useAniListEntry] deleteFromList: no listEntryId');
+      return false;
+    }
+    if (!mediaId) {
+      console.warn('[useAniListEntry] deleteFromList: no mediaId');
       return false;
     }
     console.log(`[useAniListEntry] deleteFromList OPTIMISTIC: id ${prev.listEntryId}`);
@@ -257,14 +279,14 @@ export function useAniListEntry(
         loading: false,
         isFavourite: s.isFavourite,
       }));
-      dispatchEntryChanged();
+      dispatchEntryChanged(mediaId, null);
       return true;
     } catch (err) {
       console.error('[useAniListEntry] deleteFromList caught error:', err instanceof Error ? err.message : err);
       setState((s) => ({ ...s, saving: false }));
       return false;
     }
-  }, [deleteEntry]);
+  }, [deleteEntry, mediaId]);
 
   return { ...state, setStatus, setScore, toggleFavourite, deleteFromList };
 }
