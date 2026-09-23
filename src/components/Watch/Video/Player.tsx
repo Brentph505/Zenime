@@ -441,6 +441,7 @@ export function Player({
   const aniListProgressRef = useRef({ lastSavedProgress: 0, lastSavedTime: 0 });
   const iframeProgressRef = useRef({ currentTime: 0, duration: 0, hasTriggeredEnd: false });
   const saveAniListProgressRef = useRef<((episodeNumber: number) => Promise<void>) | null>(null);
+  const lastSyncedEpisodeRef = useRef<number | null>(null);
   const playbackTransitionRef = useRef(false);
   const playbackTransitionLockUntilRef = useRef(0);
   const autoplayAttemptKeyRef = useRef('');
@@ -1272,6 +1273,13 @@ export function Player({
 
     if (!isLoggedIn || !accessToken || !settings.aniListSync) return;
 
+    if (
+      lastSyncedEpisodeRef.current !== null &&
+      episodeNumber <= lastSyncedEpisodeRef.current
+    ) {
+      return;
+    }
+
     // ── NSFW / Hentai AniList sync guard ──────────────────────────────────
     const isHentaiContent = animeGenres.some((g) => g.toLowerCase() === 'hentai');
     const isNsfwContent = animeIsAdult || animeGenres.some((g) => g.toLowerCase() === 'ecchi');
@@ -1304,6 +1312,7 @@ export function Player({
       // syncWatchProgress auto-promotes PLANNING→CURRENT and →COMPLETED on the
       // final episode (when totalEpisodes is known).
       await syncWatchProgress(accessToken, aniListId, episodeNumber, totalEpisodes);
+      lastSyncedEpisodeRef.current = episodeNumber;
       console.log('✅ [AniList] Progress saved for episode', episodeNumber);
     } catch (error) {
       console.error('❌ [AniList] Failed to save progress:', error);
@@ -1313,6 +1322,18 @@ export function Player({
   useEffect(() => {
     saveAniListProgressRef.current = saveAniListProgress;
   }, [saveAniListProgress]);
+
+  useEffect(() => {
+    if (!settings.aniListSync || !isLoggedIn || !animeId || !propEpisodeNumber) return;
+    if (
+      lastSyncedEpisodeRef.current !== null &&
+      propEpisodeNumber <= lastSyncedEpisodeRef.current
+    ) {
+      return;
+    }
+
+    void saveAniListProgress(propEpisodeNumber);
+  }, [animeId, isLoggedIn, propEpisodeNumber, settings.aniListSync]);
 
   const toggleAutoPlay = () => setSettings({ ...settings, autoPlay: !autoPlay });
   const toggleAutoNext = () => setSettings({ ...settings, autoNext: !autoNext });

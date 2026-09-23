@@ -37,6 +37,7 @@ import {
   isEmbeddedPlaybackServer,
 } from '../index';
 import { Episode } from '../index';
+import { syncWatchProgress } from '../client/authService';
 import { useSettings } from '../components/Profile/SettingsProvider';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -241,7 +242,7 @@ function makeEmptyEpisode(): WatchEpisode {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const Watch: React.FC = () => {
-  useAuth();
+  const { isLoggedIn } = useAuth();
   const { settings } = useSettings();
 
   // ── Refs ──────────────────────────────────────────────────────────────────
@@ -509,11 +510,37 @@ const Watch: React.FC = () => {
       );
 
       updateWatchedEpisodes(nextEpisode);
+      void syncSelectedEpisodeToAniList(nextEpisode.number);
 
       navigate(`/watch/${animeId}?ep=${nextEpisode.number}`, { replace: true });
       await new Promise((resolve) => setTimeout(resolve, 100));
     },
     [animeId, navigate, episodes],
+  );
+
+  const syncSelectedEpisodeToAniList = useCallback(
+    async (episodeNumber: number) => {
+      if (!isLoggedIn || !settings.aniListSync || !animeId) return;
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) return;
+
+      const aniListId = Number(animeId);
+      if (!Number.isFinite(aniListId)) return;
+
+      const totalEpisodes =
+        animeInfo?.totalEpisodes ??
+        animeInfo?.episodes ??
+        animeInfo?.total_episodes ??
+        null;
+
+      try {
+        await syncWatchProgress(accessToken, aniListId, episodeNumber, totalEpisodes);
+        console.log('[Watch] Synced selected episode to AniList:', episodeNumber);
+      } catch (error) {
+        console.error('[Watch] Failed to sync selected episode to AniList:', error);
+      }
+    },
+    [animeId, animeInfo?.episodes, animeInfo?.totalEpisodes, animeInfo?.total_episodes, isLoggedIn, settings.aniListSync],
   );
 
   const updateDownloadLink = useCallback((link: string) => {
