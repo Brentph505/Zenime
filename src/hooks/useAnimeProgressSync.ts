@@ -50,21 +50,16 @@ export function useAnimeProgressSync() {
   })());
 
   const syncProgressToAniList = useCallback(
-    async (animeId: string, watchedEpisodes: number, totalEpisodes: number | null) => {
+    async (animeId: string, watchedEpisodes: number, _totalEpisodes: number | null) => {
       if (!isLoggedIn) return;
 
       const token = getAccessToken();
       if (!token) return;
 
-      // When total is known, require the series-level threshold (% of show watched).
-      if (totalEpisodes && totalEpisodes > 0) {
-        const progressPercentage = (watchedEpisodes / totalEpisodes) * 100;
-        if (progressPercentage < settings.syncThreshold) {
-          return;
-        }
-      } else if (watchedEpisodes < 1) {
-        return;
-      }
+      // Upload every positive local progress value. The previous percentage
+      // gate prevented short series and early episodes from reaching AniList,
+      // so another device could not restore the user's real progress.
+      if (watchedEpisodes < 1) return;
 
       const lastSync = lastSyncRef.current[animeId];
       if (lastSync && lastSync.lastSyncedEpisode >= watchedEpisodes) {
@@ -99,7 +94,7 @@ export function useAnimeProgressSync() {
         console.error(`[AnimeSync] Failed to sync anime ${animeId}:`, error);
       }
     },
-    [isLoggedIn, settings.syncThreshold],
+    [isLoggedIn],
   );
 
   const syncAllProgress = useCallback(async () => {

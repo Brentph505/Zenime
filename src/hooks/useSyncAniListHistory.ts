@@ -153,7 +153,24 @@ export function useSyncAniListHistory() {
           const existingVisited = localLastVisited[animeId] || {};
           const existingAnilistProgress = Number(existingVisited.anilistProgress ?? 0);
           const localProgress = getWatchedCount(localWatchedEpisodes[animeId]);
-          const effectiveProgress = Math.max(anilistProgress, localProgress, existingAnilistProgress);
+          const nextAiringEpisode = entry.media?.nextAiringEpisode?.episode;
+          const airingEpisodeLimit =
+            entry.media?.status === 'RELEASING' && nextAiringEpisode != null
+              ? Math.max(0, nextAiringEpisode - 1)
+              : null;
+          const mergedProgress = Math.max(
+            anilistProgress,
+            localProgress,
+            existingAnilistProgress,
+          );
+          // A stale provider cache can contain future episodes (for example,
+          // 12 while AniList says episode 8 is the latest released episode).
+          // Keep the progress metadata within AniList's airing boundary while
+          // preserving the local episode records for the upload sync to repair.
+          const effectiveProgress =
+            airingEpisodeLimit == null
+              ? mergedProgress
+              : Math.min(mergedProgress, airingEpisodeLimit);
 
           // Convert AniList updatedAt (Unix seconds) to milliseconds for local storage
           const anilistUpdatedAt = entry.updatedAt ? entry.updatedAt * 1000 : null;

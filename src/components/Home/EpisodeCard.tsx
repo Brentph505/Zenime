@@ -8,10 +8,18 @@ import { Episode } from '../../index';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
 import { useSettings } from '../Profile/SettingsProvider';
+import {
+  LAST_ANIME_VISITED_KEY,
+  WATCHED_EPISODES_KEY,
+  WATCH_HISTORY_CHANGED_EVENT,
+  getWatchedCount,
+  normalizeToEpisodeArray,
+  dispatchWatchHistoryChanged,
+} from '../../lib/watchHistory';
 
 const LOCAL_STORAGE_KEYS = {
-  WATCHED_EPISODES: 'watched-episodes',
-  LAST_ANIME_VISITED: 'last-anime-visited',
+  WATCHED_EPISODES: WATCHED_EPISODES_KEY,
+  LAST_ANIME_VISITED: LAST_ANIME_VISITED_KEY,
 };
 
 interface LastEpisodes {
@@ -22,6 +30,8 @@ interface LastVisitedEntry {
   timestamp?: number;
   titleEnglish?: string;
   titleRomaji?: string;
+  anilistProgress?: number;
+  lastEpisodeNumber?: number;
   coverImage?: string;
   genres?: string[];
   isAdult?: boolean;
@@ -232,8 +242,18 @@ export const EpisodeCard: React.FC = () => {
       }
     };
 
+    const refreshHistory = () => {
+      setWatchedEpisodesData(localStorage.getItem(LOCAL_STORAGE_KEYS.WATCHED_EPISODES));
+      const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
+      setLastVisitedData(data ? JSON.parse(data) : {});
+    };
+
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshHistory);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshHistory);
+    };
   }, []);
 
   useEffect(() => {
@@ -254,10 +274,29 @@ export const EpisodeCard: React.FC = () => {
   }, []);
 
   const episodesToRender = useMemo(() => {
-    if (!watchedEpisodesData) return [];
     try {
-      const allEpisodes: Record<string, Episode[]> =
-        JSON.parse(watchedEpisodesData);
+      const storedEpisodes: Record<string, unknown> = watchedEpisodesData
+        ? JSON.parse(watchedEpisodesData)
+        : {};
+      const animeIds = new Set([
+        ...Object.keys(storedEpisodes),
+        ...Object.keys(lastVisitedData),
+      ]);
+      const allEpisodes: Record<string, Episode[]> = {};
+
+      for (const animeId of animeIds) {
+        const visited = lastVisitedData[animeId];
+        const progress = Math.max(
+          getWatchedCount(storedEpisodes[animeId]),
+          Number(visited?.anilistProgress ?? visited?.lastEpisodeNumber ?? 0),
+        );
+        const episodes = normalizeToEpisodeArray(
+          animeId,
+          storedEpisodes[animeId],
+          progress,
+        );
+        if (episodes.length > 0) allEpisodes[animeId] = episodes as Episode[];
+      }
 
       const lastEpisodes = Object.entries(allEpisodes).reduce<LastEpisodes>(
         (acc, [animeId, episodes]) => {
@@ -318,9 +357,18 @@ export const EpisodeCard: React.FC = () => {
           const updatedEpisodes = JSON.parse(watchedEpisodesData || '{}');
           delete updatedEpisodes[animeId];
 
+          const updatedVisited = { ...lastVisitedData };
+          delete updatedVisited[animeId];
+
           const newWatchedEpisodesData = JSON.stringify(updatedEpisodes);
           safeLocalStorageSet('watched-episodes', newWatchedEpisodesData);
-          setWatchedEpisodesData(newWatchedEpisodesData); // Trigger re-render
+          safeLocalStorageSet(
+            LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED,
+            JSON.stringify(updatedVisited),
+          );
+          setWatchedEpisodesData(newWatchedEpisodesData);
+          setLastVisitedData(updatedVisited);
+          dispatchWatchHistoryChanged();
         };
 
         const genres =
