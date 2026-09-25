@@ -7,14 +7,19 @@ import 'swiper/swiper-bundle.css';
 import { Episode } from '../../index';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
+import { ANILIST_REMOTE_PATCH_EVENT } from '../../hooks/useSyncAniListHistory';
 import { useSettings } from '../Profile/SettingsProvider';
+import { ToastNotification } from '../shared/ToastNotification';
 import {
   LAST_ANIME_VISITED_KEY,
   WATCHED_EPISODES_KEY,
   WATCH_HISTORY_CHANGED_EVENT,
   getWatchedCount,
+  getLocalWatchedAnimeMap,
   normalizeToEpisodeArray,
   dispatchWatchHistoryChanged,
+  removeAnimeHistory,
+  setAnimeAniListSyncDisabled,
 } from '../../lib/watchHistory';
 
 const LOCAL_STORAGE_KEYS = {
@@ -222,9 +227,10 @@ export const EpisodeCard: React.FC = () => {
   const navigate = useNavigate();
   const { settings } = useSettings();
   const [watchedEpisodesData, setWatchedEpisodesData] = useState(
-    localStorage.getItem('watched-episodes'),
+    () => JSON.stringify(getLocalWatchedAnimeMap()),
   );
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [lastVisitedData, setLastVisitedData] = useState<LastVisitedData>(() => {
     const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
@@ -243,16 +249,18 @@ export const EpisodeCard: React.FC = () => {
     };
 
     const refreshHistory = () => {
-      setWatchedEpisodesData(localStorage.getItem(LOCAL_STORAGE_KEYS.WATCHED_EPISODES));
+      setWatchedEpisodesData(JSON.stringify(getLocalWatchedAnimeMap()));
       const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
       setLastVisitedData(data ? JSON.parse(data) : {});
     };
 
     window.addEventListener('storage', handleStorage);
     window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshHistory);
+    window.addEventListener(ANILIST_REMOTE_PATCH_EVENT, refreshHistory);
     return () => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshHistory);
+      window.removeEventListener(ANILIST_REMOTE_PATCH_EVENT, refreshHistory);
     };
   }, []);
 
@@ -353,7 +361,12 @@ export const EpisodeCard: React.FC = () => {
         const thumbnailSrc =
           episode.image || lastVisitedData[animeId]?.coverImage || '';
 
-        const handleRemoveAllEpisodes = (animeId: string) => {
+        const handleRemoveAllEpisodes = async (animeId: string) => {
+          if (!window.confirm('Remove this anime from Continue Watching? Its local watched episodes, cached progress, and playback progress will be deleted. AniList autosync will be disabled for this anime.')) {
+            setToastMessage('Deletion cancelled. Your history was not changed.');
+            return;
+          }
+
           const updatedEpisodes = JSON.parse(watchedEpisodesData || '{}');
           delete updatedEpisodes[animeId];
 
@@ -368,7 +381,10 @@ export const EpisodeCard: React.FC = () => {
           );
           setWatchedEpisodesData(newWatchedEpisodesData);
           setLastVisitedData(updatedVisited);
+          setAnimeAniListSyncDisabled(animeId, true);
+          await removeAnimeHistory(animeId);
           dispatchWatchHistoryChanged();
+          setToastMessage('Anime removed from Continue Watching. AniList autosync is disabled for it.');
         };
 
         const genres =
@@ -455,6 +471,12 @@ export const EpisodeCard: React.FC = () => {
       <StyledSwiperContainer {...swiperSettings} aria-label='Episodes carousel'>
         {episodesToRender}
       </StyledSwiperContainer>
+      {toastMessage && (
+        <ToastNotification
+          message={toastMessage}
+          onClose={() => setToastMessage(null)}
+        />
+      )}
     </Section>
   );
 };

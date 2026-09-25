@@ -25,6 +25,7 @@ import {
 } from 'react-icons/io5';
 import { useSettings } from '../../index';
 import { useAuth } from '../../client/useAuth';
+import { ToastNotification } from '../shared/ToastNotification';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
@@ -779,6 +780,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
   const [watchOrInfo, setWatchOrInfo] = useState<'Watch' | 'Info'>(
     settings.watchOrInfo ?? 'Watch',
   );
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const [preferences, setPreferences] = useState<Preferences>({
     defaultLanguage: settings.defaultLanguage ?? 'Sub',
@@ -1031,8 +1033,10 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
   };
 
   const handleClearContinueWatching = () => {
-    if (!window.confirm('Clear all continue-watching and reading history? This cannot be undone.'))
+    if (!window.confirm('Clear all continue-watching and reading history from this device? This deletes watched episodes, saved chapters, cached progress, and playback progress. AniList entries are not deleted.')) {
+      setToastMessage('Deletion cancelled. Your history was not changed.');
       return;
+    }
     [
       'watched-episodes',
       'watched-episodes-cache',
@@ -1042,6 +1046,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       'all_episode_times',
       'all_reading_times',
     ].forEach((k) => localStorage.removeItem(k));
+    setToastMessage('Continue-watching and reading history deleted from this device.');
   };
 
   /* Control renderer */
@@ -1245,6 +1250,12 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
           ))
         )}
       </Content>
+      {toastMessage && (
+        <ToastNotification
+          message={toastMessage}
+          onClose={() => setToastMessage(null)}
+        />
+      )}
     </Shell>
   );
 };

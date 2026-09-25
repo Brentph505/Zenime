@@ -1212,15 +1212,21 @@ const CardStatItem = styled.div<{ $active: boolean }>`
 const FavoriteGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
-  gap: 0.9rem;
+  gap: 2rem;
   margin-top: 0.5rem;
 
-  @media (max-width: 1200px) {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  @media (max-width: 1000px) {
+    gap: 1.5rem;
   }
 
-  @media (max-width: 768px) {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
+  @media (max-width: 800px) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+    gap: 1rem;
+  }
+
+  @media (max-width: 450px) {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));
+    gap: 0.8rem;
   }
 `;
 
@@ -1887,8 +1893,7 @@ const CategoryBars: React.FC<{
   color: string;
   emptyText: string;
 }> = ({ rows, fmtMean, emptyText }) => {
-  const top = rows.slice(0, 5);
-  const max = Math.max(1, ...top.map((row) => row.count));
+  const max = Math.max(1, ...rows.map((row) => row.count));
 
   if (!rows.length) {
     return <EmptyState>{emptyText}</EmptyState>;
@@ -1896,7 +1901,7 @@ const CategoryBars: React.FC<{
 
   return (
     <RankList>
-      {top.map((row, index) => (
+      {rows.map((row, index) => (
         <CompactRow key={row.key} style={{ '--w': `${(row.count / max) * 100}%` } as React.CSSProperties}>
           <RowRank>{index + 1}</RowRank>
           <RowName>
@@ -2080,7 +2085,7 @@ const TopList: React.FC<{
  * ──────────────────────────────────────────────────────────────────────────── */
 
 const ProfileStatsPage: React.FC = () => {
-  const { isLoggedIn, userData, login } = useAuth();
+  const { isLoggedIn, userData, login, refreshUserData } = useAuth();
   const { mediaType: routeMediaType = 'anime', tab: routeTab = 'overview' } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -2088,6 +2093,7 @@ const ProfileStatsPage: React.FC = () => {
   const activeTab = normalizeTab(searchParams.get('tab') ?? routeTab, mediaType);
   const [yearMetric, setYearMetric] = useState<Metric>('count');
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const portraitRefreshRequested = useRef(false);
 
   const scoreFormat =
     (userData as unknown as { mediaListOptions?: { scoreFormat?: string | null } } | null)?.mediaListOptions
@@ -2098,6 +2104,22 @@ const ProfileStatsPage: React.FC = () => {
   useEffect(() => {
     chipRefs.current[activeTab]?.scrollIntoView?.({ inline: 'center', block: 'nearest', behavior: 'smooth' });
   }, [activeTab, mediaType]);
+
+  // Older cached Viewer data may not include the portraits added to the stats query.
+  // Refresh once on the stats page so direct navigation receives the enriched rows.
+  useEffect(() => {
+    if (!isLoggedIn || !userData || portraitRefreshRequested.current) return;
+
+    const animeStats = userData.statistics?.anime;
+    const missingPortrait =
+      animeStats?.staff?.some((entry) => entry.staff && !entry.staff.image) ||
+      animeStats?.voiceActors?.some((entry) => entry.voiceActor && !entry.voiceActor.image);
+
+    if (!missingPortrait) return;
+
+    portraitRefreshRequested.current = true;
+    void refreshUserData();
+  }, [isLoggedIn, refreshUserData, userData]);
 
   const favouriteMedia = useMemo<Anime[]>(() => {
     const items = mediaType === 'manga'
@@ -2120,27 +2142,31 @@ const ProfileStatsPage: React.FC = () => {
         trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
         synonyms: [],
         isLicensed: false,
-        isAdult: false,
+        isAdult: item.isAdult ?? false,
         countryOfOrigin: '',
         image: item.coverImage?.large ?? item.coverImage?.medium ?? '',
         imageHash: '',
         cover: item.coverImage?.large ?? item.coverImage?.medium ?? '',
         coverHash: '',
         description: '',
-        status: 'FINISHED',
-        releaseDate: 0,
-        totalEpisodes: 0,
+        status: item.status ?? 'UNKNOWN',
+        releaseDate: item.startDate?.year ?? 0,
+        totalEpisodes: mediaType === 'manga' ? item.chapters ?? 0 : item.episodes ?? 0,
         currentEpisode: 0,
-        rating: 0,
-        duration: 0,
-        genres: [],
+        rating: item.averageScore ?? 0,
+        duration: item.duration ?? 0,
+        genres: item.genres ?? [],
         studios: [],
         studioIds: [],
         subOrDub: '',
         season: '',
         popularity: 0,
-        type: mediaType === 'manga' ? 'MANGA' : 'ANIME',
-        startDate: { year: 0, month: 0, day: 0 },
+        type: item.type ?? (mediaType === 'manga' ? 'MANGA' : 'ANIME'),
+        startDate: {
+          year: item.startDate?.year ?? 0,
+          month: item.startDate?.month ?? 0,
+          day: item.startDate?.day ?? 0,
+        },
         endDate: { year: 0, month: 0, day: 0 },
         recommendations: [],
         characters: [],

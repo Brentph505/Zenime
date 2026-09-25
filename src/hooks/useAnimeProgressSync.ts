@@ -25,6 +25,7 @@ import {
   getAllWatchedAnimeMap,
   getLastAnimeVisitedMap,
   getWatchedCount,
+  isAnimeAniListSyncDisabled,
 } from '../lib/watchHistory';
 
 const SYNC_INTERVAL_MS = 5 * 60 * 1000;
@@ -92,6 +93,7 @@ export function useAnimeProgressSync() {
 
       const candidateIds = Object.keys(watchedEpisodes)
         .filter((animeId) => {
+          if (isAnimeAniListSyncDisabled(animeId)) return false;
           const watchedCount = getWatchedCount(watchedEpisodes[animeId]);
           const lastSynced = lastSyncRef.current[animeId]?.lastSyncedEpisode ?? 0;
           return watchedCount > 0 && (force || watchedCount > lastSynced);

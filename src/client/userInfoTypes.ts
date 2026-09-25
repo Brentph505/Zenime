@@ -69,6 +69,15 @@ export interface UserData {
         id: number;
         title?: { romaji?: string; english?: string | null };
         coverImage?: { large?: string; medium?: string } | null;
+        type?: string | null;
+        status?: string | null;
+        episodes?: number | null;
+        chapters?: number | null;
+        averageScore?: number | null;
+        duration?: number | null;
+        genres?: string[] | null;
+        isAdult?: boolean | null;
+        startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
       }>;
     };
     manga?: {
@@ -76,6 +85,15 @@ export interface UserData {
         id: number;
         title?: { romaji?: string; english?: string | null };
         coverImage?: { large?: string; medium?: string } | null;
+        type?: string | null;
+        status?: string | null;
+        episodes?: number | null;
+        chapters?: number | null;
+        averageScore?: number | null;
+        duration?: number | null;
+        genres?: string[] | null;
+        isAdult?: boolean | null;
+        startDate?: { year?: number | null; month?: number | null; day?: number | null } | null;
       }>;
     };
     characters?: { nodes?: Array<{ id: number; name?: { full?: string } }> };

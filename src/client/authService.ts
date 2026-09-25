@@ -355,8 +355,8 @@ const VIEWER_QUERY = /* GraphQL */ `
         }
       }
       favourites {
-        anime { nodes { id title { romaji english } coverImage { large medium } } }
-        manga { nodes { id title { romaji english } coverImage { large medium } } }
+        anime { nodes { id type status episodes chapters averageScore duration genres isAdult startDate { year month day } title { romaji english } coverImage { large medium } } }
+        manga { nodes { id type status episodes chapters averageScore duration genres isAdult startDate { year month day } title { romaji english } coverImage { large medium } } }
         characters { nodes { id name { full } } }
         staff { nodes { id name { full } image { large medium } } }
         studios { nodes { id name } }

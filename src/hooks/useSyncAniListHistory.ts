@@ -33,10 +33,14 @@ import {
   getWatchedCount,
   normalizeToEpisodeArray,
   dispatchWatchHistoryChanged,
+  removeAnimeHistory,
+  setAnimeAniListSyncDisabled,
+  isAnimeAniListSyncDisabled,
 } from '../lib/watchHistory';
 import { ANILIST_ENTRY_CHANGED_EVENT } from './useAniListEntry';
 
 const HISTORY_SYNCED_KEY = 'anilist-history-synced';
+const PROGRESS_SYNCED_KEY = 'anime-progress-synced';
 const REQUEST_SYNC_DEBOUNCE_MS = 1500;
 
 /**
@@ -76,8 +80,21 @@ export function useSyncAniListHistory() {
 
   // ── Patch a single entry into local storage without a full resync ─────────
   const patchSingleEntry = useCallback(
-    (mediaId: number, entry: any | null) => {
-      if (!entry) return; // e.g. favourite toggle or delete with no entry payload — nothing to merge here
+    async (mediaId: number, entry: any | null) => {
+      if (!entry) {
+        const animeId = mediaId.toString();
+        setAnimeAniListSyncDisabled(animeId, false);
+        await removeAnimeHistory(animeId);
+        try {
+          const synced = JSON.parse(localStorage.getItem(PROGRESS_SYNCED_KEY) || '{}');
+          delete synced[animeId];
+          safeLocalStorageSet(PROGRESS_SYNCED_KEY, JSON.stringify(synced));
+        } catch {
+          /* ignore malformed sync metadata */
+        }
+        dispatchRemotePatch();
+        return;
+      }
 
       const animeId = mediaId.toString();
       const genres: string[] = entry.media?.genres ?? [];
@@ -185,7 +202,7 @@ export function useSyncAniListHistory() {
         requestSync(); // no detail available — fall back to a full (debounced) resync
         return;
       }
-      patchSingleEntry(detail.mediaId, detail.entry ?? null);
+      void patchSingleEntry(detail.mediaId, detail.entry ?? null);
     };
 
     window.addEventListener(ANILIST_ENTRY_CHANGED_EVENT, onEntryChanged);
@@ -261,6 +278,7 @@ export function useSyncAniListHistory() {
         for (const entry of allEntries) {
           const animeId = entry.media?.id?.toString();
           if (!animeId) continue;
+          if (isAnimeAniListSyncDisabled(animeId)) continue;
 
           const genres: string[] = entry.media?.genres ?? [];
           const isHentai = isHentaiAnime(genres);

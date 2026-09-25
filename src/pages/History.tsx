@@ -15,13 +15,22 @@ import {
   WATCH_HISTORY_CHANGED_EVENT,
   WATCHED_EPISODES_KEY,
   LAST_ANIME_VISITED_KEY,
+  dispatchWatchHistoryChanged,
   getLastAnimeVisitedMap,
+  getLocalWatchedAnimeMap,
   normalizeToEpisodeArray,
   resolveLastEpisodeNumber,
+  removeAnimeHistory,
+  setAnimeAniListSyncDisabled,
 } from '../lib/watchHistory';
 import { useAuth } from '../client/useAuth';
 import { useAnimeProgressSync } from '../hooks/useAnimeProgressSync';
-import { useSyncAniListHistory } from '../hooks/useSyncAniListHistory';
+import {
+  ANILIST_REMOTE_PATCH_EVENT,
+  useSyncAniListHistory,
+} from '../hooks/useSyncAniListHistory';
+import { useSettings } from '../components/Profile/SettingsProvider';
+import { ToastNotification } from '../components/shared/ToastNotification';
 
 type AniListStatus =
   | 'CURRENT'
@@ -584,12 +593,13 @@ const EmptyState = styled.div`
 
 const History: React.FC = () => {
   const { isLoggedIn } = useAuth();
+  const { settings } = useSettings();
   const { syncNow: pushToAniList, isSyncing: isPushingToAniList } = useAnimeProgressSync();
   const { syncNow: pullFromAniList, isSyncing: isPullingFromAniList } = useSyncAniListHistory();
 
   // Separate state for anime and manga so each tab re-renders independently
   const [animeStorageData, setAnimeStorageData] = useState(
-    () => localStorage.getItem(WATCHED_EPISODES_KEY),
+    () => JSON.stringify(getLocalWatchedAnimeMap()),
   );
   const [mangaStorageData, setMangaStorageData] = useState(
     () => localStorage.getItem('read-chapters'),
@@ -600,6 +610,7 @@ const History: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [contentType, setContentType] = useState<ContentType>('anime');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const lastAnimeVisited = useMemo<LastVisitedData>(() => {
     try {
@@ -617,7 +628,7 @@ const History: React.FC = () => {
   // Sync storage keys when any tab changes them (cross-tab via `storage`).
   useEffect(() => {
     const refreshAnime = () => {
-      setAnimeStorageData(localStorage.getItem(WATCHED_EPISODES_KEY));
+      setAnimeStorageData(JSON.stringify(getLocalWatchedAnimeMap()) || '{}');
     };
 
     const handleStorageChange = (e: StorageEvent) => {
@@ -635,9 +646,11 @@ const History: React.FC = () => {
 
     window.addEventListener('storage', handleStorageChange);
     window.addEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshAnime);
+    window.addEventListener(ANILIST_REMOTE_PATCH_EVENT, refreshAnime);
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener(WATCH_HISTORY_CHANGED_EVENT, refreshAnime);
+      window.removeEventListener(ANILIST_REMOTE_PATCH_EVENT, refreshAnime);
     };
   }, []);
 
@@ -842,7 +855,7 @@ const History: React.FC = () => {
   // ── Delete handlers ───────────────────────────────────────────────────────
 
   const removeFromHistory = useCallback(
-    (ids: string[]) => {
+    async (ids: string[]) => {
       if (contentType === 'manga') {
         const updated = JSON.parse(
           localStorage.getItem('read-chapters') || '{}',
@@ -850,6 +863,9 @@ const History: React.FC = () => {
         ids.forEach((id) => delete updated[id]);
         safeLocalStorageSet('read-chapters', JSON.stringify(updated));
         setMangaStorageData(JSON.stringify(updated));
+        setToastMessage(
+          `${ids.length} manga entr${ids.length === 1 ? 'y' : 'ies'} deleted from this device.`,
+        );
       } else {
         const updated = JSON.parse(
           localStorage.getItem(WATCHED_EPISODES_KEY) || '{}',
@@ -857,6 +873,11 @@ const History: React.FC = () => {
         ids.forEach((id) => delete updated[id]);
         safeLocalStorageSet(WATCHED_EPISODES_KEY, JSON.stringify(updated));
         setAnimeStorageData(JSON.stringify(updated));
+        await Promise.all(ids.map((id) => removeAnimeHistory(id)));
+        dispatchWatchHistoryChanged();
+        setToastMessage(
+          `${ids.length} anime entr${ids.length === 1 ? 'y' : 'ies'} deleted from this device. AniList autosync is disabled for them.`,
+        );
       }
     },
     [contentType],
@@ -866,18 +887,44 @@ const History: React.FC = () => {
     (id: string, e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      const message = contentType === 'anime'
+        ? `Remove this anime's history from this device?\n\nThis deletes watched episodes, cached progress, continue-watching data, and playback progress. AniList autosync will be disabled for this anime so it does not return.\n\nDeleting the AniList entry itself must be done from your AniList list; that also removes its device history.`
+        : 'Remove this manga\'s reading history from this device? This deletes saved chapters and reading progress.';
+
+      if (!window.confirm(message)) {
+        setToastMessage('Deletion cancelled. Your history was not changed.');
+        return;
+      }
+
+      if (contentType === 'anime') {
+        setAnimeAniListSyncDisabled(id, true);
+      }
       removeFromHistory([id]);
     },
-    [removeFromHistory],
+    [contentType, removeFromHistory],
   );
 
   const handleDeleteGroup = useCallback(
     (ids: string[], e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
+
+      const message = contentType === 'anime'
+        ? `Remove ${ids.length} anime entr${ids.length === 1 ? 'y' : 'ies'} from this device?\n\nTheir watched episodes, cached progress, continue-watching data, and playback progress will be deleted. AniList autosync will be disabled for these anime, so they will not return automatically.`
+        : `Remove ${ids.length} manga entr${ids.length === 1 ? 'y' : 'ies'} from this device? Their saved chapters and reading progress will be deleted.`;
+
+      if (!window.confirm(message)) {
+        setToastMessage('Deletion cancelled. Your history was not changed.');
+        return;
+      }
+
+      if (contentType === 'anime') {
+        ids.forEach((id) => setAnimeAniListSyncDisabled(id, true));
+      }
       removeFromHistory(ids);
     },
-    [removeFromHistory],
+    [contentType, removeFromHistory],
   );
 
   // Wipe the entire active tab's store. Confirms first. Bookmarks are cleared
@@ -885,16 +932,22 @@ const History: React.FC = () => {
   // only clears their own key and leaves bookmarks intact.
   const handleClearAll = useCallback(() => {
     if (activeList.length === 0) return;
-    const label =
-      contentType === 'manga'
-        ? 'all manga reading history'
-        : 'all anime watch history';
-    if (!window.confirm(`Are you sure you want to remove ${label}? This cannot be undone.`)) {
+    const isManga = contentType === 'manga';
+    const autosyncEnabled = isLoggedIn && settings.aniListSync;
+    const message = isManga
+      ? 'This will permanently delete all local manga reading history, including saved chapters and reading progress. Your AniList manga list will not be changed. Continue?'
+      : `This will permanently delete all local anime watch history, including watched episodes, cached progress, continue-watching entries, and playback progress.${autosyncEnabled ? '\n\nAniList autosync is enabled: anime progress can return during the next sync unless you also delete those entries from AniList.' : ''}\n\nContinue?`;
+
+    if (!window.confirm(message)) {
+      setToastMessage('Deletion cancelled. Your history was not changed.');
       return;
     }
 
+    if (!isManga) {
+      activeList.forEach((item) => setAnimeAniListSyncDisabled(item.animeId, true));
+    }
     removeFromHistory(activeList.map((item) => item.animeId));
-  }, [contentType, activeList, removeFromHistory]);
+  }, [activeList, contentType, isLoggedIn, removeFromHistory, settings.aniListSync]);
 
   const handleManualAniListSync = useCallback(async () => {
     if (!isLoggedIn || isPushingToAniList || isPullingFromAniList) return;
@@ -902,7 +955,7 @@ const History: React.FC = () => {
     try {
       await pushToAniList();
       await pullFromAniList();
-      setAnimeStorageData(localStorage.getItem(WATCHED_EPISODES_KEY));
+      setAnimeStorageData(JSON.stringify(getLocalWatchedAnimeMap()) || '{}');
       window.dispatchEvent(new Event('storage'));
       window.dispatchEvent(new CustomEvent(WATCH_HISTORY_CHANGED_EVENT));
     } catch (error) {
@@ -1103,6 +1156,12 @@ const History: React.FC = () => {
           </p>
           <Link to='/'>Go to Home</Link>
         </EmptyState>
+        {toastMessage && (
+          <ToastNotification
+            message={toastMessage}
+            onClose={() => setToastMessage(null)}
+          />
+        )}
       </Container>
     );
   }
@@ -1314,6 +1373,12 @@ const History: React.FC = () => {
           <MangaGrid>{filteredAndSortedList.map(renderCard)}</MangaGrid>
         )}
       </MainContent>
+      {toastMessage && (
+        <ToastNotification
+          message={toastMessage}
+          onClose={() => setToastMessage(null)}
+        />
+      )}
     </Container>
   );
 };

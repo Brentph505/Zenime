@@ -13,6 +13,7 @@ export const WATCH_HISTORY_CHANGED_EVENT = 'watch-history-changed';
 export const WATCHED_EPISODES_KEY = 'watched-episodes';
 export const WATCHED_EPISODES_CACHE_KEY = 'watched-episodes-cache';
 export const LAST_ANIME_VISITED_KEY = 'last-anime-visited';
+export const ANILIST_SYNC_DISABLED_KEY = 'anilist-sync-disabled';
 
 export interface LastAnimeVisitedEntry {
   timestamp: number;
@@ -67,6 +68,33 @@ export function removeLastAnimeVisited(animeId: string): void {
   safeLocalStorageSet(LAST_ANIME_VISITED_KEY, JSON.stringify(data));
 }
 
+export function setAnimeAniListSyncDisabled(animeId: string, disabled: boolean): void {
+  const data = parseRecord(ANILIST_SYNC_DISABLED_KEY);
+  if (disabled) data[animeId] = true;
+  else delete data[animeId];
+  safeLocalStorageSet(ANILIST_SYNC_DISABLED_KEY, JSON.stringify(data));
+}
+
+export function isAnimeAniListSyncDisabled(animeId: string): boolean {
+  return parseRecord(ANILIST_SYNC_DISABLED_KEY)[animeId] === true;
+}
+
+export async function removeAnimeHistory(animeId: string): Promise<void> {
+  const removeFromStorage = (key: string) => {
+    const data = parseRecord(key);
+    if (!(animeId in data)) return false;
+    delete data[animeId];
+    safeLocalStorageSet(key, JSON.stringify(data));
+    return true;
+  };
+
+  removeFromStorage(WATCHED_EPISODES_KEY);
+  removeFromStorage(WATCHED_EPISODES_CACHE_KEY);
+  removeLastAnimeVisited(animeId);
+
+  await watchHistoryDB.deleteWatchedEpisodes(animeId);
+}
+
 export function dispatchWatchHistoryChanged(): void {
   try {
     window.dispatchEvent(new CustomEvent(WATCH_HISTORY_CHANGED_EVENT));
@@ -101,6 +129,13 @@ function parseRecord(key: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+export function getLocalWatchedAnimeMap(): Record<string, unknown> {
+  return {
+    ...parseRecord(WATCHED_EPISODES_KEY),
+    ...parseRecord(WATCHED_EPISODES_CACHE_KEY),
+  };
 }
 
 // ─── IndexedDB (full watch history) ──────────────────────────────────────────
@@ -178,16 +213,28 @@ class WatchHistoryDB {
       return {};
     }
   }
+
+  async deleteWatchedEpisodes(animeId: string): Promise<void> {
+    try {
+      const db = await this.dbPromise;
+      const tx = db.transaction(this.STORE_NAME, 'readwrite');
+      const store = tx.objectStore(this.STORE_NAME);
+      await new Promise<void>((resolve, reject) => {
+        const request = store.delete(animeId);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (err) {
+      console.warn('[WatchHistoryDB] Failed to remove history:', err);
+    }
+  }
 }
 
 export const watchHistoryDB = new WatchHistoryDB();
 
 /** Merge legacy, cache, and IndexedDB watch data (highest count wins per anime). */
 export async function getAllWatchedAnimeMap(): Promise<Record<string, unknown>> {
-  const merged: Record<string, unknown> = {
-    ...parseRecord(WATCHED_EPISODES_KEY),
-    ...parseRecord(WATCHED_EPISODES_CACHE_KEY),
-  };
+  const merged = getLocalWatchedAnimeMap();
 
   const fromIdb = await watchHistoryDB.getAllWatchedAnime();
   for (const [animeId, episodes] of Object.entries(fromIdb)) {
@@ -249,10 +296,15 @@ export function normalizeToEpisodeArray(
       .map((ep) => {
         const obj = ep as Record<string, unknown>;
         const num = Number(obj.number);
+        const normalizedNumber = Number.isNaN(num) ? 1 : num;
+        const rawTitle = String(obj.title ?? `Episode ${num}`);
+        const title = /^episode\s+\d+$/i.test(rawTitle.trim())
+          ? `Episode ${normalizedNumber}`
+          : rawTitle;
         return {
           id: String(obj.id ?? `ep-${num}`),
-          number: Number.isNaN(num) ? 1 : num,
-          title: String(obj.title ?? `Episode ${num}`),
+          number: normalizedNumber,
+          title,
           description: (obj.description as string | null | undefined) ?? null,
           image: String(obj.image ?? ''),
           imageHash: String(obj.imageHash ?? ''),

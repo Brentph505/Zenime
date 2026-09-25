@@ -387,6 +387,7 @@ const Watch: React.FC = () => {
   const updateWatchedEpisodes = useCallback(
     (episode: Episode) => {
       if (!animeId || !animeInfo) return;
+      if (animeInfo.status === 'Not yet aired') return;
 
       // ── NSFW / Hentai history guard ─────────────────────────────────────
       const genres: string[] = animeInfo?.genres ?? [];
@@ -463,6 +464,31 @@ const Watch: React.FC = () => {
   // ─────────────────────────────────────────────────────────────────────────
   // handleEpisodeSelect
   // ─────────────────────────────────────────────────────────────────────────
+  const syncSelectedEpisodeToAniList = useCallback(
+    async (episodeNumber: number) => {
+      if (!isLoggedIn || !settings.aniListSync || !animeId) return;
+      const accessToken = localStorage.getItem('accessToken');
+      if (!accessToken) return;
+
+      const aniListId = Number(animeId);
+      if (!Number.isFinite(aniListId)) return;
+
+      const totalEpisodes =
+        animeInfo?.totalEpisodes ??
+        animeInfo?.episodes ??
+        animeInfo?.total_episodes ??
+        null;
+
+      try {
+        await syncWatchProgress(accessToken, aniListId, episodeNumber, totalEpisodes);
+        console.log('[Watch] Synced selected episode to AniList:', episodeNumber);
+      } catch (error) {
+        console.error('[Watch] Failed to sync selected episode to AniList:', error);
+      }
+    },
+    [animeId, animeInfo?.episodes, animeInfo?.totalEpisodes, animeInfo?.total_episodes, isLoggedIn, settings.aniListSync],
+  );
+
   const handleEpisodeSelect = useCallback(
     async (selected: WatchEpisode | (Episode & { provider?: string; providers?: Record<string, ProviderEpisodeData> })) => {
       let resolvedProviders: Record<string, ProviderEpisodeData> =
@@ -510,37 +536,12 @@ const Watch: React.FC = () => {
       );
 
       updateWatchedEpisodes(nextEpisode);
-      void syncSelectedEpisodeToAniList(nextEpisode.number);
+      await syncSelectedEpisodeToAniList(nextEpisode.number);
 
       navigate(`/watch/${animeId}?ep=${nextEpisode.number}`, { replace: true });
       await new Promise((resolve) => setTimeout(resolve, 100));
     },
-    [animeId, navigate, episodes],
-  );
-
-  const syncSelectedEpisodeToAniList = useCallback(
-    async (episodeNumber: number) => {
-      if (!isLoggedIn || !settings.aniListSync || !animeId) return;
-      const accessToken = localStorage.getItem('accessToken');
-      if (!accessToken) return;
-
-      const aniListId = Number(animeId);
-      if (!Number.isFinite(aniListId)) return;
-
-      const totalEpisodes =
-        animeInfo?.totalEpisodes ??
-        animeInfo?.episodes ??
-        animeInfo?.total_episodes ??
-        null;
-
-      try {
-        await syncWatchProgress(accessToken, aniListId, episodeNumber, totalEpisodes);
-        console.log('[Watch] Synced selected episode to AniList:', episodeNumber);
-      } catch (error) {
-        console.error('[Watch] Failed to sync selected episode to AniList:', error);
-      }
-    },
-    [animeId, animeInfo?.episodes, animeInfo?.totalEpisodes, animeInfo?.total_episodes, isLoggedIn, settings.aniListSync],
+    [animeId, episodes, navigate, syncSelectedEpisodeToAniList, updateWatchedEpisodes],
   );
 
   const updateDownloadLink = useCallback((link: string) => {
@@ -550,7 +551,7 @@ const Watch: React.FC = () => {
   const handleEpisodeEnd = async () => {
     const next = currentEpisodeIndex + 1;
     if (next >= episodes.length) return;
-    handleEpisodeSelect(episodes[next]);
+    await handleEpisodeSelect(episodes[next]);
   };
 
   const onPrevEpisode = () => {
@@ -715,7 +716,7 @@ const Watch: React.FC = () => {
         // ───────────────────────────────────────────────────────────────────
 
         if (animeInfo && animeId) {
-          if (skipLastVisited) {
+          if (skipLastVisited || animeInfo.status === 'Not yet aired') {
             removeLastAnimeVisited(animeId);
           } else {
             saveLastAnimeVisited(animeId, {
