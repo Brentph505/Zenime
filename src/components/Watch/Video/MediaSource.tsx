@@ -379,7 +379,7 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
 
   const serverButtons = buildServerButtons();
   const showLoadingServers =
-    isLoadingServers ||
+    (isLoadingServers && availableServers.length === 0) ||
     (availableServers.length === 0 && !embeddedServerName && !sourceType);
 
   return (

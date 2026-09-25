@@ -223,6 +223,9 @@ const PROVIDERS: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanim
 
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
 
+const getStreamUrl = (entry: any): string =>
+  String(entry?.url || entry?.file || entry?.src || entry?.source || '').trim();
+
 // ─── Helper: build an empty WatchEpisode ─────────────────────────────────────
 
 function makeEmptyEpisode(): WatchEpisode {
@@ -998,7 +1001,7 @@ const Watch: React.FC = () => {
             if (response?.sources && Array.isArray(response.sources)) {
               console.log('[Watch] Processing AniDB sources:', response.sources);
               response.sources.forEach((source: any) => {
-                const sourceUrl = source?.url || '';
+                const sourceUrl = getStreamUrl(source);
                 if (!sourceUrl || !sourceUrl.includes('.m3u8')) return;
 
                 const qualityLabel = (source?.quality || '').trim();
@@ -1081,7 +1084,7 @@ const Watch: React.FC = () => {
 
             if (provider === 'hentaimama' && Array.isArray(response?.servers)) {
               response.servers.forEach((server: any) => {
-                const serverUrl = String(server?.url || '').trim();
+                const serverUrl = getStreamUrl(server);
                 const serverName = String(server?.name || '').trim();
                 if (serverUrl && serverName) providerServerNames.set(serverUrl, serverName);
               });
@@ -1090,7 +1093,7 @@ const Watch: React.FC = () => {
             const providerPrefix = provider === 'watchhentai' ? 'WH ' : provider === 'hentaimama' ? 'HM ' : '';
 
             response.sources.forEach((source: any) => {
-              const sourceUrl = source?.url || '';
+              const sourceUrl = getStreamUrl(source);
               if (!sourceUrl) return;
               if (provider === 'anikoto' && sourceUrl.includes('.m3u8')) return;
 
@@ -1177,7 +1180,7 @@ const Watch: React.FC = () => {
                 sourceCount: Array.isArray(response?.sources) ? response.sources.length : 0,
                 serverNames: servers.map((server: any) => server?.name).filter(Boolean),
                 sourceUrls: Array.isArray(response?.sources)
-                  ? response.sources.map((source: any) => source?.url).filter(Boolean)
+                  ? response.sources.map(getStreamUrl).filter(Boolean)
                   : [],
               });
             }

@@ -223,6 +223,22 @@ function buildQueryString(params: URLSearchParams) {
   return params.toString().replace(/%2F/g, '/');
 }
 
+function normalizeEpisodeResponse(payload: any): any[] {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.episodes)) return payload.episodes;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.episodes)) return payload.data.episodes;
+  return [];
+}
+function normalizeStreamingResponse(payload: any): any {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+  if (payload.sources || payload.servers || payload.subtitles) return payload;
+  if (payload.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+    return payload.data;
+  }
+  return payload;
+}
+
 function normalizeMangaProvider(provider: string): string {
   if (provider === 'hentairead') return 'hentaireadio';
   return provider;
@@ -1400,7 +1416,7 @@ export async function fetchAnimeEpisodes(
 
   try {
     const episodes = attachProvider(
-      await fetchFromProxy(url, 'Episodes', cacheKey),
+      normalizeEpisodeResponse(await fetchFromProxy(url, 'Episodes', cacheKey)),
       finalProvider,
     );
 
@@ -1643,7 +1659,11 @@ export async function fetchAnimeStreamingLinks(
     finalProvider,
     server || '',
   );
-  const timeoutToUse = requestTimeout ?? (finalProvider === 'anikoto' ? 30000 : undefined);
+  const timeoutToUse = requestTimeout ?? (
+    finalProvider === 'hentaimama' || finalProvider === 'watchhentai'
+      ? 60000
+      : 30000
+  );
 
   try {
     const links = await fetchFromProxy(url, 'Video Sources', cacheKey, timeoutToUse);
@@ -1671,7 +1691,7 @@ export async function fetchAnimeStreamingLinks(
       }
     }
 
-    return links;
+    return normalizeStreamingResponse(links);
   } catch (error) {
     if (canTryAnimePahe) {
       console.log(`⚠️ Error from ${finalProvider}, trying animepahe...`, error);
@@ -1679,7 +1699,9 @@ export async function fetchAnimeStreamingLinks(
       const paheUrl = `${BASE_URL}meta/anilist/watch?${paheParams.toString()}`;
       const paheCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'animepahe', server || '');
       try {
-        return await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey, timeoutToUse);
+        return normalizeStreamingResponse(
+          await fetchFromProxy(paheUrl, 'Video Sources', paheCacheKey, timeoutToUse),
+        );
       } catch (paheError) {
         if (canTryReanime) {
           console.log(`⚠️ Error from animepahe, trying reanime...`, paheError);
@@ -1687,7 +1709,9 @@ export async function fetchAnimeStreamingLinks(
           const reanimeUrl = `${BASE_URL}meta/anilist/watch?${reanimeParams.toString()}`;
           const reanimeCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'reanime', server || '');
           try {
-            return await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse);
+            return normalizeStreamingResponse(
+              await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse),
+            );
           } catch (reanimeError) {
             throw reanimeError;
           }
@@ -1701,7 +1725,9 @@ export async function fetchAnimeStreamingLinks(
       const reanimeUrl = `${BASE_URL}meta/anilist/watch?${reanimeParams.toString()}`;
       const reanimeCacheKey = generateCacheKey('animeStreamingLinks', episodeId, 'reanime', server || '');
       try {
-        return await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse);
+        return normalizeStreamingResponse(
+          await fetchFromProxy(reanimeUrl, 'Video Sources', reanimeCacheKey, timeoutToUse),
+        );
       } catch (reanimeError) {
         throw reanimeError;
       }
@@ -1717,7 +1743,10 @@ export async function fetchAnimeStreamingLinksProxied(
   referer?: string,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const requestTimeout = finalProvider === 'anikoto' ? 30000 : undefined;
+  const requestTimeout =
+    finalProvider === 'hentaimama' || finalProvider === 'watchhentai'
+      ? 60000
+      : 30000;
   let data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
 
   const proxyUrl = finalProvider === 'reanime'
@@ -1731,12 +1760,12 @@ export async function fetchAnimeStreamingLinksProxied(
       : M3U8_PROXY_URL;
 
   if (finalProvider === 'watchhentai') {
-    return data;
+    return normalizeStreamingResponse(data);
   }
 
   if (!proxyUrl) {
     console.warn('⚠️ M3U8 proxy skipped: missing proxy configuration.');
-    return data;
+    return normalizeStreamingResponse(data);
   }
 
   if (finalProvider === 'reanime' && !M3U8_PROXY_URL_2) {
