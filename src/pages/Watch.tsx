@@ -33,8 +33,11 @@ import {
   SkeletonWatchData,
   useCountdown,
   useAuth,
+  getDirectMediaType,
   isDirectMediaUrl,
   isEmbeddedPlaybackServer,
+  HENTAI_ANIME_PROVIDERS,
+  isHentaiAnimeProvider,
 } from '../index';
 import { Episode } from '../index';
 import { syncWatchProgress } from '../client/authService';
@@ -660,7 +663,7 @@ const Watch: React.FC = () => {
 
         const isHentai =
           animeInfo?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
-        const providersToUse = isHentai ? ['hentaimama', 'watchhentai'] : PROVIDERS;
+        const providersToUse = isHentai ? [...HENTAI_ANIME_PROVIDERS] : PROVIDERS;
         console.log(`[Watch] isHentai=${isHentai}, providers:`, providersToUse);
 
         const mergedEpisodes: MergedEpisode[] = await fetchEpisodesFromMultipleProviders(
@@ -677,7 +680,7 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          const providerPriority = ['hentaimama', 'watchhentai', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          const providerPriority = [...HENTAI_ANIME_PROVIDERS, 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
           let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'anikoto';
 
           for (const priorityProvider of providerPriority) {
@@ -992,7 +995,7 @@ const Watch: React.FC = () => {
         };
 
         serverResults.forEach(({ provider, servers, response }) => {
-          const isHentaiProvider = provider === 'hentaimama' || provider === 'watchhentai';
+          const isHentaiProvider = isHentaiAnimeProvider(provider);
           const isAnidbProvider = provider === 'anidb';
 
           // ─── AniDB-specific handling ──────────────────────────────────────
@@ -1090,7 +1093,43 @@ const Watch: React.FC = () => {
               });
             }
 
-            const providerPrefix = provider === 'watchhentai' ? 'WH ' : provider === 'hentaimama' ? 'HM ' : '';
+            const providerPrefix = {
+              hentaimama: 'HM ',
+              watchhentai: 'WH ',
+              hstream: 'HS ',
+              hahomoe: 'HH ',
+            }[provider] || '';
+
+            if (provider === 'hstream' || provider === 'hahomoe') {
+              const getSourceOrigin = (url: string) => {
+                try {
+                  const parsedUrl = new URL(url);
+                  const nestedUrl = parsedUrl.searchParams.get('url');
+                  return new URL(nestedUrl || url).origin;
+                } catch {
+                  return url;
+                }
+              };
+              const sourceNumbers = new Map<string, number>();
+              const hasSubtitles = Array.isArray(response?.subtitles) && response.subtitles.length > 0;
+              response.sources.forEach((source: any) => {
+                const sourceUrl = getStreamUrl(source);
+                if (!sourceUrl || /\.webm(?:[?#]|$)/i.test(sourceUrl)) return;
+
+                const type = /\.mp4(?:[?#]|$)/i.test(sourceUrl)
+                  ? 'mp4'
+                  : 'iframe';
+                const origin = getSourceOrigin(sourceUrl);
+                if (!sourceNumbers.has(origin)) {
+                  sourceNumbers.set(origin, sourceNumbers.size + 1);
+                }
+                const prefix = provider === 'hstream' ? 'HS' : 'HH';
+                const name = `${prefix} ${hasSubtitles ? 'Sub' : 'Raw'} ${sourceNumbers.get(origin)}`;
+                addServer(name, sourceUrl, provider, type, type === 'iframe');
+              });
+
+              return;
+            }
 
             response.sources.forEach((source: any) => {
               const sourceUrl = getStreamUrl(source);
@@ -1110,11 +1149,7 @@ const Watch: React.FC = () => {
               if (!isDirectSource && !isUsableHentaiUrl) return;
 
               const isDub = source.isDub === true;
-              const type = sourceUrl.includes('.mp4')
-                ? 'mp4'
-                : sourceUrl.includes('.m3u8')
-                  ? 'hls'
-                  : 'iframe';
+              const type = getDirectMediaType(sourceUrl) || 'iframe';
               const qualityLabel = source?.quality || '';
               const matchedHentaiServerName = providerServerNames.get(sourceUrl);
               const sourceName = provider === 'hentaimama'
@@ -1235,13 +1270,13 @@ const Watch: React.FC = () => {
     } else {
       const entry = serverEntries.find((s) => {
         const nameMatch = s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase();
-        const typeMatch = s.type === 'hls' || s.type === 'mp4' || s.url?.includes('.m3u8') || s.url?.includes('.mp4');
+        const typeMatch = s.type === 'hls' || s.type === 'mp4' || s.type === 'webm' || s.url?.includes('.m3u8') || s.url?.includes('.mp4') || s.url?.includes('.webm');
         const providerMatch =
           currentEpisode.provider && s.provider?.toLowerCase() === currentEpisode.provider.toLowerCase();
         return nameMatch && typeMatch && (!currentEpisode.provider || providerMatch || !serverEntries.some((other) => other !== s && other.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase() && other.provider?.toLowerCase() === currentEpisode.provider?.toLowerCase()));
       }) ?? serverEntries.find((s) => {
         const nameMatch = s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase();
-        const typeMatch = s.type === 'hls' || s.type === 'mp4' || s.url?.includes('.m3u8') || s.url?.includes('.mp4');
+        const typeMatch = s.type === 'hls' || s.type === 'mp4' || s.type === 'webm' || s.url?.includes('.m3u8') || s.url?.includes('.mp4') || s.url?.includes('.webm');
         return nameMatch && typeMatch;
       });
 
@@ -1252,6 +1287,7 @@ const Watch: React.FC = () => {
         const isDirectMedia =
           isDirectMediaUrl(entry.url) ||
           entry.type === 'mp4' ||
+          entry.type === 'webm' ||
           entry.type === 'hls';
         setEmbeddedUrl('');
         setServerUrl(entry.url);
@@ -1266,6 +1302,7 @@ const Watch: React.FC = () => {
           const isDirectMedia =
             isDirectMediaUrl(fallbackEntry.url) ||
             fallbackEntry.type === 'mp4' ||
+            fallbackEntry.type === 'webm' ||
             fallbackEntry.type === 'hls';
           setEmbeddedUrl('');
           setServerUrl(fallbackEntry.url);

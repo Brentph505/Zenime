@@ -23,6 +23,7 @@ import {
   fetchSkipTimes,
   fetchAnimeStreamingLinksProxied,
   useSettings,
+  getDirectMediaType,
   isDirectMediaUrl,
 } from '../../../index';
 import { useAuth } from '../../../client/useAuth';
@@ -238,6 +239,68 @@ type Subtitle = {
   lang: string;
 };
 
+const uniqueSubtitlesByLanguage = (items: Subtitle[], provider?: string): Subtitle[] => {
+  if (provider !== 'hstream' && provider !== 'hahomoe') return items;
+
+  const seenLanguages = new Set<string>();
+  return items.filter((subtitle) => {
+    const language = subtitle.lang.trim().toLowerCase();
+    if (!language || seenLanguages.has(language)) return false;
+    seenLanguages.add(language);
+    return true;
+  });
+};
+
+function assTimeToWebVtt(time: string): string | null {
+  const match = time.trim().match(/^(\d+):(\d{2}):(\d{2})\.(\d{1,2})$/);
+  if (!match) return null;
+
+  const milliseconds = String(Number(match[4]) * 10).padStart(3, '0');
+  return `${match[1].padStart(2, '0')}:${match[2]}:${match[3]}.${milliseconds}`;
+}
+
+function convertAssToWebVtt(content: string): string | null {
+  const cues: string[] = [];
+  let inEvents = false;
+  let format: string[] = [];
+
+  for (const line of content.split(/\r?\n/)) {
+    if (/^\s*\[Events\]\s*$/i.test(line)) {
+      inEvents = true;
+      continue;
+    }
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) {
+      inEvents = false;
+      continue;
+    }
+    if (!inEvents) continue;
+
+    const formatMatch = line.match(/^\s*Format:\s*(.+)$/i);
+    if (formatMatch) {
+      format = formatMatch[1].split(',').map((field) => field.trim().toLowerCase());
+      continue;
+    }
+
+    if (!/^\s*Dialogue:/i.test(line)) continue;
+    const fields = line.replace(/^\s*Dialogue:\s*/i, '').split(',');
+    const startIndex = format.indexOf('start');
+    const endIndex = format.indexOf('end');
+    const textIndex = format.indexOf('text');
+    if (startIndex < 0 || endIndex < 0 || textIndex < 0) continue;
+
+    const start = assTimeToWebVtt(fields[startIndex] || '');
+    const end = assTimeToWebVtt(fields[endIndex] || '');
+    const text = fields.slice(textIndex).join(',')
+      .replace(/\{[^}]*\}/g, '')
+      .replace(/\\[Nn]/g, '\n')
+      .replace(/\\h/g, ' ')
+      .trim();
+    if (start && end && text) cues.push(`${start} --> ${end}\n${text}`);
+  }
+
+  return cues.length > 0 ? `WEBVTT\n\n${cues.join('\n\n')}\n` : null;
+}
+
 type StreamingResponse = {
   sources: StreamingSource[];
   subtitles?: Subtitle[];
@@ -433,6 +496,7 @@ export function Player({
   // Incrementing token — any in-flight fetchAndSetAnimeSource whose token doesn't
   // match the current value is considered stale and must not call setSrc.
   const fetchAbortRef = useRef<number>(0);
+  const subtitleObjectUrlsRef = useRef<string[]>([]);
 
   const hlsUrlCandidatesRef = useRef<string[]>([]);
   const currentHlsUrlIndexRef = useRef<number>(0);
@@ -445,6 +509,48 @@ export function Player({
   const playbackTransitionRef = useRef(false);
   const playbackTransitionLockUntilRef = useRef(0);
   const autoplayAttemptKeyRef = useRef('');
+
+  function releaseSubtitleObjectUrls() {
+    subtitleObjectUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    subtitleObjectUrlsRef.current = [];
+  }
+
+  async function receiveSubtitles(items: Subtitle[], provider: string, fetchToken: number) {
+    const uniqueItems = uniqueSubtitlesByLanguage(items, provider);
+    if (provider !== 'hstream') {
+      releaseSubtitleObjectUrls();
+      setSubtitles(uniqueItems);
+      return;
+    }
+
+    const generatedUrls: string[] = [];
+    const tracks = await Promise.all(uniqueItems.map(async (subtitle) => {
+      try {
+        const response = await fetch(subtitle.url);
+        if (!response.ok) throw new Error(`Subtitle request failed: ${response.status}`);
+        const content = await response.text();
+        if (!/^\s*\[Script Info\]/im.test(content)) return subtitle;
+
+        const webVtt = convertAssToWebVtt(content);
+        if (!webVtt) return null;
+        const objectUrl = URL.createObjectURL(new Blob([webVtt], { type: 'text/vtt' }));
+        generatedUrls.push(objectUrl);
+        return { ...subtitle, url: objectUrl };
+      } catch (error) {
+        console.warn('[Player] Failed to load Hstream subtitle:', error);
+        return null;
+      }
+    }));
+
+    if (fetchToken !== fetchAbortRef.current) {
+      generatedUrls.forEach((url) => URL.revokeObjectURL(url));
+      return;
+    }
+
+    releaseSubtitleObjectUrls();
+    subtitleObjectUrlsRef.current = generatedUrls;
+    setSubtitles(tracks.filter((track): track is Subtitle => track !== null));
+  }
   const episodeNumber = propEpisodeNumber
     ? String(propEpisodeNumber)
     : getEpisodeNumber(episodeId);
@@ -783,9 +889,11 @@ export function Player({
 
   useEffect(() => {
     if (isEmbedded) {
+      releaseSubtitleObjectUrls();
       setSrc('');
       setSubtitles([]);
     } else if (prevIsEmbeddedRef.current && !isEmbedded) {
+      releaseSubtitleObjectUrls();
       resetHlsRetryState();
       setSrc('');
       setSubtitles([]);
@@ -799,6 +907,7 @@ export function Player({
 
     // Cancel any previous in-flight fetch
     fetchAbortRef.current += 1;
+    releaseSubtitleObjectUrls();
 
     setCurrentTime(parseFloat(localStorage.getItem('currentTime') || '0'));
     setSrc('');
@@ -812,6 +921,7 @@ export function Player({
     return () => {
       // Cancel fetch on cleanup
       fetchAbortRef.current += 1;
+      releaseSubtitleObjectUrls();
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
   }, [episodeId, malId, updateDownloadLink, sourceType, serverUrl, hlsDirectUrl]);
@@ -1092,24 +1202,26 @@ export function Player({
     // is trusted first, but we don't want an overly strict implementation of
     // that helper to silently kick a perfectly good AniDB HLS URL into the
     // buggy fallback-fetch path below.
-    const isValidHlsDirectUrl =
-      hlsDirectUrl &&
-      (isDirectMediaUrl(hlsDirectUrl) ||
-        /\.mp4/i.test(hlsDirectUrl) ||
-        /\.m3u8/i.test(hlsDirectUrl) ||
-        /\/m3u8(?:\?|$|#)/i.test(hlsDirectUrl));
+    const directMediaType = hlsDirectUrl ? getDirectMediaType(hlsDirectUrl) : null;
+    const isValidHlsDirectUrl = Boolean(directMediaType);
 
     if (isValidHlsDirectUrl) {
       if (fetchToken !== fetchAbortRef.current) return;
       resetHlsRetryState();
-      hlsUrlCandidatesRef.current = [hlsDirectUrl];
-      const type = /\.mp4/i.test(hlsDirectUrl) ? 'video/mp4' : 'application/vnd.apple.mpegurl';
+      const isWebm = directMediaType === 'webm';
+      const isMp4 = directMediaType === 'mp4';
+      hlsUrlCandidatesRef.current = isWebm || isMp4 ? [] : [hlsDirectUrl];
+      const type = isWebm
+        ? 'video/webm'
+        : isMp4
+          ? 'video/mp4'
+          : 'application/vnd.apple.mpegurl';
       setSrc({ src: hlsDirectUrl, type });
       console.log('[Player] Using direct media url:', hlsDirectUrl);
 
       // If the parent already supplied proxied subtitles, use them directly.
       if (externalSubtitles && externalSubtitles.length > 0) {
-        setSubtitles(externalSubtitles);
+        await receiveSubtitles(externalSubtitles, episodeProvider, fetchToken);
         return;
       }
 
@@ -1130,7 +1242,7 @@ export function Player({
         if (fetchToken !== fetchAbortRef.current) return; // stale
         if (subtitleResponse?.subtitles?.length) {
           console.log('[Player] KAA hlsDirectUrl: setting proxied subtitles from API:', subtitleResponse.subtitles.length);
-          setSubtitles(subtitleResponse.subtitles);
+          await receiveSubtitles(subtitleResponse.subtitles, episodeProvider, fetchToken);
         }
       } catch (subErr) {
         console.warn('[Player] KAA hlsDirectUrl: failed to fetch subtitles:', subErr);
@@ -1195,7 +1307,7 @@ export function Player({
         }
 
         if (data.subtitles?.length) {
-          setSubtitles(data.subtitles);
+          await receiveSubtitles(data.subtitles, episodeProvider, fetchToken);
         }
       } catch (megaplayError) {
         console.error('[Megaplay] Failed to fetch:', megaplayError);
@@ -1260,7 +1372,7 @@ export function Player({
       }
 
       if (response.subtitles?.length) {
-        setSubtitles(response.subtitles);
+        await receiveSubtitles(response.subtitles, episodeProvider, fetchToken);
       }
     } catch (error) {
       console.error('Failed to fetch anime streaming links', error);

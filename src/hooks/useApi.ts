@@ -75,6 +75,19 @@ const GENRE_QUERY = `
 
 type AniListSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
 
+export const HENTAI_ANIME_PROVIDERS = [
+  'hentaimama',
+  'watchhentai',
+  'hstream',
+  'hahomoe',
+] as const;
+
+export function isHentaiAnimeProvider(provider: string): boolean {
+  return HENTAI_ANIME_PROVIDERS.includes(
+    provider as (typeof HENTAI_ANIME_PROVIDERS)[number],
+  );
+}
+
 /**
  * Maps a calendar month (1–12) to an AniList season.
  * WINTER  = Jan–Mar  (1,2,3)
@@ -280,15 +293,30 @@ const isValidUrl = (url: string): boolean => {
   }
 };
 
-/** True when the URL points at direct HLS/MP4 media (not an embed HTML page). */
+/** Detects direct media even when nested inside one or more `?url=` proxies. */
+export function getDirectMediaType(url: string): 'hls' | 'mp4' | 'webm' | null {
+  let candidate = url;
+
+  for (let depth = 0; candidate && depth < 4; depth++) {
+    if (/\.m3u8(?:[?#]|$)|\/m3u8(?:[?#]|$)|\/manifest\//i.test(candidate)) return 'hls';
+    if (/\.mp4(?:[?#]|$)/i.test(candidate)) return 'mp4';
+    if (/\.webm(?:[?#]|$)/i.test(candidate)) return 'webm';
+
+    try {
+      const nestedUrl = new URL(candidate).searchParams.get('url');
+      if (!nestedUrl || nestedUrl === candidate) return null;
+      candidate = nestedUrl;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+/** True when the URL points at direct media (not an embed HTML page). */
 export function isDirectMediaUrl(url: string): boolean {
-  if (!url) return false;
-  return (
-    /\.m3u8(\?|$|#)/i.test(url) ||
-    /\/m3u8(\?|$|#)/i.test(url) ||
-    /\.mp4(\?|$|#)/i.test(url) ||
-    /\/manifest\//i.test(url)
-  );
+  return getDirectMediaType(url) !== null;
 }
 
 /** Providers that return native m3u8 streams (HLS player), not iframe embeds. */
@@ -453,6 +481,26 @@ export function proxyXanimeSubtitles(
     ...sub,
     url: buildXanimeSubtitleProxyUrl(sub.url),
   }));
+}
+
+export function proxyHstreamSubtitles(
+  subtitles: Array<{ url: string; lang: string }>,
+): Array<{ url: string; lang: string }> {
+  if (!KAA_SUBTITLE_PROXY_URL) return subtitles;
+
+  return subtitles.map((subtitle) => {
+    let sourceUrl = subtitle.url;
+    try {
+      sourceUrl = new URL(subtitle.url).searchParams.get('url') || subtitle.url;
+    } catch {
+      // Keep the original URL when it is not a wrapped proxy URL.
+    }
+
+    return {
+      ...subtitle,
+      url: buildKaaSubtitleProxyUrl(sourceUrl),
+    };
+  });
 }
 
 /**
@@ -1141,16 +1189,17 @@ export async function fetchAnimeData(
 
   // ─── Step 2: route to the right provider chain ────────────────────────────
   if (detectedHentai) {
-    // Hentai path: hentaimama → watchhentai. Never fall through to regular providers.
-    console.log(`🔞 Hentai detected — using hentaimama as primary provider.`);
-
-    // If the initial fetch was already from a hentai provider, return it directly.
-    if (!isEmpty(providerData) && (finalProvider === 'hentaimama' || finalProvider === 'watchhentai')) {
-      return mergeBaseData(providerData);
+    // Hentai providers stay isolated from the regular anime fallback chain.
+    if (isHentaiAnimeProvider(finalProvider)) {
+      try {
+        providerData = await attemptFetch(finalProvider);
+        if (!isEmpty(providerData)) return mergeBaseData(providerData);
+      } catch (error) {
+        console.log(`⚠️ Error from ${finalProvider}...`, error);
+      }
     }
 
-    const hentaiProviders = ['hentaimama', 'watchhentai'];
-    for (const prov of hentaiProviders) {
+    for (const prov of HENTAI_ANIME_PROVIDERS) {
       if (prov === finalProvider) continue; // already tried
       try {
         console.log(`⚠️ Trying hentai provider: ${prov}...`);
@@ -1161,7 +1210,7 @@ export async function fetchAnimeData(
       }
     }
 
-    // Both hentai providers failed — return whatever the initial fetch gave us
+    // All hentai providers failed — return whatever data is available
     // (even if empty) so callers can handle it gracefully.
     return mergeBaseData(providerData);
   }
@@ -1214,6 +1263,10 @@ export async function fetchAnimeData(
   return mergeBaseData({});
 }
 
+function isHentaiGenres(genres?: string[]): boolean {
+  return Array.isArray(genres) && genres.some((genre) => genre.toLowerCase() === 'hentai');
+}
+
 export async function fetchAnimeInfo(
   animeId: string,
   provider: string = 'anikoto',
@@ -1231,6 +1284,7 @@ export async function fetchAnimeInfo(
 
   try {
     aniListBase = await fetchAniListMediaBase(animeId);
+    isHentai = isHentaiGenres(aniListBase?.genres);
   } catch (error) {
     console.log(`⚠️ Error fetching AniList fallback metadata...`, error);
   }
@@ -1250,11 +1304,11 @@ export async function fetchAnimeInfo(
     }
     const enrichedData = mergeInfoDescription(data);
     isHentai = enrichedData?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
-    if (isHentai && currentProv !== 'watchhentai' && currentProv !== 'hentaimama') {
+    if (isHentai && !isHentaiAnimeProvider(currentProv)) {
       console.log(`⚠️ Anime is Hentai, switching provider to watchhentai...`);
-      return mergeInfoDescription(await attemptFetch('watchhentai'));
+      return mergeInfoDescription(await attemptFetch(HENTAI_ANIME_PROVIDERS[0]));
     }
-    if (!isHentai && (currentProv === 'watchhentai' || currentProv === 'hentaimama')) {
+    if (!isHentai && isHentaiAnimeProvider(currentProv)) {
       console.log(`⚠️ Anime is NOT Hentai, switching provider to kickassanime...`);
       return mergeInfoDescription(await attemptFetch('kickassanime'));
     }
@@ -1273,15 +1327,17 @@ export async function fetchAnimeInfo(
   }
 
   if (isHentai) {
-    const canTryHentaimama = finalProvider !== 'hentaimama';
-    if (canTryHentaimama) {
+    for (const hentaiProvider of HENTAI_ANIME_PROVIDERS) {
+      if (hentaiProvider === finalProvider) continue;
       try {
-        console.log(`⚠️ No info from watchhentai, trying hentaimama...`);
-        let hInfo = await attemptFetch('hentaimama');
-        hInfo = await handleData(hInfo, 'hentaimama');
+        console.log(`⚠️ No info from ${finalProvider}, trying ${hentaiProvider}...`);
+        const hInfo = await handleData(
+          await attemptFetch(hentaiProvider),
+          hentaiProvider,
+        );
         if (hInfo) return hInfo;
       } catch (error) {
-        console.log(`⚠️ Error from hentaimama...`, error);
+        console.log(`⚠️ Error from ${hentaiProvider}...`, error);
         lastError = error;
       }
     }
@@ -1289,9 +1345,9 @@ export async function fetchAnimeInfo(
     return {};
   }
 
-  const canTryKickassanime = finalProvider !== 'kickassanime' && finalProvider !== 'hentaimama';
-  const canTryAnimePahe = finalProvider !== 'animepahe' && finalProvider !== 'hentaimama';
-  const canTryReanime = finalProvider !== 'reanime' && finalProvider !== 'hentaimama';
+  const canTryKickassanime = finalProvider !== 'kickassanime' && !isHentaiAnimeProvider(finalProvider);
+  const canTryAnimePahe = finalProvider !== 'animepahe' && !isHentaiAnimeProvider(finalProvider);
+  const canTryReanime = finalProvider !== 'reanime' && !isHentaiAnimeProvider(finalProvider);
 
   if (canTryReanime) {
     try {
@@ -1391,7 +1447,7 @@ export async function fetchAnimeEpisodes(
   dub: boolean = false,
 ) {
   const finalProvider = provider || 'anikoto';
-  const isHentaiProvider = finalProvider === 'hentaimama' || finalProvider === 'watchhentai';
+  const isHentaiProvider = isHentaiAnimeProvider(finalProvider);
   const canTryKickassanime = !isHentaiProvider && finalProvider !== 'kickassanime';
   const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
   const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
@@ -1648,7 +1704,7 @@ export async function fetchAnimeStreamingLinks(
   requestTimeout?: number,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const isHentaiProvider = finalProvider === 'hentaimama' || finalProvider === 'watchhentai';
+  const isHentaiProvider = isHentaiAnimeProvider(finalProvider);
   const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
   const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
@@ -1660,7 +1716,7 @@ export async function fetchAnimeStreamingLinks(
     server || '',
   );
   const timeoutToUse = requestTimeout ?? (
-    finalProvider === 'hentaimama' || finalProvider === 'watchhentai'
+    isHentaiProvider
       ? 60000
       : 30000
   );
@@ -1744,7 +1800,7 @@ export async function fetchAnimeStreamingLinksProxied(
 ) {
   const finalProvider = provider || 'kickassanime';
   const requestTimeout =
-    finalProvider === 'hentaimama' || finalProvider === 'watchhentai'
+    isHentaiAnimeProvider(finalProvider)
       ? 60000
       : 30000;
   let data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
@@ -1758,6 +1814,18 @@ export async function fetchAnimeStreamingLinksProxied(
       : finalProvider === 'xanime'
         ? M3U8_PROXY_URL_XANIME || M3U8_PROXY_URL
       : M3U8_PROXY_URL;
+
+  if (finalProvider === 'hstream' && Array.isArray(data?.subtitles)) {
+    const seenLanguages = new Set<string>();
+    const uniqueSubtitles = data.subtitles.filter((subtitle: { lang?: string }) => {
+      const language = subtitle.lang?.trim().toLowerCase();
+      if (!language) return true;
+      if (seenLanguages.has(language)) return false;
+      seenLanguages.add(language);
+      return true;
+    });
+    data.subtitles = proxyHstreamSubtitles(uniqueSubtitles);
+  }
 
   if (finalProvider === 'watchhentai') {
     return normalizeStreamingResponse(data);

@@ -61,7 +61,7 @@ const EpisodeGrid = styled.div<{ $isRowLayout: boolean }>`
   overflow-y: auto;
   flex-grow: 1;
   min-height: 0;
-  align-content: ${({ $isRowLayout }) => ($isRowLayout ? 'normal' : 'start')};
+  align-content: start;
 
   @media (max-width: 640px) {
     grid-template-columns: ${({ $isRowLayout }) =>
