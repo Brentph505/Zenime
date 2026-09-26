@@ -321,6 +321,7 @@ const Watch: React.FC = () => {
     new Set(['embedded']),
   );
   const [hlsDirectUrl, setHlsDirectUrl] = useState<string>('');
+  const [hlsDirectType, setHlsDirectType] = useState<'hls' | 'mp4' | 'webm' | undefined>();
   const [serverRefreshKey, setServerRefreshKey] = useState(0);
   const [isRefreshingServers, setIsRefreshingServers] = useState(false);
 
@@ -843,6 +844,7 @@ const Watch: React.FC = () => {
       setEmbeddedUrl('');
       setServerUrl('');
       setHlsDirectUrl('');
+      setHlsDirectType(undefined);
       setEmbeddedServerKeys(new Set(['embedded']));
     }
   }, [currentEpisode.id]);
@@ -1051,6 +1053,7 @@ const Watch: React.FC = () => {
             Array.isArray(response.servers) &&
             response.servers.length > 0 &&
             provider !== 'watchhentai' &&
+            provider !== 'hahomoe' &&
             !hasHentaiSources
           ) {
             const seenProviderName = new Set<string>();
@@ -1111,21 +1114,37 @@ const Watch: React.FC = () => {
                 }
               };
               const sourceNumbers = new Map<string, number>();
-              const hasSubtitles = Array.isArray(response?.subtitles) && response.subtitles.length > 0;
+              const subtitleCollections = [
+                response?.subtitles,
+                response?.tracks,
+                response?.data?.subtitles,
+                response?.data?.tracks,
+              ];
+              const hasSubtitles = subtitleCollections.some(
+                (items) => Array.isArray(items) && items.length > 0,
+              ) || response.sources.some((source: any) =>
+                [source?.subtitles, source?.tracks].some(
+                  (items) => Array.isArray(items) && items.length > 0,
+                ),
+              );
               response.sources.forEach((source: any) => {
                 const sourceUrl = getStreamUrl(source);
-                if (!sourceUrl || /\.webm(?:[?#]|$)/i.test(sourceUrl)) return;
+                if (!sourceUrl) return;
 
-                const type = /\.mp4(?:[?#]|$)/i.test(sourceUrl)
-                  ? 'mp4'
-                  : 'iframe';
+                const detectedMediaType = getDirectMediaType(sourceUrl);
+                if (detectedMediaType === 'webm') return;
+                const mediaType: 'hls' | 'mp4' = source.isM3U8 || detectedMediaType === 'hls'
+                  ? 'hls'
+                  : 'mp4';
+                const type = mediaType;
                 const origin = getSourceOrigin(sourceUrl);
                 if (!sourceNumbers.has(origin)) {
                   sourceNumbers.set(origin, sourceNumbers.size + 1);
                 }
                 const prefix = provider === 'hstream' ? 'HS' : 'HH';
-                const name = `${prefix} ${hasSubtitles ? 'Sub' : 'Raw'} ${sourceNumbers.get(origin)}`;
-                addServer(name, sourceUrl, provider, type, type === 'iframe');
+                const label = provider === 'hahomoe' || hasSubtitles ? 'Sub' : 'Raw';
+                const name = `${prefix} ${label} ${sourceNumbers.get(origin)}`;
+                addServer(name, sourceUrl, provider, type, false);
               });
 
               return;
@@ -1251,6 +1270,7 @@ const Watch: React.FC = () => {
         );
       }
       setHlsDirectUrl('');
+      setHlsDirectType(undefined);
       return;
     }
 
@@ -1266,6 +1286,7 @@ const Watch: React.FC = () => {
         setEmbeddedUrl(entry.url);
         setServerUrl(entry.url);
         setHlsDirectUrl('');
+        setHlsDirectType(undefined);
       }
     } else {
       const entry = serverEntries.find((s) => {
@@ -1292,6 +1313,7 @@ const Watch: React.FC = () => {
         setEmbeddedUrl('');
         setServerUrl(entry.url);
         setHlsDirectUrl(isDirectMedia ? entry.url : '');
+        setHlsDirectType(isDirectMedia ? entry.type as 'hls' | 'mp4' | 'webm' : undefined);
         console.log('[Watch] Set HLS URL:', entry.url);
       } else if (serverEntries.length > 0) {
         const fallbackEntry = serverEntries.find((e) =>
@@ -1307,6 +1329,7 @@ const Watch: React.FC = () => {
           setEmbeddedUrl('');
           setServerUrl(fallbackEntry.url);
           setHlsDirectUrl(isDirectMedia ? fallbackEntry.url : '');
+          setHlsDirectType(isDirectMedia ? fallbackEntry.type as 'hls' | 'mp4' | 'webm' : undefined);
         }
       }
     }
@@ -1461,6 +1484,7 @@ const Watch: React.FC = () => {
                     serverUrl={serverUrl}
                     embeddedServerKeys={embeddedServerKeys}
                     hlsDirectUrl={hlsDirectUrl}
+                    hlsDirectType={hlsDirectType}
                     animeGenres={animeInfo?.genres}
                     animeIsAdult={animeInfo?.isAdult}
                   />

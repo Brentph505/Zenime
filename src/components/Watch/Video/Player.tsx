@@ -24,7 +24,6 @@ import {
   fetchAnimeStreamingLinksProxied,
   useSettings,
   getDirectMediaType,
-  isDirectMediaUrl,
 } from '../../../index';
 import { useAuth } from '../../../client/useAuth';
 import { syncWatchProgress, getAniListIdFromMalId } from '../../../client/authService';
@@ -219,6 +218,8 @@ type PlayerProps = {
   embeddedServerKeys?: Set<string>;
   /** Direct M3U8 URL to use for HLS servers (bypasses API fetch) */
   hlsDirectUrl?: string;
+  /** Media type for direct sources whose URLs do not include a file extension. */
+  hlsDirectType?: 'hls' | 'mp4' | 'webm';
   /** Subtitles to inject when using hlsDirectUrl (animekai HLS playback) */
   externalSubtitles?: Array<{ url: string; lang: string }>;
   /** Genres of the anime, used to determine Hentai/NSFW for sync guards */
@@ -476,6 +477,7 @@ export function Player({
   serverUrl,
   embeddedServerKeys,
   hlsDirectUrl,
+  hlsDirectType,
   externalSubtitles,
   animeGenres = [],
   animeIsAdult = false,
@@ -924,7 +926,7 @@ export function Player({
       releaseSubtitleObjectUrls();
       if (vttUrl) URL.revokeObjectURL(vttUrl);
     };
-  }, [episodeId, malId, updateDownloadLink, sourceType, serverUrl, hlsDirectUrl]);
+  }, [episodeId, malId, updateDownloadLink, sourceType, serverUrl, hlsDirectUrl, hlsDirectType]);
 
   useEffect(() => {
     if (!episodeId || !malId || totalDuration <= 0 || vttGenerated) return;
@@ -1202,22 +1204,25 @@ export function Player({
     // is trusted first, but we don't want an overly strict implementation of
     // that helper to silently kick a perfectly good AniDB HLS URL into the
     // buggy fallback-fetch path below.
-    const directMediaType = hlsDirectUrl ? getDirectMediaType(hlsDirectUrl) : null;
+    const directMediaType = hlsDirectUrl
+      ? getDirectMediaType(hlsDirectUrl) || hlsDirectType || null
+      : null;
     const isValidHlsDirectUrl = Boolean(directMediaType);
 
-    if (isValidHlsDirectUrl) {
+    const directUrl = hlsDirectUrl;
+    if (directUrl && directMediaType) {
       if (fetchToken !== fetchAbortRef.current) return;
       resetHlsRetryState();
       const isWebm = directMediaType === 'webm';
       const isMp4 = directMediaType === 'mp4';
-      hlsUrlCandidatesRef.current = isWebm || isMp4 ? [] : [hlsDirectUrl];
+      hlsUrlCandidatesRef.current = isWebm || isMp4 ? [] : [directUrl];
       const type = isWebm
         ? 'video/webm'
         : isMp4
           ? 'video/mp4'
           : 'application/vnd.apple.mpegurl';
-      setSrc({ src: hlsDirectUrl, type });
-      console.log('[Player] Using direct media url:', hlsDirectUrl);
+      setSrc({ src: directUrl, type });
+      console.log('[Player] Using direct media url:', directUrl);
 
       // If the parent already supplied proxied subtitles, use them directly.
       if (externalSubtitles && externalSubtitles.length > 0) {
