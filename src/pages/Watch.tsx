@@ -222,7 +222,7 @@ const MAX_CACHE_EPISODES_PER_ANIME = 30;
 // Max number of anime entries kept in the localStorage cache
 const MAX_CACHE_ANIME_ENTRIES = 50;
 
-const PROVIDERS: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime', 'anidb'];
+const PROVIDERS: string[] = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime', 'anidb'];
 
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
 
@@ -681,7 +681,7 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          const providerPriority = [...HENTAI_ANIME_PROVIDERS, 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          const providerPriority = [...HENTAI_ANIME_PROVIDERS, 'animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
           let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'anikoto';
 
           for (const priorityProvider of providerPriority) {
@@ -918,6 +918,19 @@ const Watch: React.FC = () => {
           return uniqueLabel;
         };
 
+        const normalize4animoLabel = (name: string, type: string) => {
+          const normalizedText = `${name} ${type}`.toLowerCase();
+          const label = normalizedText.includes('hsub')
+            ? 'REI HSUB'
+            : normalizedText.includes('dub')
+              ? 'REI Dub'
+              : 'REI Sub';
+          const count = providerNameCounters.get(label) || 0;
+          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
+          providerNameCounters.set(label, count + 1);
+          return uniqueLabel;
+        };
+
         const normalizeAnidbLabel = (
           name: string,
           quality?: string,
@@ -1028,7 +1041,7 @@ const Watch: React.FC = () => {
           const hasAnidbM3u8Sources = false; // Not needed anymore with dedicated AniDB handling
           const isKickassanimeProvider = provider === 'kickassanime';
 
-          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider) {
+          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider && provider !== '4animo') {
             servers.forEach((server: any) => {
               const serverName = server?.name || '';
               const serverUrl = server?.url || '';
@@ -1074,16 +1087,18 @@ const Watch: React.FC = () => {
 
               const type = sLang || '';
               // KAA servers are HLS-only, never embedded
-              const isEmb = provider === 'kickassanime' ? false : isEmbeddedServer(sUrl, type, provider);
+              const isEmb = provider === '4animo' || (provider !== 'kickassanime' && isEmbeddedServer(sUrl, type, provider));
               const label = provider === 'anidb'
                 ? normalizeAnidbLabel(sName, sLang, isEmb)
+                : provider === '4animo'
+                  ? normalize4animoLabel(sName, sLang)
                 : sName;
-              addServer(label, sUrl, provider, isEmb ? 'iframe' : 'hls', isEmb, sLang);
+              addServer(label, sUrl, provider, provider === '4animo' ? 'iframe' : isEmb ? 'iframe' : 'hls', isEmb, sLang);
             });
           }
 
           // Skip sources processing for KAA (already handled in response.servers)
-          if (!isKickassanimeProvider && response?.sources && Array.isArray(response.sources)) {
+          if (!isKickassanimeProvider && provider !== '4animo' && response?.sources && Array.isArray(response.sources)) {
             let subCount = 0;
             let dubCount = 0;
             const providerServerNames = new Map<string, string>();

@@ -584,12 +584,13 @@ export function Player({
     ? embeddedServerKeys.has(sourceType)
     : sourceType === 'embedded';
 
-  // ReAnime is the only provider whose FlixCloud iframe gets this bridge.
+  // Provider-specific iframe bridges are kept isolated from other embeds.
   const isFlixcloudEmbed =
     isEmbedded &&
     episodeProvider === 'reanime' &&
     Boolean(embeddedUrl?.includes('flixcloud.cc'));
   const isReanimeEmbed = isEmbedded && episodeProvider === 'reanime';
+  const is4animoEmbed = isEmbedded && episodeProvider === '4animo';
   const animePaheIframeProxy = (import.meta.env.VITE_EMBEDDED_PROXY_ANIMEPAHE as string) || '';
 
   const shouldProxyAnimePaheEmbeddedUrl = (url: string) => {
@@ -619,6 +620,10 @@ export function Player({
         u.searchParams.set('autoPlay', autoPlay ? 'true' : 'false');
         u.searchParams.set('skI', autoSkip ? 'true' : 'false');
         u.searchParams.set('skO', autoSkip ? 'true' : 'false');
+      } else if (is4animoEmbed) {
+        u.searchParams.set('autoPlay', autoPlay ? '1' : '0');
+        u.searchParams.set('skI', autoSkip ? '1' : '0');
+        u.searchParams.set('skO', autoSkip ? '1' : '0');
       } else {
         if (autoPlay) {
           u.searchParams.set('autoplay', '1');
@@ -636,7 +641,7 @@ export function Player({
       console.warn('[Player] Failed to build embedded URL:', err, 'original:', embeddedUrl);
       setBuiltEmbeddedUrl(embeddedUrl);
     }
-  }, [embeddedUrl, autoPlay, autoSkip, animePaheIframeProxy]);
+  }, [embeddedUrl, autoPlay, autoSkip, is4animoEmbed, animePaheIframeProxy]);
 
   // ─── iframe postMessage event bridge ────────────────────────────────────────
   useEffect(() => {
@@ -775,6 +780,37 @@ export function Player({
         duration?: number;
       };
 
+      if (is4animoEmbed) {
+        if (event.origin !== 'https://cdn.4animo.xyz') return;
+
+        const playerEvent = normalized.type || normalized.event;
+        const isTimeUpdate = playerEvent === 'time_update' ||
+          typeof normalized.currentTime === 'number';
+        if (
+          isTimeUpdate &&
+          typeof normalized.currentTime === 'number' &&
+          typeof normalized.duration === 'number'
+        ) {
+          saveIframeProgress(normalized.currentTime, normalized.duration);
+          if (
+            normalized.duration > 30 &&
+            normalized.currentTime >= normalized.duration - 2 &&
+            !iframeProgressRef.current.hasTriggeredEnd
+          ) {
+            iframeProgressRef.current.hasTriggeredEnd = true;
+            void handlePlaybackEndedRef.current();
+          }
+        } else if (
+          ['next_episode', 'ended', 'complete', 'finish'].includes(playerEvent) ||
+          data.ended === true ||
+          data.complete === true
+        ) {
+          iframeProgressRef.current.hasTriggeredEnd = true;
+          void handlePlaybackEndedRef.current();
+        }
+        return;
+      }
+
       // FlixCloud's ArtPlayer bridge reports completion as
       // { playerStatus: 'Ended' } rather than an `ended` event payload.
       if (isReanimeEmbed && normalized.playerStatus === 'ended') {
@@ -885,7 +921,7 @@ export function Player({
       window.removeEventListener('pagehide', saveIframeProgressOnUnload);
       window.removeEventListener('beforeunload', saveIframeProgressOnUnload);
     };
-  }, [isEmbedded, isReanimeEmbed, episodeId, settings, isLoggedIn, animeId, propEpisodeNumber]);
+  }, [isEmbedded, isReanimeEmbed, is4animoEmbed, episodeId, settings, isLoggedIn, animeId, propEpisodeNumber]);
 
   const prevIsEmbeddedRef = useRef<boolean>(isEmbedded);
 
@@ -1542,7 +1578,7 @@ export function Player({
             <Button onClick={toggleAutoPlay}>
               {autoPlay ? <FaCheck /> : <RiCheckboxBlankFill />} Autoplay
             </Button>
-            {isFlixcloudEmbed && (
+            {(isFlixcloudEmbed || is4animoEmbed) && (
               <Button $autoskip onClick={toggleAutoSkip}>
                 {autoSkip ? <FaCheck /> : <RiCheckboxBlankFill />} Auto Skip
               </Button>

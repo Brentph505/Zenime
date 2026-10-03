@@ -24,6 +24,7 @@ const API_KEY = import.meta.env.VITE_API_KEY as string;
 const PROVIDER_REFERER_MAP: Record<string, string> = {
   kickassanime: 'https://krussdomi.com',
   animeparadies: 'https://stream.animeparadise.moe',
+  '4animo': 'https://4anime.to',
   reanime: 'https://reanime.to',
   xanime: 'https://xanime',
   anidb: 'https://anidb.net',
@@ -324,7 +325,7 @@ export const HLS_FIRST_PROVIDERS = new Set(['animeparadies', 'kickassanime', 'an
 
 /**
  * Whether a server entry should open in the iframe player vs the HLS player.
- * anikoto/reanime use sub/dub/hsub embed pages; kickassanime/animepahe/anidb use m3u8.
+ * anikoto/reanime/4animo use sub/dub/hsub embed pages; kickassanime/animepahe/anidb use m3u8.
  */
 export function isEmbeddedPlaybackServer(
   url: string,
@@ -344,7 +345,7 @@ export function isEmbeddedPlaybackServer(
     );
   }
 
-  if (p === 'anikoto' || p === 'reanime') {
+  if (p === 'anikoto' || p === 'reanime' || p === '4animo') {
     return (
       url.includes('iframe') ||
       url.includes('kwik.cx') ||
@@ -2105,7 +2106,7 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
   isDub: boolean = false,
-  providers: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  providers: string[] = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
@@ -2189,7 +2190,7 @@ export async function fetchEpisodesFromMultipleProviders(
 
 export async function fetchServersFromMultipleProviders(
   episodesByProvider: Record<string, string>,
-  providers: string[] = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  providers: string[] = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 ): Promise<
   Array<{
     provider: string;

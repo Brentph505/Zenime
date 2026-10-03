@@ -50,7 +50,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'animeparadies' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'hentaimama' | 'watchhentai';
+type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'hentaimama' | 'watchhentai';
 type MangaProvider = 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20';
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -1179,17 +1179,19 @@ const Info: React.FC = () => {
             ? ['watchhentai', 'hentaimama']
             : ['hentaimama', 'watchhentai'];
         } else if (provider === 'animeparadies') {
-          candidates = ['animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          candidates = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+        } else if (provider === '4animo') {
+          candidates = ['4animo', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
         } else if (provider === 'xanime') {
-          candidates = ['xanime', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
+          candidates = ['xanime', 'animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
         } else if (provider === 'animepahe') {
-          candidates = ['animepahe', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'xanime'];
+          candidates = ['animepahe', 'animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'xanime'];
         } else if (provider === 'kickassanime') {
-          candidates = ['kickassanime', 'animeparadies', 'anikoto', 'reanime', 'animepahe', 'xanime'];
+          candidates = ['kickassanime', 'animeparadies', '4animo', 'anikoto', 'reanime', 'animepahe', 'xanime'];
         } else if (provider === 'reanime') {
-          candidates = ['reanime', 'animeparadies', 'anikoto', 'kickassanime', 'animepahe', 'xanime'];
+          candidates = ['reanime', 'animeparadies', '4animo', 'anikoto', 'kickassanime', 'animepahe', 'xanime'];
         } else {
-          candidates = ['anikoto', 'animeparadies', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          candidates = ['anikoto', 'animeparadies', '4animo', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
         }
 
         let loaded = false;
