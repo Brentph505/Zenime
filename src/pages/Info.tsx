@@ -15,6 +15,13 @@ import { ListActions } from '../components/Info/ListActions';
 import { MangaBookmarkButton } from '../components/Home/MangaBookmarkButton';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 import { useSettings } from '../components/Profile/SettingsProvider';
+import { getAnimeInfoProviderOrder } from '../lib/animePlayback';
+import {
+  getMangaProviderFallbackOrder,
+  isMangaCatalogProvider,
+  MANGA_CATALOG_PROVIDERS,
+  type MangaCatalogProvider,
+} from '../lib/mangaProviders';
 
 // ─── Animations ───────────────────────────────────────────────────────────────
 
@@ -50,8 +57,8 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'hentaimama' | 'watchhentai';
-type MangaProvider = 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20';
+type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | 'hentaimama' | 'watchhentai';
+type MangaProvider = MangaCatalogProvider;
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
 
@@ -170,27 +177,38 @@ const HeroAccentBar = styled.div`
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
+// FULL-WIDTH FIX:
+//  • removed the 1400px max-width cap
+//  • the Shell now "breaks out" of any centered/max-width parent wrapper
+//    (width: 100vw + left: 50% + margin-left: -50vw), the same way the hero
+//    already does, so the content uses the whole screen
+//  • side padding is fluid (clamp) so it doesn't touch the screen edges
+//  • on mobile (<= 860px) it goes back to the normal 100% width layout
 const Shell = styled.div`
-  width: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 1rem 5rem;
+  width: 100vw;
+  max-width: 100vw;
   position: relative;
+  left: 50%;
+  margin: 0 0 0 -50vw;
+  padding: 0 clamp(1rem, 3vw, 3rem) 5rem;
   box-sizing: border-box;
   @media (max-width: 860px) {
-    padding: 0 0 4rem;
     width: 100%;
+    max-width: 100%;
+    left: 0;
+    margin: 0;
+    padding: 0 0 4rem;
   }
 `;
 
 const Grid = styled.div`
   display: grid;
-  grid-template-columns: 230px 1fr;
+  grid-template-columns: 230px minmax(0, 1fr);
   gap: 1rem;
   margin-top: -110px;
   position: relative; z-index: 2;
   @media (max-width: 860px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     margin-top: 0;
     gap: 0;
   }
@@ -875,6 +893,7 @@ const ScrollBtn = styled.button`
   &:hover { border-color: ${A.accent}; color: ${A.accent}; }
 `;
 
+// Card sizes are intentionally unchanged (150 / 140 / 120px).
 const StyledCardGrid = styled.div`
   display: flex; gap: 0.75rem; overflow-x: auto; overflow-y: hidden;
   padding-bottom: 0.4rem; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
@@ -987,9 +1006,9 @@ const Info: React.FC = () => {
 
   const [provider, setProvider] = useState<Provider>(() => {
     if (queryType === 'MANGA') {
-      return queryProvider === 'atsumaru' || queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
-        ? (queryProvider as MangaProvider)
-        : (safeGetItem('manga-provider-preference') as MangaProvider) || 'mangahere';
+      const savedProvider = safeGetItem('manga-provider-preference');
+      if (isMangaCatalogProvider(queryProvider || '')) return queryProvider as MangaProvider;
+      return isMangaCatalogProvider(savedProvider || '') ? savedProvider as MangaProvider : 'mangahere';
     }
     // Hentai preference is stored separately
     const savedHentai = safeGetItem('hentai-provider-preference') as AnimeProvider | null;
@@ -1006,11 +1025,10 @@ const Info: React.FC = () => {
 
     if (queryType === 'MANGA') {
       setEpView('list');
-      setProvider(
-        queryProvider === 'atsumaru' || queryProvider === 'mangapill' || queryProvider === 'hentaireadio' || queryProvider === 'hentai20'
-          ? (queryProvider as MangaProvider)
-          : (safeGetItem('manga-provider-preference') as MangaProvider) || 'mangahere',
-      );
+      const savedProvider = safeGetItem('manga-provider-preference');
+      setProvider(isMangaCatalogProvider(queryProvider || '')
+        ? queryProvider as MangaProvider
+        : isMangaCatalogProvider(savedProvider || '') ? savedProvider as MangaProvider : 'mangahere');
     } else {
       // Will be overridden by the fetch effect once genres are known
       setProvider(
@@ -1096,18 +1114,16 @@ const Info: React.FC = () => {
         //  • Hentai manga (or explicit ?provider=hentaireadio/hentai20) → ONLY hentai providers
         //  • Non-hentai manga                                  → ONLY mangahere/mangapill
         // The two groups never cross-contaminate each other.
-        const candidates: MangaProvider[] = [];
-        if (detectedHentaiManga || explicitHentaiProvider) {
-          candidates.push('hentaireadio', 'hentai20');
-        } else {
-          if (provider === 'atsumaru' || queryProvider === 'atsumaru') {
-            candidates.push('atsumaru', 'mangahere', 'mangapill');
-          } else if (provider === 'mangapill' || queryProvider === 'mangapill') {
-            candidates.push('mangapill', 'atsumaru', 'mangahere');
-          } else {
-            candidates.push('mangahere', 'atsumaru', 'mangapill');
-          }
-        }
+        const preferredMangaProvider =
+          provider === 'atsumaru' || queryProvider === 'atsumaru'
+            ? 'atsumaru'
+            : provider === 'mangapill' || queryProvider === 'mangapill'
+              ? 'mangapill'
+              : provider;
+        const candidates: MangaProvider[] = getMangaProviderFallbackOrder(
+          preferredMangaProvider,
+          detectedHentaiManga || explicitHentaiProvider,
+        );
 
         const probeResults = await Promise.allSettled(
           candidates.map(async (candidate) => {
@@ -1178,20 +1194,8 @@ const Info: React.FC = () => {
           candidates = preferredHentai === 'watchhentai'
             ? ['watchhentai', 'hentaimama']
             : ['hentaimama', 'watchhentai'];
-        } else if (provider === 'animeparadies') {
-          candidates = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
-        } else if (provider === '4animo') {
-          candidates = ['4animo', 'animeparadies', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
-        } else if (provider === 'xanime') {
-          candidates = ['xanime', 'animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe'];
-        } else if (provider === 'animepahe') {
-          candidates = ['animepahe', 'animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'xanime'];
-        } else if (provider === 'kickassanime') {
-          candidates = ['kickassanime', 'animeparadies', '4animo', 'anikoto', 'reanime', 'animepahe', 'xanime'];
-        } else if (provider === 'reanime') {
-          candidates = ['reanime', 'animeparadies', '4animo', 'anikoto', 'kickassanime', 'animepahe', 'xanime'];
         } else {
-          candidates = ['anikoto', 'animeparadies', '4animo', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          candidates = getAnimeInfoProviderOrder(provider) as AnimeProvider[];
         }
 
         let loaded = false;
@@ -1742,7 +1746,7 @@ const Info: React.FC = () => {
 
                             {availableMangaProviders.size > 1 && (
                               <ProviderSwitcher>
-                                {(['atsumaru', 'mangahere', 'mangapill', 'hentaireadio', 'hentai20'] as MangaProvider[])
+                                {MANGA_CATALOG_PROVIDERS
                                   .filter(p => availableMangaProviders.has(p))
                                   .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
                                   .map(p => (
@@ -1781,7 +1785,7 @@ const Info: React.FC = () => {
 
                         {isManga && availableMangaProviders.size > 1 && (
                           <ProviderSwitcher>
-                            {(['atsumaru', 'mangahere', 'mangapill', 'hentaireadio', 'hentai20'] as MangaProvider[])
+                            {MANGA_CATALOG_PROVIDERS
                               .filter(p => availableMangaProviders.has(p))
                               .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
                               .map(p => (

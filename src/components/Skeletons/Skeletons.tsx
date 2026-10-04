@@ -131,50 +131,102 @@ const SkeletonImage = styled(BaseSkeleton)`
 `;
 
 // ─── Info Page Skeletons ─────────────────────────────────────────────────────
+// Mirrors pages/Info.tsx 1:1 so nothing jumps when the real page replaces it:
+//   - same 360px hero (calc(100vw + 2rem), -1rem margins)
+//   - same full-width Shell (100vw breakout + clamp side padding)
+//   - same `230px minmax(0, 1fr)` grid, same 1rem gap
+//   - same left column (poster, watch, AL/MAL, list actions, meta rows)
+//   - same right panel (title block, tabs, trailer, description)
+//   - same mobile layout (<= 860px): header poster, action bar, meta grid
+//   - same "You might also like" row with 150 / 140 / 120px cards
 
 const InfoSkeletonContainer = styled.div`
   min-height: 100vh;
   background: transparent;
+  overflow-x: hidden;
 `;
 
 const InfoHeroSkeleton = styled(BaseSkeleton)`
-  width: 100vw;
-  height: 360px;
-  margin-left: -50vw;
-  margin-right: -50vw;
-  left: 50%;
-  right: 50%;
   position: relative;
+  width: calc(100vw + 2rem);
+  margin: 0 -1rem;
+  height: 360px;
+  border-radius: 0;
+  overflow: hidden;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
-  @media (max-width: 768px) { height: 180px; }
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      160deg,
+      rgba(0, 0, 0, 0.05) 0%,
+      rgba(0, 0, 0, 0.25) 50%,
+      var(--global-primary-bg) 100%
+    );
+  }
+  @media (max-width: 768px) {
+    width: calc(100vw + 1rem);
+    margin: 0 -0.5rem;
+    height: 180px;
+  }
 `;
 
 const InfoShell = styled.div`
-  width: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 0 1.5rem 5rem;
+  width: 100vw;
+  max-width: 100vw;
   position: relative;
+  left: 50%;
+  margin: 0 0 0 -50vw;
+  padding: 0 clamp(1rem, 3vw, 3rem) 5rem;
   box-sizing: border-box;
   @media (max-width: 860px) {
-    padding: 0 0 4rem;
     width: 100%;
+    max-width: 100%;
+    left: 0;
+    margin: 0;
+    padding: 0 0 4rem;
   }
 `;
 
 const InfoGrid = styled.div`
   display: grid;
-  grid-template-columns: 230px 1fr;
-  gap: 1.5rem;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 1rem;
   margin-top: -110px;
   position: relative;
   z-index: 2;
   @media (max-width: 860px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     margin-top: 0;
     gap: 0;
   }
 `;
+
+// Generic sized block used across the Info skeleton
+const InfoBlock = styled(BaseSkeleton)<{
+  $w?: string;
+  $h?: string;
+  $r?: string;
+  $ratio?: string;
+}>`
+  width: ${({ $w }) => $w ?? '100%'};
+  max-width: 100%;
+  ${({ $h }) => ($h ? `height: ${$h};` : '')}
+  ${({ $ratio }) => ($ratio ? `aspect-ratio: ${$ratio};` : '')}
+  border-radius: ${({ $r }) => $r ?? '6px'};
+  flex-shrink: 0;
+  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+`;
+
+const InfoRow = styled.div<{ $gap?: string }>`
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: ${({ $gap }) => $gap ?? '0.4rem'};
+`;
+
+// ── Left column (desktop) ──
 
 const InfoLeftCol = styled.div`
   display: flex;
@@ -183,26 +235,18 @@ const InfoLeftCol = styled.div`
   @media (max-width: 860px) { display: none; }
 `;
 
-const InfoPosterSkeleton = styled(BaseSkeleton)`
-  width: 100%;
-  aspect-ratio: 2/3;
-  border-radius: 8px;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+const InfoMetaRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #e5e7eb;
+  &:last-child { border-bottom: none; }
+  .dark-mode & { border-bottom: 1px solid var(--global-div-tr); }
 `;
 
-const InfoButtonSkeleton = styled(BaseSkeleton)`
-  width: 100%;
-  height: 2.5rem;
-  border-radius: 6px;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-`;
-
-const InfoMetaRow = styled(BaseSkeleton)`
-  width: 100%;
-  height: 1.1rem;
-  margin: 0.3rem 0;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-`;
+// ── Right column ──
 
 const InfoRightCol = styled.div`
   min-width: 0;
@@ -210,9 +254,13 @@ const InfoRightCol = styled.div`
   flex-direction: column;
   gap: 1.5rem;
   padding: 1.25rem 1.25rem 1.5rem;
-  background: var(--global-div-tr);
-  border: 1px solid var(--global-border);
+  background: #f8f9fa;
+  border: 1px solid #e5e7eb;
   border-radius: 12px;
+  .dark-mode & {
+    background: var(--global-div-tr);
+    border: 1px solid var(--global-border);
+  }
   @media (max-width: 860px) {
     border-radius: 0;
     border-left: none;
@@ -224,56 +272,60 @@ const InfoRightCol = styled.div`
     width: 100%;
     box-sizing: border-box;
   }
+  @media (max-width: 600px) { padding: 0.75rem 0.75rem 1.25rem; }
 `;
 
-const InfoTitleSkeleton = styled(BaseSkeleton)`
-  width: 70%;
-  height: 2.5rem;
-  margin-bottom: 0.5rem;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-  @media (max-width: 600px) { height: 1.8rem; }
-`;
-
-const InfoSubtitleSkeleton = styled(BaseSkeleton)`
-  width: 40%;
-  height: 1.2rem;
-  margin-bottom: 1rem;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-`;
-
-const InfoPillRow = styled.div`
+const InfoDesktopTitle = styled.div`
   display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.5rem;
+  @media (max-width: 860px) { display: none; }
 `;
 
-const InfoPillSkeleton = styled(BaseSkeleton)`
-  width: 60px;
-  height: 1.5rem;
-  border-radius: 99px;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+const InfoMobileActions = styled.div`
+  display: none;
+  @media (max-width: 860px) {
+    display: flex;
+    gap: 0.25rem;
+    align-items: center;
+  }
+`;
+
+const InfoMobileMeta = styled.div`
+  display: none;
+  @media (max-width: 860px) {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.35rem;
+  }
 `;
 
 const InfoTabNav = styled.div`
   display: flex;
-  border-bottom: 1px solid var(--global-border);
-  gap: 0.5rem;
+  gap: 1.5rem;
+  padding: 0.85rem 0.25rem;
+  border-bottom: 1px solid #e5e7eb;
+  .dark-mode & { border-bottom: 1px solid var(--global-border); }
+  @media (max-width: 480px) { gap: 1rem; }
 `;
 
-const InfoTabSkeleton = styled(BaseSkeleton)`
-  width: 80px;
-  height: 2rem;
-  margin-bottom: -1px;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-`;
-
-const InfoContentSkeleton = styled(BaseSkeleton)`
+const InfoTrailerSkeleton = styled(BaseSkeleton)`
+  position: relative;
+  padding-bottom: 56.25%;
+  height: 0;
   width: 100%;
-  height: 200px;
-  margin-top: 1rem;
+  border-radius: 8px;
   animation: ${SkeletonPulse} 2s ease-in-out infinite;
 `;
+
+const InfoDescription = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 1.25rem;
+`;
+
+// ── Mobile header ──
 
 const InfoMobileHeader = styled.div`
   display: none;
@@ -288,32 +340,60 @@ const InfoMobileHeader = styled.div`
   }
 `;
 
-const InfoMobilePoster = styled(BaseSkeleton)`
-  width: 100px;
-  height: 140px;
-  border-radius: 8px;
-  flex-shrink: 0;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
-`;
-
 const InfoMobileTitleBlock = styled.div`
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.4rem;
+  padding-bottom: 0.25rem;
 `;
 
-const InfoMobileTitle = styled(BaseSkeleton)`
-  width: 80%;
-  height: 1.2rem;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+// ── Recommendations row ──
+
+const InfoSection = styled.div`
+  margin-top: 2.5rem;
+  padding: 2rem 0;
+  border-top: 1px solid #e5e7eb;
+  position: relative;
+  z-index: 2;
+  .dark-mode & { border-top: 1px solid var(--global-border); }
+  @media (max-width: 860px) {
+    margin-top: 1.75rem;
+    padding: 1.5rem 0.75rem 0;
+    width: 100%;
+    box-sizing: border-box;
+  }
 `;
 
-const InfoMobileSubtitle = styled(BaseSkeleton)`
-  width: 50%;
-  height: 0.9rem;
-  animation: ${SkeletonPulse} 2s ease-in-out infinite;
+const InfoSectionHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+`;
+
+const InfoScrollBtns = styled.div`
+  display: flex;
+  gap: 0.4rem;
+  @media (max-width: 860px) { display: none; }
+`;
+
+// Same card widths as StyledCardGrid in Info.tsx (150 / 140 / 120px)
+const InfoCardRow = styled.div`
+  display: flex;
+  gap: 0.75rem;
+  overflow: hidden;
+  padding-bottom: 0.4rem;
+  & > * { flex: 0 0 auto; width: 150px; }
+  @media (max-width: 800px) { gap: 0.6rem; & > * { width: 140px; } }
+  @media (max-width: 450px) { gap: 0.5rem; & > * { width: 120px; } }
+`;
+
+const InfoCardSkeleton = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 `;
 
 // ─── Studio Page Skeletons ───────────────────────────────────────────────────
@@ -446,45 +526,111 @@ export const SkeletonStudio = React.memo(() => (
 ));
 
 export const SkeletonInfo = React.memo(() => (
-  <InfoSkeletonContainer>
+  <InfoSkeletonContainer aria-busy="true" aria-label="Loading">
     <InfoHeroSkeleton />
     <InfoShell>
+      {/* Mobile header */}
       <InfoMobileHeader>
-        <InfoMobilePoster />
+        <InfoBlock $w="100px" $ratio="2 / 3" $r="8px" />
         <InfoMobileTitleBlock>
-          <InfoMobileTitle />
-          <InfoMobileSubtitle />
-          <InfoPillRow>
-            <InfoPillSkeleton />
-            <InfoPillSkeleton />
-          </InfoPillRow>
+          <InfoBlock $w="40%" $h="10px" />
+          <InfoBlock $w="90%" $h="18px" />
+          <InfoBlock $w="55%" $h="12px" />
+          <InfoRow>
+            <InfoBlock $w="64px" $h="20px" $r="99px" />
+            <InfoBlock $w="56px" $h="20px" $r="99px" />
+            <InfoBlock $w="60px" $h="20px" $r="99px" />
+          </InfoRow>
         </InfoMobileTitleBlock>
       </InfoMobileHeader>
+
       <InfoGrid>
+        {/* Left column — desktop poster + sidebar */}
         <InfoLeftCol>
-          <InfoPosterSkeleton />
-          <InfoButtonSkeleton />
-          <InfoMetaRow style={{ width: '60%' }} />
-          <InfoMetaRow style={{ width: '80%' }} />
-          <InfoMetaRow style={{ width: '70%' }} />
-          <InfoMetaRow style={{ width: '50%' }} />
+          <InfoBlock $ratio="2 / 3" $r="8px" />
+          <InfoBlock $h="42px" />
+          <InfoRow $gap="0.25rem" style={{ flexWrap: 'nowrap' }}>
+            <InfoBlock $h="36px" />
+            <InfoBlock $h="36px" />
+          </InfoRow>
+          <InfoBlock $h="36px" />
+          <div>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <InfoMetaRow key={i}>
+                <InfoBlock $w="38%" $h="12px" />
+                <InfoBlock $w="28%" $h="12px" />
+              </InfoMetaRow>
+            ))}
+          </div>
         </InfoLeftCol>
+
+        {/* Right column */}
         <InfoRightCol>
-          <InfoTitleSkeleton />
-          <InfoSubtitleSkeleton />
-          <InfoPillRow>
-            <InfoPillSkeleton />
-            <InfoPillSkeleton />
-            <InfoPillSkeleton />
-          </InfoPillRow>
+          {/* Mobile action bar + meta grid */}
+          <InfoMobileActions>
+            <InfoBlock $h="40px" />
+            <InfoBlock $w="44px" $h="40px" />
+            <InfoBlock $w="44px" $h="40px" />
+          </InfoMobileActions>
+          <InfoMobileMeta>
+            {[0, 1, 2, 3, 4, 5].map(i => (
+              <InfoBlock key={i} $h="40px" />
+            ))}
+          </InfoMobileMeta>
+
+          {/* Desktop title block */}
+          <InfoDesktopTitle>
+            <InfoBlock $w="110px" $h="11px" />
+            <InfoBlock $w="55%" $h="30px" />
+            <InfoBlock $w="28%" $h="14px" />
+            <InfoRow style={{ marginTop: '0.4rem' }}>
+              <InfoBlock $w="82px" $h="22px" $r="99px" />
+              <InfoBlock $w="86px" $h="22px" $r="99px" />
+              <InfoBlock $w="72px" $h="22px" $r="99px" />
+              <InfoBlock $w="64px" $h="22px" $r="99px" />
+              <InfoBlock $w="78px" $h="22px" $r="99px" />
+            </InfoRow>
+          </InfoDesktopTitle>
+
+          {/* Tabs */}
           <InfoTabNav>
-            <InfoTabSkeleton />
-            <InfoTabSkeleton />
-            <InfoTabSkeleton />
+            <InfoBlock $w="78px" $h="14px" />
+            <InfoBlock $w="82px" $h="14px" />
+            <InfoBlock $w="72px" $h="14px" />
           </InfoTabNav>
-          <InfoContentSkeleton />
+
+          {/* Overview: trailer + description */}
+          <div>
+            <InfoTrailerSkeleton />
+            <InfoDescription>
+              <InfoBlock $h="13px" />
+              <InfoBlock $h="13px" />
+              <InfoBlock $h="13px" />
+              <InfoBlock $w="70%" $h="13px" />
+            </InfoDescription>
+          </div>
         </InfoRightCol>
       </InfoGrid>
+
+      {/* You might also like */}
+      <InfoSection>
+        <InfoSectionHeader>
+          <InfoBlock $w="150px" $h="11px" />
+          <InfoScrollBtns>
+            <InfoBlock $w="28px" $h="28px" />
+            <InfoBlock $w="28px" $h="28px" />
+          </InfoScrollBtns>
+        </InfoSectionHeader>
+        <InfoCardRow>
+          {Array.from({ length: 14 }, (_, i) => (
+            <InfoCardSkeleton key={i}>
+              <InfoBlock $ratio="2 / 3" />
+              <InfoBlock $w="85%" $h="12px" />
+              <InfoBlock $w="60%" $h="10px" />
+            </InfoCardSkeleton>
+          ))}
+        </InfoCardRow>
+      </InfoSection>
     </InfoShell>
   </InfoSkeletonContainer>
 ));

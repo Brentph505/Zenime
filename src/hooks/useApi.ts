@@ -1,6 +1,53 @@
 import axios from 'axios';
 import { cacheManager } from '../lib/caching';
-import { proxyDirectMediaUrls } from '../lib/streamUrlProxy';
+import {
+  DEFAULT_ANIME_PROVIDERS,
+  HENTAI_ANIME_PROVIDERS as hentaiAnimeProviders,
+  isHentaiAnimeProvider as isHentaiProvider,
+  proxyAnimeStreamingResponse,
+} from '../lib/animePlayback';
+import { normalizeMangaProvider as normalizeMangaProviderForApi } from '../lib/mangaProviders';
+
+export {
+  ANIME_PROVIDER_PRIORITY,
+  ANIME_PROVIDERS,
+  DEFAULT_ANIME_PROVIDERS,
+  WATCH_ANIME_PROVIDERS,
+  HLS_FIRST_PROVIDERS,
+  buildEmbeddedPlayerUrl,
+  buildKaaSubtitleProxyUrl,
+  buildM3U8ProxyUrl,
+  buildXanimeSubtitleProxyUrl,
+  createAnimeServerLabeler,
+  getDirectMediaType,
+  isDirectMediaUrl,
+  isEmbeddedPlaybackServer,
+  proxyHentaiMp4Url,
+  proxyAnimeMediaUrl,
+  proxyHstreamSubtitles,
+  proxyKaaSubtitles,
+  proxyM3U8Sources,
+  proxyXanimeSubtitles,
+  resolveProviderReferer,
+} from '../lib/animePlayback';
+export {
+  buildHentaiImageProxyUrl,
+  buildImageProxyUrl,
+  buildMangaImageProxyUrl,
+  getMangaProviderFallbackOrder,
+  HENTAI_MANGA_PROVIDERS,
+  isHentaiMangaProvider,
+  isMangaCatalogProvider,
+  MANGA_CATALOG_PROVIDERS,
+  MANGA_PROVIDERS,
+  normalizeMangaProvider,
+} from '../lib/mangaProviders';
+export type { HentaiMangaProvider, MangaCatalogProvider, MangaProvider } from '../lib/mangaProviders';
+export {
+  hentaiAnimeProviders as HENTAI_ANIME_PROVIDERS,
+  isHentaiProvider as isHentaiAnimeProvider,
+  proxyAnimeStreamingResponse,
+};
 
 // Utility function to ensure URL ends with a slash
 function ensureUrlEndsWithSlash(url: string): string {
@@ -21,43 +68,6 @@ if (PROXY_URL) {
 
 const API_KEY = import.meta.env.VITE_API_KEY as string;
 
-const PROVIDER_REFERER_MAP: Record<string, string> = {
-  kickassanime: 'https://krussdomi.com',
-  animeparadies: 'https://stream.animeparadise.moe',
-  '4animo': 'https://4anime.to',
-  reanime: 'https://reanime.to',
-  xanime: 'https://xanime',
-  anidb: 'https://anidb.net',
-  anikoto: 'https://anikoto.to',
-  animepahe: 'https://animepahe.com',
-};
-
-function resolveProviderReferer(provider?: string, fallback?: string): string {
-  const normalized = provider?.toLowerCase();
-  if (normalized && PROVIDER_REFERER_MAP[normalized]) {
-    return PROVIDER_REFERER_MAP[normalized];
-  }
-
-  if (fallback && /^https?:\/\//i.test(fallback)) {
-    return fallback;
-  }
-
-  return 'https://krussdomi.com';
-}
-
-// M3U8 Proxy configuration
-const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
-const M3U8_PROXY_URL_2 = import.meta.env.VITE_M3U8_PROXY_URL_2 as string;
-const M3U8_PROXY_URL_ANIDB = import.meta.env.VITE_M3U8_PROXY_URL_ANIDB as string;
-const M3U8_PROXY_URL_XANIME = import.meta.env.VITE_M3U8_PROXY_URL_XANIME as string;
-
-// Kickassanime subtitle/SRT proxy (CORS workaround for KAA subtitle files)
-const KAA_SUBTITLE_PROXY_URL = import.meta.env.VITE_KICKASSANIME_SUBTITLE_PROXY as string;
-
-// Image Proxy configuration (Cloudflare Worker)
-const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
-const HENTAI_IMAGE_PROXY_URL = import.meta.env.VITE_HENTAI_IMAGE_PROXY_URL as string;
-
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
 
@@ -75,19 +85,6 @@ const GENRE_QUERY = `
 // ─────────────────────────────────────────────────────────────────────────────
 
 type AniListSeason = 'WINTER' | 'SPRING' | 'SUMMER' | 'FALL';
-
-export const HENTAI_ANIME_PROVIDERS = [
-  'hentaimama',
-  'watchhentai',
-  'hstream',
-  'hahomoe',
-] as const;
-
-export function isHentaiAnimeProvider(provider: string): boolean {
-  return HENTAI_ANIME_PROVIDERS.includes(
-    provider as (typeof HENTAI_ANIME_PROVIDERS)[number],
-  );
-}
 
 /**
  * Maps a calendar month (1–12) to an AniList season.
@@ -253,23 +250,6 @@ function normalizeStreamingResponse(payload: any): any {
   return payload;
 }
 
-function normalizeMangaProvider(provider: string): string {
-  if (provider === 'hentairead') return 'hentaireadio';
-  return provider;
-}
-
-export type MangaProvider =
-  | 'mangadex'
-  | 'atsumaru'
-  | 'mangahere'
-  | 'mangakakalot'
-  | 'mangapark'
-  | 'mangapill'
-  | 'mangareader'
-  | 'mangasee123'
-  | 'hentaireadio'
-  | 'hentai20'; // Added hentaireadio / hentai20 support
-
 interface FetchOptions {
   type?: string;
   season?: string;
@@ -279,326 +259,6 @@ interface FetchOptions {
   id?: string;
   year?: string;
   status?: string;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// M3U8 Proxy Utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-const isValidUrl = (url: string): boolean => {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-/** Detects direct media even when nested inside one or more `?url=` proxies. */
-export function getDirectMediaType(url: string): 'hls' | 'mp4' | 'webm' | null {
-  let candidate = url;
-
-  for (let depth = 0; candidate && depth < 4; depth++) {
-    if (/\.m3u8(?:[?#]|$)|\/m3u8(?:[?#]|$)|\/manifest\//i.test(candidate)) return 'hls';
-    if (/\.mp4(?:[?#]|$)/i.test(candidate)) return 'mp4';
-    if (/\.webm(?:[?#]|$)/i.test(candidate)) return 'webm';
-
-    try {
-      const nestedUrl = new URL(candidate).searchParams.get('url');
-      if (!nestedUrl || nestedUrl === candidate) return null;
-      candidate = nestedUrl;
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-}
-
-/** True when the URL points at direct media (not an embed HTML page). */
-export function isDirectMediaUrl(url: string): boolean {
-  return getDirectMediaType(url) !== null;
-}
-
-/** Providers that return native m3u8 streams (HLS player), not iframe embeds. */
-export const HLS_FIRST_PROVIDERS = new Set(['animeparadies', 'kickassanime', 'animepahe', 'xanime', 'anidb']);
-
-/**
- * Whether a server entry should open in the iframe player vs the HLS player.
- * anikoto/reanime/4animo use sub/dub/hsub embed pages; kickassanime/animepahe/anidb use m3u8.
- */
-export function isEmbeddedPlaybackServer(
-  url: string,
-  type?: string,
-  provider?: string,
-): boolean {
-  if (isDirectMediaUrl(url)) return false;
-
-  const normalizedType = (type || '').toLowerCase();
-  const p = (provider || '').toLowerCase();
-
-  if (HLS_FIRST_PROVIDERS.has(p)) {
-    return (
-      url.includes('iframe') ||
-      url.includes('kwik.cx') ||
-      normalizedType === 'iframe'
-    );
-  }
-
-  if (p === 'anikoto' || p === 'reanime' || p === '4animo') {
-    return (
-      url.includes('iframe') ||
-      url.includes('kwik.cx') ||
-      url.includes('flixcloud') ||
-      normalizedType === 'iframe' ||
-      normalizedType === 'sub' ||
-      normalizedType === 'dub' ||
-      normalizedType === 'hsub'
-    );
-  }
-
-  if (p === 'anidb') {
-    return url.includes('/embed/') || normalizedType === 'iframe';
-  }
-
-  return (
-    url.includes('iframe') ||
-    url.includes('kwik.cx') ||
-    url.includes('flixcloud') ||
-    normalizedType === 'iframe'
-  );
-}
-
-/**
- * Builds a proxied m3u8 URL with spoofed Referer/Origin headers.
- */
-export function buildM3U8ProxyUrl(
-  sourceUrl: string,
-  referer: string,
-  proxyUrl?: string,
-  includeHeaders: boolean = true,
-  provider?: string,
-): string {
-  const selectedProxy = proxyUrl || M3U8_PROXY_URL;
-
-  if (!selectedProxy) {
-    console.warn('⚠️ No M3U8 proxy is configured. Returning original URL.');
-    return sourceUrl;
-  }
-
-  if (sourceUrl.includes(selectedProxy)) {
-    return sourceUrl;
-  }
-
-  if (!isValidUrl(sourceUrl)) {
-    console.warn(`⚠️ Invalid source URL. Returning as-is.`);
-    return sourceUrl;
-  }
-
-  const proxyBase = selectedProxy.replace(/\/$/, '');
-  let proxied = `${proxyBase}/m3u8-proxy?url=${encodeURIComponent(sourceUrl)}`;
-
-  if (includeHeaders) {
-    const resolvedReferer = resolveProviderReferer(provider, referer);
-    const origin = (() => {
-      try {
-        return new URL(resolvedReferer).origin;
-      } catch {
-        return new URL('https://krussdomi.com').origin;
-      }
-    })();
-    const proxyHeaders = JSON.stringify({
-      Referer: resolvedReferer,
-      Origin: origin,
-    });
-    proxied += `&headers=${encodeURIComponent(proxyHeaders)}`;
-  }
-
-  return proxied;
-}
-
-/**
- * Builds a proxied subtitle URL (VTT / SRT / ASS) for KAA subtitle files.
- * Uses a simple `?url=` passthrough proxy to avoid CORS restrictions.
- */
-function buildSubtitleProxyUrl(subtitleUrl: string, proxy: string, provider: string): string {
-  if (!proxy) {
-    console.warn(`⚠️ No ${provider} subtitle proxy configured. Returning original URL.`);
-    return subtitleUrl;
-  }
-
-  if (!isValidUrl(subtitleUrl)) {
-    return subtitleUrl;
-  }
-
-  const proxyBase = proxy.replace(/\/+$/, '');
-
-  // Avoid double-proxying if the subtitle URL is already proxied.
-  if (subtitleUrl.includes(proxyBase)) {
-    return subtitleUrl;
-  }
-
-  const hasSubtitlePath = /\/subtitle$/i.test(proxyBase);
-  const separator = proxyBase.includes('?') ? '&' : '?';
-  const pathSuffix = hasSubtitlePath ? '' : '/subtitle';
-
-  return `${proxyBase}${pathSuffix}${separator}url=${encodeURIComponent(subtitleUrl)}`;
-}
-
-export function buildKaaSubtitleProxyUrl(subtitleUrl: string): string {
-  return buildSubtitleProxyUrl(
-    subtitleUrl,
-    KAA_SUBTITLE_PROXY_URL,
-    'KAA (VITE_KICKASSANIME_SUBTITLE_PROXY)',
-  );
-}
-
-export function buildXanimeSubtitleProxyUrl(subtitleUrl: string): string {
-  return buildSubtitleProxyUrl(
-    subtitleUrl,
-    M3U8_PROXY_URL_XANIME,
-    'Xanime (VITE_M3U8_PROXY_URL_XANIME)',
-  );
-}
-
-/**
- * Rewrites all subtitle URLs in a subtitles array through the KAA subtitle proxy.
- */
-export function proxyKaaSubtitles(
-  subtitles: Array<{ url: string; lang: string }>,
-): Array<{ url: string; lang: string }> {
-  if (!KAA_SUBTITLE_PROXY_URL) return subtitles;
-  return subtitles.map((sub) => ({
-    ...sub,
-    url: buildKaaSubtitleProxyUrl(sub.url),
-  }));
-}
-
-export function proxyXanimeSubtitles(
-  subtitles: Array<{ url: string; lang: string }>,
-): Array<{ url: string; lang: string }> {
-  if (!M3U8_PROXY_URL_XANIME) return subtitles;
-  return subtitles.map((sub) => ({
-    ...sub,
-    url: buildXanimeSubtitleProxyUrl(sub.url),
-  }));
-}
-
-export function proxyHstreamSubtitles(
-  subtitles: Array<{ url: string; lang: string }>,
-): Array<{ url: string; lang: string }> {
-  if (!KAA_SUBTITLE_PROXY_URL) return subtitles;
-
-  return subtitles.map((subtitle) => {
-    let sourceUrl = subtitle.url;
-    try {
-      sourceUrl = new URL(subtitle.url).searchParams.get('url') || subtitle.url;
-    } catch {
-      // Keep the original URL when it is not a wrapped proxy URL.
-    }
-
-    return {
-      ...subtitle,
-      url: buildKaaSubtitleProxyUrl(sourceUrl),
-    };
-  });
-}
-
-/**
- * Processes a sources array and replaces raw .m3u8 URLs with proxied ones.
- */
-export function proxyM3U8Sources(
-  sources: any[],
-  referer: string,
-  proxyUrl?: string,
-  includeHeaders: boolean = true,
-  provider?: string,
-): any[] {
-  const selectedProxy = proxyUrl || M3U8_PROXY_URL;
-  if (!selectedProxy) return sources;
-
-  return sources.map((source) => {
-    if (source.url?.endsWith('.m3u8') && isValidUrl(source.url)) {
-      if (source.url.includes(selectedProxy)) {
-        return source;
-      }
-      return {
-        ...source,
-        url: buildM3U8ProxyUrl(source.url, referer, proxyUrl, includeHeaders, provider),
-      };
-    }
-    return source;
-  });
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Image Proxy Utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Builds a proxied image URL using the Cloudflare Worker.
- */
-export function buildImageProxyUrl(
-  imageUrl: string,
-  provider: string = 'mangahere',
-  referer?: string,
-): string {
-  if (!IMAGE_PROXY_URL) {
-    console.warn('⚠️ No image proxy is configured. Returning original URL.');
-    return imageUrl;
-  }
-
-  if (imageUrl.includes(IMAGE_PROXY_URL)) {
-    return imageUrl;
-  }
-
-  if (!isValidUrl(imageUrl)) {
-    console.warn(`⚠️ Invalid image URL. Returning as-is.`);
-    return imageUrl;
-  }
-
-  const proxyBase = IMAGE_PROXY_URL.replace(/\/$/, '');
-  let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=${encodeURIComponent(provider)}`;
-
-  if (referer) {
-    proxied += `&referer=${encodeURIComponent(referer)}`;
-  }
-
-  return proxied;
-}
-
-/**
- * Build image proxy URL specifically for hentaireadio using a separate proxy endpoint.
- * Falls back to direct URL if no hentai proxy is configured.
- */
-export function buildHentaiImageProxyUrl(
-  imageUrl: string,
-  provider: 'hentaireadio' | 'hentai20' = 'hentaireadio',
-  referer?: string,
-): string {
-  // If no dedicated hentai proxy, return the image URL directly
-  if (!HENTAI_IMAGE_PROXY_URL) {
-    console.warn('⚠️ No dedicated hentai image proxy configured. Returning original URL.');
-    return imageUrl;
-  }
-
-  if (imageUrl.includes(HENTAI_IMAGE_PROXY_URL)) {
-    return imageUrl;
-  }
-
-  if (!isValidUrl(imageUrl)) {
-    console.warn(`⚠️ Invalid image URL. Returning as-is.`);
-    return imageUrl;
-  }
-
-  const proxyBase = HENTAI_IMAGE_PROXY_URL.replace(/\/$/, '');
-  let proxied = `${proxyBase}/?url=${encodeURIComponent(imageUrl)}&provider=${encodeURIComponent(provider)}`;
-
-  if (referer) {
-    proxied += `&referer=${encodeURIComponent(referer)}`;
-  }
-
-  return proxied;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -712,11 +372,65 @@ export async function fetchAniListMediaBase(animeId: string): Promise<any> {
   }
 }
 
+export interface AniListNextAiringEpisode {
+  airingAt: number;
+  episode: number;
+  timeUntilAiring: number;
+}
+
+const NEXT_AIRING_EPISODE_QUERY = `
+  query ($id: Int!) {
+    Media(id: $id, type: ANIME) {
+      nextAiringEpisode {
+        airingAt
+        episode
+        timeUntilAiring
+      }
+    }
+  }
+`;
+
+export async function fetchNextAiringEpisode(
+  animeId: string,
+): Promise<AniListNextAiringEpisode | null> {
+  const id = Number.parseInt(animeId, 10);
+  if (!Number.isFinite(id)) return null;
+
+  try {
+    const response = await fetch(ANILIST_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        query: NEXT_AIRING_EPISODE_QUERY,
+        variables: { id },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`AniList GraphQL error: HTTP ${response.status}`);
+    }
+
+    const json = await response.json();
+    if (json.errors) {
+      throw new Error(json.errors[0]?.message ?? 'AniList GraphQL error');
+    }
+
+    return json?.data?.Media?.nextAiringEpisode ?? null;
+  } catch (error) {
+    console.warn(`⚠️ Failed to fetch next airing episode for ${animeId}:`, error);
+    return null;
+  }
+}
+
 async function fetchFromProxy(
   url: string,
   cacheKeyName: string,
   cacheKey: string,
   requestTimeout?: number,
+  cacheValueTransform?: (data: any) => any,
 ) {
   try {
     const { data } = await cacheManager.fetchWithCache(
@@ -747,11 +461,13 @@ async function fetchFromProxy(
           throw new Error('Empty or invalid response data');
         }
 
-        return response.data;
+        return cacheValueTransform
+          ? cacheValueTransform(response.data)
+          : response.data;
       },
     );
 
-    return data;
+    return cacheValueTransform ? cacheValueTransform(data) : data;
   } catch (error) {
     handleError(error, 'data');
     throw error;
@@ -1146,12 +862,21 @@ export async function fetchAnimeData(
   animeId: string,
   provider: string = 'anikoto',
 ) {
+  const stripNextAiringEpisode = (data: any) => {
+    if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+    const cacheSafeData = { ...data };
+    delete cacheSafeData.nextAiringEpisode;
+    return cacheSafeData;
+  };
+
   const attemptFetch = async (prov: string) => {
     const params = new URLSearchParams({ provider: prov });
     const url = `${BASE_URL}meta/anilist/data/${animeId}?${params.toString()}`;
-    const cacheKey = generateCacheKey('animeData-v2', animeId, prov);
-    return await fetchFromProxy(url, 'Data', cacheKey);
+    const cacheKey = generateCacheKey('animeData-v3', animeId, prov);
+    return await fetchFromProxy(url, 'Data', cacheKey, undefined, stripNextAiringEpisode);
   };
+
+  await cacheManager.invalidatePattern('Data', generateCacheKey('animeData-v2', animeId));
 
   let finalProvider = provider || 'anikoto';
 
@@ -1191,7 +916,7 @@ export async function fetchAnimeData(
   // ─── Step 2: route to the right provider chain ────────────────────────────
   if (detectedHentai) {
     // Hentai providers stay isolated from the regular anime fallback chain.
-    if (isHentaiAnimeProvider(finalProvider)) {
+    if (isHentaiProvider(finalProvider)) {
       try {
         providerData = await attemptFetch(finalProvider);
         if (!isEmpty(providerData)) return mergeBaseData(providerData);
@@ -1200,7 +925,7 @@ export async function fetchAnimeData(
       }
     }
 
-    for (const prov of HENTAI_ANIME_PROVIDERS) {
+    for (const prov of hentaiAnimeProviders) {
       if (prov === finalProvider) continue; // already tried
       try {
         console.log(`⚠️ Trying hentai provider: ${prov}...`);
@@ -1305,11 +1030,11 @@ export async function fetchAnimeInfo(
     }
     const enrichedData = mergeInfoDescription(data);
     isHentai = enrichedData?.genres?.some((g: string) => g.toLowerCase() === 'hentai');
-    if (isHentai && !isHentaiAnimeProvider(currentProv)) {
+    if (isHentai && !isHentaiProvider(currentProv)) {
       console.log(`⚠️ Anime is Hentai, switching provider to watchhentai...`);
-      return mergeInfoDescription(await attemptFetch(HENTAI_ANIME_PROVIDERS[0]));
+      return mergeInfoDescription(await attemptFetch(hentaiAnimeProviders[0]));
     }
-    if (!isHentai && isHentaiAnimeProvider(currentProv)) {
+    if (!isHentai && isHentaiProvider(currentProv)) {
       console.log(`⚠️ Anime is NOT Hentai, switching provider to kickassanime...`);
       return mergeInfoDescription(await attemptFetch('kickassanime'));
     }
@@ -1328,7 +1053,7 @@ export async function fetchAnimeInfo(
   }
 
   if (isHentai) {
-    for (const hentaiProvider of HENTAI_ANIME_PROVIDERS) {
+    for (const hentaiProvider of hentaiAnimeProviders) {
       if (hentaiProvider === finalProvider) continue;
       try {
         console.log(`⚠️ No info from ${finalProvider}, trying ${hentaiProvider}...`);
@@ -1346,9 +1071,9 @@ export async function fetchAnimeInfo(
     return {};
   }
 
-  const canTryKickassanime = finalProvider !== 'kickassanime' && !isHentaiAnimeProvider(finalProvider);
-  const canTryAnimePahe = finalProvider !== 'animepahe' && !isHentaiAnimeProvider(finalProvider);
-  const canTryReanime = finalProvider !== 'reanime' && !isHentaiAnimeProvider(finalProvider);
+  const canTryKickassanime = finalProvider !== 'kickassanime' && !isHentaiProvider(finalProvider);
+  const canTryAnimePahe = finalProvider !== 'animepahe' && !isHentaiProvider(finalProvider);
+  const canTryReanime = finalProvider !== 'reanime' && !isHentaiProvider(finalProvider);
 
   if (canTryReanime) {
     try {
@@ -1397,7 +1122,7 @@ export async function fetchMangaInfo(
   mangaId: string,
   provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
 ): Promise<any> {
-  const finalProvider = normalizeMangaProvider(provider || 'mangahere');
+  const finalProvider = normalizeMangaProviderForApi(provider || 'mangahere');
   const params = new URLSearchParams({ provider: finalProvider });
   const url = `${BASE_URL}meta/anilist-manga/info/${mangaId}?${params.toString()}`;
   const cacheKey = generateCacheKey('mangaInfo', mangaId, finalProvider);
@@ -1423,7 +1148,7 @@ export async function fetchMangaRead(
   chapterId: string,
   provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'hentaireadio' | 'hentai20' = 'mangahere',
 ): Promise<MangaReadPage[]> {
-  const finalProvider = normalizeMangaProvider(provider || 'mangahere');
+  const finalProvider = normalizeMangaProviderForApi(provider || 'mangahere');
   const params = new URLSearchParams({ chapterId, provider: finalProvider });
   const url = `${BASE_URL}meta/anilist-manga/read?${buildQueryString(params)}`;
   const cacheKey = generateCacheKey('mangaRead', chapterId, finalProvider);
@@ -1448,10 +1173,10 @@ export async function fetchAnimeEpisodes(
   dub: boolean = false,
 ) {
   const finalProvider = provider || 'anikoto';
-  const isHentaiProvider = isHentaiAnimeProvider(finalProvider);
-  const canTryKickassanime = !isHentaiProvider && finalProvider !== 'kickassanime';
-  const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
-  const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
+  const isHentaiProviderForRequest = isHentaiProvider(finalProvider);
+  const canTryKickassanime = !isHentaiProviderForRequest && finalProvider !== 'kickassanime';
+  const canTryAnimePahe = !isHentaiProviderForRequest && finalProvider !== 'animepahe';
+  const canTryReanime = !isHentaiProviderForRequest && finalProvider !== 'reanime';
   const params = new URLSearchParams({
     provider: finalProvider,
     dub: dub ? 'true' : 'false',
@@ -1705,9 +1430,9 @@ export async function fetchAnimeStreamingLinks(
   requestTimeout?: number,
 ) {
   const finalProvider = provider || 'kickassanime';
-  const isHentaiProvider = isHentaiAnimeProvider(finalProvider);
-  const canTryAnimePahe = !isHentaiProvider && finalProvider !== 'animepahe';
-  const canTryReanime = !isHentaiProvider && finalProvider !== 'reanime';
+  const isHentaiProviderForRequest = isHentaiProvider(finalProvider);
+  const canTryAnimePahe = !isHentaiProviderForRequest && finalProvider !== 'animepahe';
+  const canTryReanime = !isHentaiProviderForRequest && finalProvider !== 'reanime';
   const params = new URLSearchParams({ episodeId, provider: finalProvider });
   const url = `${BASE_URL}meta/anilist/watch?${params.toString()}`;
   const cacheKey = generateCacheKey(
@@ -1717,7 +1442,7 @@ export async function fetchAnimeStreamingLinks(
     server || '',
   );
   const timeoutToUse = requestTimeout ?? (
-    isHentaiProvider
+    isHentaiProviderForRequest
       ? 60000
       : 30000
   );
@@ -1801,120 +1526,11 @@ export async function fetchAnimeStreamingLinksProxied(
 ) {
   const finalProvider = provider || 'kickassanime';
   const requestTimeout =
-    isHentaiAnimeProvider(finalProvider)
+    isHentaiProvider(finalProvider)
       ? 60000
       : 30000;
-  let data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
-
-  const proxyUrl = finalProvider === 'reanime'
-    ? M3U8_PROXY_URL_2 || M3U8_PROXY_URL
-    : finalProvider === 'anidb'
-      ? M3U8_PROXY_URL_ANIDB || M3U8_PROXY_URL
-      : finalProvider === 'animeparadies'
-        ? M3U8_PROXY_URL
-      : finalProvider === 'xanime'
-        ? M3U8_PROXY_URL_XANIME || M3U8_PROXY_URL
-      : M3U8_PROXY_URL;
-
-  if (finalProvider === 'hstream' && Array.isArray(data?.subtitles)) {
-    const seenLanguages = new Set<string>();
-    const uniqueSubtitles = data.subtitles.filter((subtitle: { lang?: string }) => {
-      const language = subtitle.lang?.trim().toLowerCase();
-      if (!language) return true;
-      if (seenLanguages.has(language)) return false;
-      seenLanguages.add(language);
-      return true;
-    });
-    data.subtitles = proxyHstreamSubtitles(uniqueSubtitles);
-  }
-
-  if (finalProvider === 'watchhentai') {
-    return normalizeStreamingResponse(data);
-  }
-
-  if (!proxyUrl) {
-    console.warn('⚠️ M3U8 proxy skipped: missing proxy configuration.');
-    return normalizeStreamingResponse(data);
-  }
-
-  if (finalProvider === 'reanime' && !M3U8_PROXY_URL_2) {
-    console.warn(
-      `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_2 is not set.`,
-    );
-  }
-
-  if (finalProvider === 'anidb' && !M3U8_PROXY_URL_ANIDB) {
-    console.warn(
-      `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_ANIDB is not set.`,
-    );
-  }
-
-  if (finalProvider === 'xanime' && !M3U8_PROXY_URL_XANIME) {
-    console.warn(
-      `⚠️ ${finalProvider} is using the fallback M3U8 proxy because VITE_M3U8_PROXY_URL_XANIME is not set.`,
-    );
-  }
-
-  const REANIME_REFERER = 'https://reanime.to';
-  const providerReferer = resolveProviderReferer(finalProvider, referer || REANIME_REFERER);
-
-  let serverUrl = providerReferer;
-  if (Array.isArray(data?.servers) && data.servers.length > 0) {
-    const preferredMatch =
-      (server &&
-        data.servers.find(
-          (s: any) =>
-            s.name?.toLowerCase() === server.toLowerCase() &&
-            (finalProvider === 'kickassanime' ? s.url?.includes('kickassanime') || s.name?.toLowerCase().includes('kaa') : true),
-        )) ||
-      data.servers.find((s: any) => s.url && s.url.startsWith('http'));
-
-    if (preferredMatch?.url) {
-      serverUrl = preferredMatch.url;
-    }
-  }
-
-  if (!serverUrl) {
-    console.warn('⚠️ M3U8 proxy skipped: no server URL available.');
-    return data;
-  }
-
-  const refererForProvider = resolveProviderReferer(finalProvider, serverUrl);
-  console.log(
-    `[fetchAnimeStreamingLinksProxied] Using referer/origin for provider=${finalProvider}: ${refererForProvider}`,
-  );
-
-  if (Array.isArray(data?.sources)) {
-    data.sources = proxyM3U8Sources(
-      data.sources,
-      refererForProvider,
-      proxyUrl,
-      true,
-      finalProvider,
-    );
-  }
-
-  if (finalProvider === 'animeparadies' || finalProvider === 'kickassanime' || finalProvider === 'reanime' || finalProvider === 'xanime' || finalProvider === 'anidb') {
-    data = proxyDirectMediaUrls(
-      data,
-      finalProvider,
-      refererForProvider,
-      (sourceUrl: string, referer: string) =>
-        buildM3U8ProxyUrl(sourceUrl, referer, proxyUrl, true, finalProvider),
-    );
-  }
-
-  if (finalProvider === 'kickassanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
-    console.log('[fetchAnimeStreamingLinksProxied] Proxying KAA subtitles:', data.subtitles.length);
-    data.subtitles = proxyKaaSubtitles(data.subtitles);
-  }
-
-  if (finalProvider === 'xanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
-    console.log('[fetchAnimeStreamingLinksProxied] Proxying Xanime subtitles:', data.subtitles.length);
-    data.subtitles = proxyXanimeSubtitles(data.subtitles);
-  }
-
-  return data;
+  const data = await fetchAnimeStreamingLinks(episodeId, finalProvider, server, requestTimeout);
+  return proxyAnimeStreamingResponse(data, finalProvider, server, referer);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2106,7 +1722,7 @@ function extractEpisodeNumber(episodeId: string, index: number): string {
 export async function fetchEpisodesFromMultipleProviders(
   animeId: string,
   isDub: boolean = false,
-  providers: string[] = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  providers: string[] = DEFAULT_ANIME_PROVIDERS,
 ): Promise<MergedEpisode[]> {
   console.log(`🌐 Fetching episodes from multiple providers: ${providers.join(', ')}`);
 
@@ -2190,7 +1806,7 @@ export async function fetchEpisodesFromMultipleProviders(
 
 export async function fetchServersFromMultipleProviders(
   episodesByProvider: Record<string, string>,
-  providers: string[] = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  providers: string[] = DEFAULT_ANIME_PROVIDERS,
 ): Promise<
   Array<{
     provider: string;

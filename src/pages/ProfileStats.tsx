@@ -1381,19 +1381,6 @@ const formatHours = (minutes: number) => {
     : `${Math.round(hours).toLocaleString()}h`;
 };
 
-const formatDuration = (minutes: number) => {
-  if (!minutes) return '0 mins';
-  const totalMinutes = Math.round(minutes);
-  const days = Math.floor(totalMinutes / 1440);
-  const hours = Math.floor((totalMinutes % 1440) / 60);
-  const mins = totalMinutes % 60;
-  const parts: string[] = [];
-  if (days) parts.push(`${days} day${days === 1 ? '' : 's'}`);
-  if (hours) parts.push(`${hours} hour${hours === 1 ? '' : 's'}`);
-  if (!days && mins) parts.push(`${mins} min${mins === 1 ? '' : 's'}`);
-  return parts.length ? parts.join(' ') : '0 mins';
-};
-
 const formatTimeValue = (value: number, mediaType: MediaKind) =>
   mediaType === 'manga' ? `${value.toLocaleString()} ch` : formatHours(value);
 

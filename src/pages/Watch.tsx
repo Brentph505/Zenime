@@ -25,6 +25,7 @@ import {
   MediaSource,
   fetchAnimeData,
   fetchAnimeInfo,
+  fetchNextAiringEpisode,
   fetchAnimeStreamingLinksProxied,
   fetchEpisodesFromMultipleProviders,
   type MergedEpisode,
@@ -35,13 +36,22 @@ import {
   useAuth,
   getDirectMediaType,
   isDirectMediaUrl,
-  isEmbeddedPlaybackServer,
-  HENTAI_ANIME_PROVIDERS,
-  isHentaiAnimeProvider,
+  type AniListNextAiringEpisode,
 } from '../index';
 import { Episode } from '../index';
 import { syncWatchProgress } from '../client/authService';
 import { useSettings } from '../components/Profile/SettingsProvider';
+import {
+  ANIME_PROVIDER_PRIORITY,
+  HENTAI_ANIME_PROVIDERS,
+  WATCH_ANIME_PROVIDERS,
+  buildEmbeddedPlayerUrl as createEmbeddedPlayerUrl,
+  createAnimeServerLabeler,
+  isEmbeddedPlaybackServer,
+  isHentaiAnimeProvider,
+  proxyHentaiMp4Url,
+  proxyAnimeMediaUrl,
+} from '../lib/animePlayback';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -222,7 +232,7 @@ const MAX_CACHE_EPISODES_PER_ANIME = 30;
 // Max number of anime entries kept in the localStorage cache
 const MAX_CACHE_ANIME_ENTRIES = 50;
 
-const PROVIDERS: string[] = ['animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime', 'anidb'];
+const PROVIDERS: string[] = WATCH_ANIME_PROVIDERS;
 
 const EMPTY_PROVIDERS: Record<string, ProviderEpisodeData> = {};
 
@@ -294,6 +304,8 @@ const Watch: React.FC = () => {
 
   // ── Data state ────────────────────────────────────────────────────────────
   const [animeInfo, setAnimeInfo] = useState<any>(null);
+  const [nextAiringEpisode, setNextAiringEpisode] =
+    useState<AniListNextAiringEpisode | null>(null);
   const [loading, setLoading] = useState(true);
   const [episodes, setEpisodes] = useState<WatchEpisode[]>([]);
   const hasFetchedEpisodesRef = useRef(false);
@@ -328,37 +340,30 @@ const Watch: React.FC = () => {
   // ── Embedded player config ────────────────────────────────────────────────
   const EMBEDDED_PLAYER_1 = (import.meta.env.VITE_EMBEDDED_PLAYER_1 as string) || '';
   const hasEmbeddedPlayer = Boolean(EMBEDDED_PLAYER_1?.trim());
-  const HENTAIMAMA_PROXY_URL = (import.meta.env.VITE_PROXY_HENTAIMAMA as string) || '';
-  const WATCHHENTAI_PROXY_URL = (import.meta.env.VITE_PROXY_WATCHHENTAI as string) || '';
 
   const getEmbeddedServerName = (lang: string) =>
     lang === 'dub' ? 'Zen Dub' : 'Zen Sub';
-
-  const proxyHentaiUrl = (url: string, provider: string, type?: string) => {
-    const proxyUrl = provider === 'watchhentai' ? WATCHHENTAI_PROXY_URL : HENTAIMAMA_PROXY_URL;
-    if (!url || (provider !== 'hentaimama' && provider !== 'watchhentai') || !proxyUrl) return url;
-    const isMp4 = /\.mp4$/i.test(url) || type === 'mp4';
-    if (!isMp4) return url;
-    return `${proxyUrl.replace(/\/+$/, '')}/?url=${encodeURIComponent(url)}`;
-  };
 
   const buildEmbeddedPlayerUrl = (
     id?: string,
     epNumber?: string,
     lang?: string,
   ) => {
-    if (!hasEmbeddedPlayer || !id || !epNumber) return '';
-    const cleanBase = EMBEDDED_PLAYER_1.replace(/\/+$/, '');
-    const type = lang === 'dub' ? 'dub' : 'sub';
-    const originalUrl = `${cleanBase}/stream/ani/${id}/${epNumber}/${type}`;
-    const proxyUrl = import.meta.env.VITE_PROXY_URL;
-    return proxyUrl ? `${proxyUrl}?url=${encodeURIComponent(originalUrl)}` : originalUrl;
+    if (!hasEmbeddedPlayer) return '';
+    return createEmbeddedPlayerUrl(
+      EMBEDDED_PLAYER_1,
+      import.meta.env.VITE_PROXY_URL as string | undefined,
+      id,
+      epNumber,
+      lang,
+    );
   };
 
   // ── Countdown / airing ────────────────────────────────────────────────────
-  const nextEpisodeAiringTime =
-    animeInfo?.nextAiringEpisode ? animeInfo.nextAiringEpisode.airingTime * 1000 : null;
-  const nextEpisodenumber = animeInfo?.nextAiringEpisode?.episode;
+  const nextEpisodeAiringTime = nextAiringEpisode
+    ? nextAiringEpisode.airingAt * 1000
+    : null;
+  const nextEpisodenumber = nextAiringEpisode?.episode;
   const countdown = useCountdown(nextEpisodeAiringTime);
 
   // ── Derived indices ───────────────────────────────────────────────────────
@@ -645,6 +650,23 @@ const Watch: React.FC = () => {
     return () => { mounted = false; };
   }, [animeId]);
 
+  useEffect(() => {
+    if (!animeId) {
+      setNextAiringEpisode(null);
+      return;
+    }
+
+    let mounted = true;
+    setNextAiringEpisode(null);
+    void fetchNextAiringEpisode(animeId).then((airingEpisode) => {
+      if (mounted) setNextAiringEpisode(airingEpisode);
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, [animeId]);
+
   // ── Fetch + merge episodes from all providers ─────────────────────────────
   useEffect(() => {
     let mounted = true;
@@ -681,7 +703,7 @@ const Watch: React.FC = () => {
 
           const epNumber = parseInt(mergedEp.number, 10) || 1;
 
-          const providerPriority = [...HENTAI_ANIME_PROVIDERS, 'animeparadies', '4animo', 'anikoto', 'reanime', 'kickassanime', 'animepahe', 'xanime'];
+          const providerPriority = ANIME_PROVIDER_PRIORITY;
           let primaryProviderKey = Object.keys(mergedEp.providers)[0] || 'anikoto';
 
           for (const priorityProvider of providerPriority) {
@@ -896,86 +918,7 @@ const Watch: React.FC = () => {
         const urlSet = new Set<string>();
         let hasEmbeddedPlayer_ = false;
         const newEmbeddedServerKeys = new Set<string>(['embedded']);
-        const providerNameCounters = new Map<string, number>();
-
-        const normalizeAnikotoLabel = (
-          name: string,
-          type: string,
-          quality?: string,
-        ) => {
-          const normalizedType = type?.toLowerCase();
-          const normalizedQuality = (quality || name || '').toLowerCase();
-
-          const label = normalizedQuality.includes('hsub') || normalizedType === 'hsub'
-            ? 'Zen HSUB'
-            : normalizedQuality.includes('dub') || normalizedType === 'dub'
-              ? 'Zen Dub'
-              : 'Zen Sub';
-
-          const count = providerNameCounters.get(label) || 0;
-          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
-          providerNameCounters.set(label, count + 1);
-          return uniqueLabel;
-        };
-
-        const normalize4animoLabel = (name: string, type: string) => {
-          const normalizedText = `${name} ${type}`.toLowerCase();
-          const label = normalizedText.includes('hsub')
-            ? 'REI HSUB'
-            : normalizedText.includes('dub')
-              ? 'REI Dub'
-              : 'REI Sub';
-          const count = providerNameCounters.get(label) || 0;
-          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
-          providerNameCounters.set(label, count + 1);
-          return uniqueLabel;
-        };
-
-        const normalizeAnidbLabel = (
-          name: string,
-          quality?: string,
-          isEmbedded: boolean = false,
-        ) => {
-          const normalizedText = (quality || name || '').toLowerCase();
-          const baseLabel = normalizedText.includes('dub') || normalizedText.includes('english')
-            ? 'ADB Dub'
-            : normalizedText.includes('sub') || normalizedText.includes('japanese')
-              ? 'ADB Sub'
-              : 'ADB';
-
-          const label = isEmbedded ? `${baseLabel} (Embed)` : baseLabel;
-          const count = providerNameCounters.get(label) || 0;
-          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
-          providerNameCounters.set(label, count + 1);
-          return uniqueLabel;
-        };
-
-        const normalizeKickassanimeLabel = () => {
-          const label = 'KAA';
-          const count = providerNameCounters.get(label) || 0;
-          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
-          providerNameCounters.set(label, count + 1);
-          return uniqueLabel;
-        };
-
-        const normalizeXanimeLabel = (name: string, quality?: string) => {
-          const normalizedText = `${quality || ''} ${name || ''}`.toLowerCase();
-          const baseLabel = normalizedText.includes('dub')
-            ? 'XAM Dub'
-            : 'XAM Sub';
-          const count = providerNameCounters.get(baseLabel) || 0;
-          const uniqueLabel = `${baseLabel} ${count + 1}`;
-          providerNameCounters.set(baseLabel, count + 1);
-          return uniqueLabel;
-        };
-
-        const normalizeAnimeParadiesLabel = () => {
-          const label = 'APD';
-          const count = providerNameCounters.get(label) || 0;
-          const uniqueLabel = count === 0 ? label : `${label} ${count + 1}`;
-          providerNameCounters.set(label, count + 1);
-          return uniqueLabel;
-        };
+        const normalizeServerLabel = createAnimeServerLabeler();
 
         const isEmbeddedServer = (url: string, type?: string, provider?: string) =>
           isEmbeddedPlaybackServer(url, type, provider);
@@ -989,20 +932,12 @@ const Watch: React.FC = () => {
           quality?: string,
           skipNormalization?: boolean,
         ) => {
-          const proxiedUrl = proxyHentaiUrl(url, provider, type);
+          const proxiedUrl = proxyHentaiMp4Url(url, provider, type);
           if (!proxiedUrl || urlSet.has(proxiedUrl)) return;
 
           const finalName = skipNormalization || provider === 'anidb'
             ? name
-            : provider === 'anikoto'
-              ? normalizeAnikotoLabel(name, type, quality)
-              : provider === 'kickassanime'
-                ? normalizeKickassanimeLabel()
-                : provider === 'animeparadies'
-                  ? normalizeAnimeParadiesLabel()
-                : provider === 'xanime'
-                  ? normalizeXanimeLabel(name, quality)
-                : name;
+            : normalizeServerLabel(provider, name, type, quality);
 
           urlSet.add(proxiedUrl);
           if (isEmbedded) hasEmbeddedPlayer_ = true;
@@ -1065,6 +1000,7 @@ const Watch: React.FC = () => {
             response?.servers &&
             Array.isArray(response.servers) &&
             response.servers.length > 0 &&
+            provider !== 'kickassanime' &&
             provider !== 'watchhentai' &&
             provider !== 'hahomoe' &&
             !hasHentaiSources
@@ -1089,15 +1025,31 @@ const Watch: React.FC = () => {
               // KAA servers are HLS-only, never embedded
               const isEmb = provider === '4animo' || (provider !== 'kickassanime' && isEmbeddedServer(sUrl, type, provider));
               const label = provider === 'anidb'
-                ? normalizeAnidbLabel(sName, sLang, isEmb)
-                : provider === '4animo'
-                  ? normalize4animoLabel(sName, sLang)
+                ? normalizeServerLabel(provider, sName, sLang, sLang, isEmb)
                 : sName;
               addServer(label, sUrl, provider, provider === '4animo' ? 'iframe' : isEmb ? 'iframe' : 'hls', isEmb, sLang);
             });
           }
 
-          // Skip sources processing for KAA (already handled in response.servers)
+          if (isKickassanimeProvider && Array.isArray(response?.sources)) {
+            response.sources.forEach((source: any) => {
+              const sourceUrl = getStreamUrl(source);
+              const mediaType = sourceUrl ? getDirectMediaType(sourceUrl) : null;
+              if (!sourceUrl || !mediaType) return;
+
+              const proxiedSourceUrl = proxyAnimeMediaUrl(sourceUrl, provider);
+              addServer(
+                source?.quality || source?.name || 'KAA',
+                proxiedSourceUrl,
+                provider,
+                mediaType,
+                false,
+                source?.quality || '',
+              );
+            });
+          }
+
+          // Other providers expose direct streams through `sources`.
           if (!isKickassanimeProvider && provider !== '4animo' && response?.sources && Array.isArray(response.sources)) {
             let subCount = 0;
             let dubCount = 0;
@@ -1542,7 +1494,7 @@ const Watch: React.FC = () => {
                   downloadLink={downloadLink}
                   episodeId={currentEpisode.number.toString()}
                   airingTime={animeInfo?.status === 'Ongoing' ? countdown : undefined}
-                  nextEpisodenumber={nextEpisodenumber}
+                  nextEpisodenumber={nextEpisodenumber?.toString()}
                   availableServers={availableServers}
                   embeddedServerName={embeddedServerName}
                   embeddedServerKeys={embeddedServerKeys}
