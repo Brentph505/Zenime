@@ -20,6 +20,7 @@ import {
   getMangaProviderFallbackOrder,
   isMangaCatalogProvider,
   MANGA_CATALOG_PROVIDERS,
+  MANGA_PROVIDER_LABELS,
   type MangaCatalogProvider,
 } from '../lib/mangaProviders';
 
@@ -1100,7 +1101,8 @@ const Info: React.FC = () => {
         if (!detectedHentaiManga && !aniListBase) {
           const probeSource =
             (await fetchMangaInfo(animeId, 'mangahere').catch(() => null)) ||
-            (await fetchMangaInfo(animeId, 'mangapill').catch(() => null));
+            (await fetchMangaInfo(animeId, 'mangapill').catch(() => null)) ||
+            (await fetchMangaInfo(animeId, 'mangakatana').catch(() => null));
           if (cancelled) return;
           detectedHentaiManga =
             isHentaiGenres(probeSource?.genres) || probeSource?.isAdult === true;
@@ -1112,13 +1114,15 @@ const Info: React.FC = () => {
 
         // ── Provider selection (strictly separated) ──────────────────────────────
         //  • Hentai manga (or explicit ?provider=hentaireadio/hentai20) → ONLY hentai providers
-        //  • Non-hentai manga                                  → ONLY mangahere/mangapill
+        //  • Non-hentai manga                                  → regular manga providers
         // The two groups never cross-contaminate each other.
         const preferredMangaProvider =
           provider === 'atsumaru' || queryProvider === 'atsumaru'
             ? 'atsumaru'
             : provider === 'mangapill' || queryProvider === 'mangapill'
               ? 'mangapill'
+              : provider === 'mangakatana' || queryProvider === 'mangakatana'
+                ? 'mangakatana'
               : provider;
         const candidates: MangaProvider[] = getMangaProviderFallbackOrder(
           preferredMangaProvider,
@@ -1751,11 +1755,7 @@ const Info: React.FC = () => {
                                   .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
                                   .map(p => (
                                     <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
-                                      {p === 'atsumaru' ? 'Atsumaru'
-                                        : p === 'mangahere' ? 'MangaHere'
-                                        : p === 'mangapill' ? 'MangaPill'
-                                        : p === 'hentai20' ? 'Hentai20'
-                                        : 'HentaiRadio'}
+                                      {MANGA_PROVIDER_LABELS[p]}
                                     </ProviderButton>
                                   ))}
                               </ProviderSwitcher>
@@ -1790,11 +1790,7 @@ const Info: React.FC = () => {
                               .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
                               .map(p => (
                                 <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
-                                  {p === 'atsumaru' ? 'Atsumaru'
-                                    : p === 'mangahere' ? 'MangaHere'
-                                    : p === 'mangapill' ? 'MangaPill'
-                                    : p === 'hentai20' ? 'Hentai20'
-                                    : 'HentaiRadio'}
+                                  {MANGA_PROVIDER_LABELS[p]}
                                 </ProviderButton>
                               ))}
                           </ProviderSwitcher>

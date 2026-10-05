@@ -1,7 +1,7 @@
 const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
 const HENTAI_IMAGE_PROXY_URL = import.meta.env.VITE_HENTAI_IMAGE_PROXY_URL as string;
 
-export const MANGA_PROVIDERS = ['atsumaru', 'mangahere', 'mangapill'] as const;
+export const MANGA_PROVIDERS = ['atsumaru', 'mangahere', 'mangapill', 'mangakatana'] as const;
 export const HENTAI_MANGA_PROVIDERS = ['hentaireadio', 'hentai20'] as const;
 export const MANGA_CATALOG_PROVIDERS = [
   ...MANGA_PROVIDERS,
@@ -9,11 +9,12 @@ export const MANGA_CATALOG_PROVIDERS = [
 ] as const;
 
 export const MANGA_PROVIDER_LABELS: Record<(typeof MANGA_CATALOG_PROVIDERS)[number], string> = {
-  atsumaru: 'Atsumaru',
-  mangahere: 'MangaHere',
-  mangapill: 'MangaPill',
-  hentaireadio: 'HentaiRadio',
-  hentai20: 'Hentai20',
+  atsumaru: 'ATM',
+  mangahere: 'MHR',
+  mangapill: 'MPL',
+  mangakatana: 'MKT',
+  hentaireadio: 'HRI',
+  hentai20: 'H20',
 };
 
 export type MangaCatalogProvider = (typeof MANGA_CATALOG_PROVIDERS)[number];
@@ -25,6 +26,7 @@ export type MangaProvider =
   | 'mangakakalot'
   | 'mangapark'
   | 'mangapill'
+  | 'mangakatana'
   | 'mangareader'
   | 'mangasee123'
   | HentaiMangaProvider;
@@ -49,12 +51,15 @@ export function getMangaProviderFallbackOrder(
   if (isHentai) return [...HENTAI_MANGA_PROVIDERS];
 
   if (preferredProvider === 'atsumaru') {
-    return ['atsumaru', 'mangahere', 'mangapill'];
+    return ['atsumaru', 'mangahere', 'mangapill', 'mangakatana'];
   }
   if (preferredProvider === 'mangapill') {
-    return ['mangapill', 'atsumaru', 'mangahere'];
+    return ['mangapill', 'atsumaru', 'mangahere', 'mangakatana'];
   }
-  return ['mangahere', 'atsumaru', 'mangapill'];
+  if (preferredProvider === 'mangakatana') {
+    return ['mangakatana', 'mangahere', 'atsumaru', 'mangapill'];
+  }
+  return ['mangahere', 'atsumaru', 'mangapill', 'mangakatana'];
 }
 
 function isValidUrl(url: string): boolean {
