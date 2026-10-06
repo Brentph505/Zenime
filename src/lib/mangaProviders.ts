@@ -2,7 +2,7 @@ const IMAGE_PROXY_URL = import.meta.env.VITE_IMAGE_PROXY_URL as string;
 const HENTAI_IMAGE_PROXY_URL = import.meta.env.VITE_HENTAI_IMAGE_PROXY_URL as string;
 
 export const MANGA_PROVIDERS = ['atsumaru', 'mangahere', 'mangapill', 'mangakatana'] as const;
-export const HENTAI_MANGA_PROVIDERS = ['hentaireadio', 'hentai20'] as const;
+export const HENTAI_MANGA_PROVIDERS = ['hentaireadio', 'hentai20', 'hentaihere', 'hentai1io'] as const;
 export const MANGA_CATALOG_PROVIDERS = [
   ...MANGA_PROVIDERS,
   ...HENTAI_MANGA_PROVIDERS,
@@ -15,6 +15,8 @@ export const MANGA_PROVIDER_LABELS: Record<(typeof MANGA_CATALOG_PROVIDERS)[numb
   mangakatana: 'MKT',
   hentaireadio: 'HRI',
   hentai20: 'H20',
+  hentaihere: 'HHE',
+  hentai1io: 'H1I',
 };
 
 export type MangaCatalogProvider = (typeof MANGA_CATALOG_PROVIDERS)[number];

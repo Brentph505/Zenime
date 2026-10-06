@@ -1120,7 +1120,7 @@ export async function fetchAnimeInfo(
  */
 export async function fetchMangaInfo(
   mangaId: string,
-  provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'mangakatana' | 'hentaireadio' | 'hentai20' = 'mangahere',
+  provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'mangakatana' | 'hentaireadio' | 'hentai20' | 'hentaihere' | 'hentai1io' = 'mangahere',
 ): Promise<any> {
   const finalProvider = normalizeMangaProviderForApi(provider || 'mangahere');
   const params = new URLSearchParams({ provider: finalProvider });
@@ -1146,7 +1146,7 @@ export interface MangaReadPage {
 
 export async function fetchMangaRead(
   chapterId: string,
-  provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'mangakatana' | 'hentaireadio' | 'hentai20' = 'mangahere',
+  provider: 'atsumaru' | 'mangahere' | 'mangapill' | 'mangakatana' | 'hentaireadio' | 'hentai20' | 'hentaihere' | 'hentai1io' = 'mangahere',
 ): Promise<MangaReadPage[]> {
   const finalProvider = normalizeMangaProviderForApi(provider || 'mangahere');
   const params = new URLSearchParams({ chapterId, provider: finalProvider });

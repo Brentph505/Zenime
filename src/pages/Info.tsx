@@ -18,6 +18,7 @@ import { useSettings } from '../components/Profile/SettingsProvider';
 import { getAnimeInfoProviderOrder } from '../lib/animePlayback';
 import {
   getMangaProviderFallbackOrder,
+  isHentaiMangaProvider,
   isMangaCatalogProvider,
   MANGA_CATALOG_PROVIDERS,
   MANGA_PROVIDER_LABELS,
@@ -246,8 +247,8 @@ const MobilePosterImg = styled.img`
 const MobilePosterScore = styled.div`
   position: absolute; top: 0; right: 0;
   background: ${A.accent}; color: #0a0a0c;
-  font-size: 0.65rem; font-weight: 800;
-  padding: 0.2rem 0.45rem; letter-spacing: 0.04em; border-bottom-left-radius: 6px;
+  font-size: 0.55rem; font-weight: 800;
+  padding: 0.16rem 0.3rem; letter-spacing: 0.04em; border-bottom-left-radius: 6px;
 `;
 
 const MobileTitleBlock = styled.div`flex: 1; min-width: 0; padding-bottom: 0.25rem;`;
@@ -315,8 +316,8 @@ const AdultBadge = styled.div`
   box-sizing: border-box;
 
   @media (max-width: 860px) {
-    font-size: 0.6rem;
-    padding: 0.25rem 0.45rem;
+    font-size: 0.55rem;
+    padding: 0.22rem 0.34rem;
   }
 `;
 
@@ -1091,7 +1092,7 @@ const Info: React.FC = () => {
 
         let detectedHentaiManga =
           isHentaiGenres(aniListBase?.genres) || aniListBase?.isAdult === true;
-        const explicitHentaiProvider = queryProvider === 'hentaireadio' || queryProvider === 'hentai20' || provider === 'hentaireadio' || provider === 'hentai20';
+        const explicitHentaiProvider = isHentaiMangaProvider(queryProvider ?? '') || isHentaiMangaProvider(provider);
 
         // Store hentai status for provider switch validation
         if (!cancelled) setIsHentaiManga(detectedHentaiManga || explicitHentaiProvider);
@@ -1304,7 +1305,7 @@ const Info: React.FC = () => {
     if (!animeId || newProvider === provider) return;
 
     // If viewing hentai manga, only allow hentai providers
-    if (isHentaiManga && newProvider !== 'hentaireadio' && newProvider !== 'hentai20') {
+    if (isHentaiManga && !isHentaiMangaProvider(newProvider)) {
       console.warn('⚠️ Cannot switch away from hentai providers for hentai content');
       return;
     }
@@ -1507,6 +1508,7 @@ const Info: React.FC = () => {
   ].filter(Boolean) as { key: string; val: string; onClick?: () => void }[];
 
   const isHentai = !isManga && animeInfo.genres?.some(g => g.toLowerCase() === 'hentai');
+  const isHentaiContent = isManga ? isHentaiManga : isHentai;
   const isNsfw = !isManga && (animeInfo.isAdult || animeInfo.genres?.some(g => g.toLowerCase() === 'ecchi'));
   const shouldBlur = Boolean((isHentai && settings.blurHentai) || (!isHentai && isNsfw && settings.blurNSFW));
 
@@ -1525,8 +1527,8 @@ const Info: React.FC = () => {
         <MobileHeader>
           <MobilePosterWrap>
             <MobilePosterImg src={animeInfo.image} alt={title} />
-            {(isHentai || isNsfw) && (
-              <AdultBadge>{isHentai ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
+            {(isHentaiContent || isNsfw) && (
+              <AdultBadge>{isHentaiContent ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
             )}
             {animeInfo.rating != null && <MobilePosterScore>{animeInfo.rating}%</MobilePosterScore>}
           </MobilePosterWrap>
@@ -1548,8 +1550,8 @@ const Info: React.FC = () => {
           <LeftCol>
             <PosterWrap>
               <PosterImg src={animeInfo.image} alt={title} />
-              {(isHentai || isNsfw) && (
-                <AdultBadge>{isHentai ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
+              {(isHentaiContent || isNsfw) && (
+                <AdultBadge>{isHentaiContent ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
               )}
               {animeInfo.rating != null && <ScoreBadge>{animeInfo.rating}%</ScoreBadge>}
             </PosterWrap>
@@ -1752,7 +1754,7 @@ const Info: React.FC = () => {
                               <ProviderSwitcher>
                                 {MANGA_CATALOG_PROVIDERS
                                   .filter(p => availableMangaProviders.has(p))
-                                  .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
+                                  .filter(p => isHentaiManga ? isHentaiMangaProvider(p) : !isHentaiMangaProvider(p))
                                   .map(p => (
                                     <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
                                       {MANGA_PROVIDER_LABELS[p]}
@@ -1787,7 +1789,7 @@ const Info: React.FC = () => {
                           <ProviderSwitcher>
                             {MANGA_CATALOG_PROVIDERS
                               .filter(p => availableMangaProviders.has(p))
-                              .filter(p => isHentaiManga ? (p === 'hentaireadio' || p === 'hentai20') : p !== 'hentaireadio' && p !== 'hentai20')
+                              .filter(p => isHentaiManga ? isHentaiMangaProvider(p) : !isHentaiMangaProvider(p))
                               .map(p => (
                                 <ProviderButton key={p} $active={provider === p} onClick={() => handleMangaProviderSwitch(p)}>
                                   {MANGA_PROVIDER_LABELS[p]}

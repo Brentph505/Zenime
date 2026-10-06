@@ -8,7 +8,7 @@ import {
 } from 'react-router-dom';
 import { DropDownSearch, useAuth } from '../../index';
 import { fetchAdvancedSearch, type Anime } from '../..';
-import { FiSun, FiMoon, FiX, FiUser, FiSettings, FiBell, FiLogOut /* FiMenu */ } from 'react-icons/fi';
+import { FiSun, FiMoon, FiX, FiUser, FiSettings, FiBell, FiClock, FiLogOut /* FiMenu */ } from 'react-icons/fi';
 import { GoCommandPalette } from 'react-icons/go';
 import { IoIosSearch } from 'react-icons/io';
 import { CgProfile } from 'react-icons/cg';
@@ -760,6 +760,11 @@ export const Navbar = () => {
                         >
                           <FiUser /> Profile
                         </ProfileMenuItem>
+                        <ProfileMenuItem
+                          onClick={() => { setProfileMenuOpen(false); navigate('/history'); }}
+                        >
+                          <FiClock /> History
+                        </ProfileMenuItem>
                         <ProfileMenuItem onClick={openNotifications}>
                           <FiBell /> Notifications
                           {unreadNotifications > 0 && (
@@ -784,6 +789,11 @@ export const Navbar = () => {
                           onClick={() => { setProfileMenuOpen(false); navigate('/profile'); }}
                         >
                           <FiUser /> Log in
+                        </ProfileMenuItem>
+                        <ProfileMenuItem
+                          onClick={() => { setProfileMenuOpen(false); navigate('/history'); }}
+                        >
+                          <FiClock /> History
                         </ProfileMenuItem>
                         <ProfileMenuItem
                           onClick={() => { setProfileMenuOpen(false); setSettingsOpen(true); }}

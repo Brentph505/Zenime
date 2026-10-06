@@ -39,6 +39,7 @@ import {
   buildMangaImageProxyUrl,
   getMangaProviderFallbackOrder,
   HENTAI_MANGA_PROVIDERS,
+  isHentaiMangaProvider,
   isMangaCatalogProvider,
   MANGA_PROVIDER_LABELS,
   MANGA_PROVIDERS,
@@ -942,7 +943,7 @@ function Read() {
 
         const detectedHentai =
           (aniListData?.genres?.some((g: string) => g.toLowerCase() === 'hentai') || aniListData?.isAdult === true);
-        const explicitHentaiProvider = providerParam === 'hentaireadio' || providerParam === 'hentai20';
+        const explicitHentaiProvider = isHentaiMangaProvider(providerParam ?? '');
         const isHentai = detectedHentai || explicitHentaiProvider;
         setIsHentaiManga(isHentai);
 
@@ -1372,7 +1373,7 @@ function Read() {
     }
 
     // Prevent switching away from hentai providers for hentai manga
-    if (isHentaiManga && nextProvider !== 'hentaireadio' && nextProvider !== 'hentai20') {
+    if (isHentaiManga && !isHentaiMangaProvider(nextProvider)) {
       console.warn('⚠️ Cannot switch away from hentai providers for hentai content');
       return;
     }

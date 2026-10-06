@@ -184,9 +184,16 @@ interface ProfilePreviewModalProps {
 export const ProfilePreviewModal: React.FC<ProfilePreviewModalProps> = ({ open, onClose, user }) => {
   const [isClosing, setIsClosing] = React.useState(false);
 
-  if (!user) return null;
-
   const shouldRender = open || isClosing;
+
+  const handleClose = React.useCallback(() => {
+    if (isClosing) return;
+    setIsClosing(true);
+    window.setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+    }, 180);
+  }, [isClosing, onClose]);
 
   useEffect(() => {
     if (open) {
@@ -195,7 +202,7 @@ export const ProfilePreviewModal: React.FC<ProfilePreviewModalProps> = ({ open, 
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !user) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') handleClose();
@@ -209,17 +216,9 @@ export const ProfilePreviewModal: React.FC<ProfilePreviewModalProps> = ({ open, 
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [open, user, handleClose]);
 
-  const handleClose = () => {
-    if (isClosing) return;
-    setIsClosing(true);
-    window.setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 180);
-  };
-
+  if (!user) return null;
   if (!shouldRender) return null;
 
   const safeUser = user;
