@@ -8,14 +8,14 @@ import {
 } from 'react-icons/fa';
 import { MdViewList, MdGridOn } from 'react-icons/md';
 import { BsEye } from 'react-icons/bs';
-import { fetchAnimeInfo, fetchAnimeData, fetchMangaInfo, Episode, Anime, Manga, CardItem as AnimeCardItem, useTitleWithSubtitle, useCharacterName } from '../index';
+import { fetchAnimeInfo, fetchAnimeData, fetchAnimeEpisodes, fetchMangaInfo, Episode, Anime, Manga, CardItem as AnimeCardItem, useTitleWithSubtitle, useCharacterName } from '../index';
 import { fetchAniListMediaBase } from '../hooks/useApi';
 import { saveLastMangaVisited, addReadChapterIfMissing } from '../lib/mangaHistory';
 import { ListActions } from '../components/Info/ListActions';
 import { MangaBookmarkButton } from '../components/Home/MangaBookmarkButton';
 import { SkeletonInfo } from '../components/Skeletons/Skeletons';
 import { useSettings } from '../components/Profile/SettingsProvider';
-import { getAnimeInfoProviderOrder } from '../lib/animePlayback';
+import { getAnimeInfoProviderOrder, HENTAI_ANIME_PROVIDERS } from '../lib/animePlayback';
 import {
   getMangaProviderFallbackOrder,
   isHentaiMangaProvider,
@@ -59,7 +59,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | 'hentaimama' | 'watchhentai';
+type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | 'hentaimama' | 'watchhentai' | 'hentaiplay';
 type MangaProvider = MangaCatalogProvider;
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -1192,25 +1192,36 @@ const Info: React.FC = () => {
 
         let candidates: AnimeProvider[];
         if (detectedHentai) {
-          // Hentai: prefer hentaimama, allow watchhentai as fallback
+          // Keep existing hentai preferences first and include HentaiPlay as a fallback.
           const savedHentai = safeGetItem('hentai-provider-preference') as AnimeProvider | null;
-          const preferredHentai: AnimeProvider =
-            savedHentai === 'watchhentai' ? 'watchhentai' : 'hentaimama';
-          candidates = preferredHentai === 'watchhentai'
-            ? ['watchhentai', 'hentaimama']
-            : ['hentaimama', 'watchhentai'];
+          const hentaiCandidates = [...HENTAI_ANIME_PROVIDERS] as AnimeProvider[];
+          const preferredHentai = hentaiCandidates.includes(savedHentai as AnimeProvider)
+            ? savedHentai as AnimeProvider
+            : 'hentaimama';
+          candidates = [
+            preferredHentai,
+            ...hentaiCandidates.filter((candidate) => candidate !== preferredHentai),
+          ];
         } else {
           candidates = getAnimeInfoProviderOrder(provider) as AnimeProvider[];
         }
 
         let loaded = false;
         let bestData: any = probeData ?? null;
+        const attachHentaiEpisodes = async (data: any, candidate: AnimeProvider) => {
+          if (!detectedHentai || !data || hasEntries(data)) return data;
+          const episodes = await fetchAnimeEpisodes(animeId, candidate);
+          return Array.isArray(episodes) && episodes.length > 0
+            ? { ...data, episodes }
+            : data;
+        };
 
         // Pass 1: look for a provider with episodes
         for (const candidate of candidates) {
           if (cancelled) return;
           try {
-            const data = await fetchAnimeInfo(animeId, candidate);
+            const info = await fetchAnimeInfo(animeId, candidate);
+            const data = await attachHentaiEpisodes(info, candidate);
             if (cancelled) return;
             if (!bestData && data) bestData = data;
 
@@ -1242,7 +1253,8 @@ const Info: React.FC = () => {
           for (const candidate of candidates) {
             if (cancelled) return;
             try {
-              const data = await fetchAnimeData(animeId, candidate);
+              const info = await fetchAnimeData(animeId, candidate);
+              const data = await attachHentaiEpisodes(info, candidate);
               if (cancelled) return;
               if (!bestData && data) bestData = data;
 

@@ -1068,6 +1068,7 @@ const Watch: React.FC = () => {
               watchhentai: 'WH ',
               hstream: 'HS ',
               hahomoe: 'HH ',
+              hentaiplay: 'HP ',
             }[provider] || '';
 
             if (provider === 'hstream' || provider === 'hahomoe') {

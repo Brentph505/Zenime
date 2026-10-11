@@ -35,6 +35,7 @@ export const HENTAI_ANIME_PROVIDERS = [
   'watchhentai',
   'hstream',
   'hahomoe',
+  'hentaiplay',
 ] as const;
 
 export const DEFAULT_ANIME_PROVIDERS = [
@@ -140,6 +141,7 @@ export const ANIME_PROVIDERS: Record<string, AnimeProviderConfig> = {
   watchhentai: { proxy: 'none' },
   hstream: { proxy: 'legacy', subtitleProxy: 'hstream' },
   hahomoe: { proxy: 'legacy' },
+  hentaiplay: { proxy: 'legacy' },
 };
 
 export const HLS_FIRST_PROVIDERS = new Set(
