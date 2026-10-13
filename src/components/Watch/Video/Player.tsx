@@ -1271,7 +1271,7 @@ export function Player({
       // so they will be CORS-accessible when set here.
       const serverParam =
         sourceType && sourceType !== 'default' && sourceType !== 'direct'
-          ? sourceType.toLowerCase()
+          ? sourceType.replace(/__EM$/i, '').toLowerCase()
           : undefined;
       try {
         const subtitleResponse = await fetchAnimeStreamingLinksProxied(
@@ -1301,7 +1301,7 @@ export function Player({
     // 'direct' is a synthetic KAA server key meaning "use the default API fetch".
     const serverParam =
       sourceType && sourceType !== 'default' && sourceType !== 'direct'
-        ? sourceType.toLowerCase()
+        ? sourceType.replace(/__EM$/i, '').toLowerCase()
         : undefined;
 
     console.log('[Player] fetchAndSetAnimeSource:', {

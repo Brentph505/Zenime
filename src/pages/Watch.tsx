@@ -933,13 +933,16 @@ const Watch: React.FC = () => {
           skipNormalization?: boolean,
         ) => {
           const proxiedUrl = proxyHentaiMp4Url(url, provider, type);
-          if (!proxiedUrl || urlSet.has(proxiedUrl)) return;
+          const duplicateKey = provider === 'reanime'
+            ? `${provider}:${name.toLowerCase()}:${proxiedUrl}`
+            : proxiedUrl;
+          if (!proxiedUrl || urlSet.has(duplicateKey)) return;
 
           const finalName = skipNormalization || provider === 'anidb'
             ? name
             : normalizeServerLabel(provider, name, type, quality);
 
-          urlSet.add(proxiedUrl);
+          urlSet.add(duplicateKey);
           if (isEmbedded) hasEmbeddedPlayer_ = true;
           aggregatedServers.push({ name: finalName, provider, url: proxiedUrl, type, isEmbedded });
         };
@@ -976,7 +979,7 @@ const Watch: React.FC = () => {
           const hasAnidbM3u8Sources = false; // Not needed anymore with dedicated AniDB handling
           const isKickassanimeProvider = provider === 'kickassanime';
 
-          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider && provider !== '4animo') {
+          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider && provider !== '4animo' && provider !== 'anipm') {
             servers.forEach((server: any) => {
               const serverName = server?.name || '';
               const serverUrl = server?.url || '';
@@ -1003,6 +1006,7 @@ const Watch: React.FC = () => {
             provider !== 'kickassanime' &&
             provider !== 'watchhentai' &&
             provider !== 'hahomoe' &&
+            provider !== 'anipm' &&
             !hasHentaiSources
           ) {
             const seenProviderName = new Set<string>();
@@ -1015,7 +1019,7 @@ const Watch: React.FC = () => {
               if (!sName || !sUrl) return;
 
               const hasSublabel = sLang === 'sub' || sLang === 'dub';
-              if (hasSublabel && sLang !== language) return;
+              if (hasSublabel && sLang !== language && provider !== 'reanime') return;
 
               const nameKey = `${provider}:${sName}`;
               if (seenProviderName.has(nameKey)) return;
@@ -1132,14 +1136,17 @@ const Watch: React.FC = () => {
                 }
               }
 
+              const isAnipmM3u8Source = provider === 'anipm' && source.isM3U8 === true;
               const isDirectSource = isDirectMediaUrl(sourceUrl);
-              if (!isDirectSource && !isUsableHentaiUrl) return;
+              if (!isDirectSource && !isUsableHentaiUrl && !isAnipmM3u8Source) return;
 
               const isDub = source.isDub === true;
-              const type = getDirectMediaType(sourceUrl) || 'iframe';
+              const type = isAnipmM3u8Source ? 'hls' : getDirectMediaType(sourceUrl) || 'iframe';
               const qualityLabel = source?.quality || '';
               const matchedHentaiServerName = providerServerNames.get(sourceUrl);
-              const sourceName = provider === 'hentaimama'
+              const sourceName = provider === 'anipm'
+                ? 'APM'
+                : provider === 'hentaimama'
                 ? matchedHentaiServerName || source?.name || source?.server || source?.label ||
                   (isDub ? `${providerPrefix}Dub${++dubCount}` : `${providerPrefix}Sub${++subCount}`)
                 : provider === 'anikoto'
@@ -1147,9 +1154,12 @@ const Watch: React.FC = () => {
                   : isDub
                     ? `${providerPrefix}Dub${++dubCount}`
                     : `${providerPrefix}Sub${++subCount}`;
+              const playbackUrl = isAnipmM3u8Source
+                ? proxyAnimeMediaUrl(sourceUrl, provider)
+                : sourceUrl;
               addServer(
                 sourceName,
-                sourceUrl,
+                playbackUrl,
                 provider,
                 type,
                 type === 'iframe',
@@ -1383,14 +1393,31 @@ const Watch: React.FC = () => {
       };
     }
     const baseName = sourceType.replace(/__EM$/, '');
-    const entry = serverEntries.find(
-      (s) => s.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase(),
-    );
+    const matchesSelectedServer = (entry: (typeof serverEntries)[number]) =>
+      entry.name.replace(/__EM$/, '').toLowerCase() === baseName.toLowerCase();
+    const entry =
+      serverEntries.find((candidate) => matchesSelectedServer(candidate) && candidate.url === serverUrl) ||
+      serverEntries.find(matchesSelectedServer);
     const provider = entry?.provider || currentEpisode.provider || 'kickassanime';
     const providerEpisodeId =
       currentEpisode.providers?.[provider]?.id || currentEpisode.id;
     return { provider, episodeId: providerEpisodeId };
-  }, [sourceType, serverEntries, currentEpisode]);
+  }, [sourceType, serverEntries, serverUrl, currentEpisode]);
+
+  const serverLabels = useMemo(() => {
+    return Object.fromEntries(
+      serverEntries
+        .filter((entry) => entry.provider === 'reanime')
+        .map((entry) => {
+          const serverName = entry.name.replace(/__EM$/, '');
+          const match = serverName.match(/^HD-(\d+)\s+\((SUB|DUB)\)$/i);
+          if (!match) return [entry.name, serverName];
+
+          const languageLabel = match[2].toLowerCase() === 'dub' ? 'Dub' : 'Sub';
+          return [entry.name, `REA ${languageLabel} ${match[1]}`];
+        }),
+    );
+  }, [serverEntries]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -1497,6 +1524,7 @@ const Watch: React.FC = () => {
                   airingTime={animeInfo?.status === 'Ongoing' ? countdown : undefined}
                   nextEpisodenumber={nextEpisodenumber?.toString()}
                   availableServers={availableServers}
+                  serverLabels={serverLabels}
                   embeddedServerName={embeddedServerName}
                   embeddedServerKeys={embeddedServerKeys}
                   onRefreshServers={() => setServerRefreshKey((key) => key + 1)}

@@ -17,6 +17,7 @@ interface MediaSourceProps {
   airingTime?: string;
   nextEpisodenumber?: string;
   availableServers?: string[];
+  serverLabels?: Record<string, string>;
   embeddedServerName?: string;
   /** Server keys that should display with the EM (iframe) badge */
   embeddedServerKeys?: Set<string>;
@@ -333,6 +334,7 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
   airingTime,
   nextEpisodenumber,
   availableServers = [],
+  serverLabels = {},
   embeddedServerName = 'Embedded',
   embeddedServerKeys,
   onRefreshServers,
@@ -369,7 +371,7 @@ export const MediaSource: React.FC<MediaSourceProps> = ({
 
       return {
         key: server,
-        label: displayName.charAt(0).toUpperCase() + displayName.slice(1),
+        label: serverLabels[server] || displayName.charAt(0).toUpperCase() + displayName.slice(1),
         isEmbedded: isServerEmbedded,
       };
     });

@@ -59,7 +59,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | 'hentaimama' | 'watchhentai' | 'hentaiplay';
+type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | 'anipm' | 'hentaimama' | 'watchhentai' | 'hentaiplay';
 type MangaProvider = MangaCatalogProvider;
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
@@ -1210,10 +1210,14 @@ const Info: React.FC = () => {
         let bestData: any = probeData ?? null;
         const attachHentaiEpisodes = async (data: any, candidate: AnimeProvider) => {
           if (!detectedHentai || !data || hasEntries(data)) return data;
-          const episodes = await fetchAnimeEpisodes(animeId, candidate);
-          return Array.isArray(episodes) && episodes.length > 0
-            ? { ...data, episodes }
-            : data;
+          try {
+            const episodes = await fetchAnimeEpisodes(animeId, candidate);
+            return Array.isArray(episodes) && episodes.length > 0
+              ? { ...data, episodes }
+              : data;
+          } catch {
+            return data;
+          }
         };
 
         // Pass 1: look for a provider with episodes

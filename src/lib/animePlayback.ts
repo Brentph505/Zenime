@@ -12,10 +12,11 @@ type AnimeProviderConfig = {
     | 'animepahe'
     | 'xanime'
     | 'anidb'
+    | 'anipm'
     | 'legacy'
     | 'none';
   proxyDirectMedia?: boolean;
-  subtitleProxy?: 'kaa' | 'xanime' | 'hstream';
+  subtitleProxy?: 'kaa' | 'xanime' | 'hstream' | 'anipm';
 };
 
 type ProxySource = {
@@ -46,6 +47,7 @@ export const DEFAULT_ANIME_PROVIDERS = [
   'kickassanime',
   'animepahe',
   'xanime',
+  'anipm',
 ];
 
 export const WATCH_ANIME_PROVIDERS = [...DEFAULT_ANIME_PROVIDERS, 'anidb'];
@@ -58,6 +60,7 @@ const ANIME_INFO_PROVIDER_ORDERS: Record<string, string[]> = {
   kickassanime: ['kickassanime', 'animeparadies', '4animo', 'anikoto', 'reanime', 'animepahe', 'xanime'],
   reanime: ['reanime', 'animeparadies', '4animo', 'anikoto', 'kickassanime', 'animepahe', 'xanime'],
   anidb: ['anidb', 'anikoto', 'animeparadies', '4animo', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
+  anipm: ['anipm', 'anikoto', 'animeparadies', '4animo', 'reanime', 'kickassanime', 'animepahe', 'xanime'],
 };
 
 export function getAnimeInfoProviderOrder(preferredProvider?: string): string[] {
@@ -76,6 +79,7 @@ export const ANIME_PROVIDER_PRIORITY = [
   'kickassanime',
   'animepahe',
   'xanime',
+  'anipm',
 ];
 
 const M3U8_PROXY_URL = import.meta.env.VITE_M3U8_PROXY_URL as string;
@@ -90,6 +94,7 @@ const PROVIDER_M3U8_PROXY_URLS = {
     (import.meta.env.VITE_M3U8_PROXY_URL_REANIME as string) || M3U8_PROXY_URL_2,
   kickassanime: import.meta.env.VITE_M3U8_PROXY_URL_KICKASSANIME as string,
   animepahe: import.meta.env.VITE_M3U8_PROXY_URL_ANIMEPAHE as string,
+  anipm: import.meta.env.VITE_M3U8_PROXY_URL_ANIPM as string,
   xanime: M3U8_PROXY_URL_XANIME,
   anidb: M3U8_PROXY_URL_ANIDB,
 };
@@ -136,6 +141,13 @@ export const ANIME_PROVIDERS: Record<string, AnimeProviderConfig> = {
     playback: 'hls',
     proxy: 'anidb',
     proxyDirectMedia: true,
+  },
+  anipm: {
+    referer: 'https://embed.settlar.io/',
+    playback: 'embed',
+    proxy: 'anipm',
+    proxyDirectMedia: true,
+    subtitleProxy: 'anipm',
   },
   hentaimama: { proxy: 'legacy' },
   watchhentai: { proxy: 'none' },
@@ -315,6 +327,16 @@ export function buildXanimeSubtitleProxyUrl(subtitleUrl: string): string {
   return buildSubtitleProxyUrl(subtitleUrl, M3U8_PROXY_URL_XANIME, 'Xanime (VITE_M3U8_PROXY_URL_XANIME)');
 }
 
+function proxyAnipmSubtitles(
+  subtitles: Array<{ url: string; lang: string }>,
+  proxyUrl: string,
+) {
+  return subtitles.map((subtitle) => ({
+    ...subtitle,
+    url: buildSubtitleProxyUrl(subtitle.url, proxyUrl, 'AniPM (VITE_M3U8_PROXY_URL_ANIPM)'),
+  }));
+}
+
 export function proxyKaaSubtitles(subtitles: Array<{ url: string; lang: string }>) {
   if (!KAA_SUBTITLE_PROXY_URL) return subtitles;
   return subtitles.map((subtitle) => ({ ...subtitle, url: buildKaaSubtitleProxyUrl(subtitle.url) }));
@@ -448,6 +470,10 @@ export function proxyAnimeStreamingResponse<T extends AnimeStreamingResponse>(
   if (config?.subtitleProxy === 'xanime' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
     console.log('[fetchAnimeStreamingLinksProxied] Proxying Xanime subtitles:', data.subtitles.length);
     data.subtitles = proxyXanimeSubtitles(data.subtitles);
+  }
+  if (config?.subtitleProxy === 'anipm' && Array.isArray(data?.subtitles) && data.subtitles.length > 0) {
+    console.log('[fetchAnimeStreamingLinksProxied] Proxying AniPM subtitles:', data.subtitles.length);
+    data.subtitles = proxyAnipmSubtitles(data.subtitles, proxyUrl);
   }
 
   return data;
