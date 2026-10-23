@@ -1,0 +1,620 @@
+import { LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct AnimeCardData {
+    id: string,
+    title: string,
+    details: string,
+    poster: image,
+}
+
+export struct EpisodeRowData {
+    id: string,
+    title: string,
+    details: string,
+}
+
+component AnimeTile inherits Rectangle {
+    in property <AnimeCardData> anime;
+    callback chosen(string, string, image);
+
+    height: 248px;
+    background: #161b22;
+    border-radius: 9px;
+    clip: true;
+    border-width: 1px;
+    border-color: #282e38;
+
+    VerticalLayout {
+        spacing: 0px;
+        Image {
+            width: parent.width;
+            height: 188px;
+            source: root.anime.poster;
+            image-fit: cover;
+        }
+        VerticalLayout {
+            padding: 8px;
+            spacing: 4px;
+            Text {
+                text: root.anime.title;
+                color: #e6edf3;
+                font-size: 13px;
+                font-weight: 700;
+                wrap: word;
+                overflow: elide;
+                vertical-stretch: 1;
+            }
+            Text {
+                text: root.anime.details;
+                color: #8b949e;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => { root.chosen(root.anime.id, root.anime.title, root.anime.poster); }
+    }
+}
+
+component EpisodeTile inherits Rectangle {
+    in property <EpisodeRowData> episode;
+    callback chosen(string);
+
+    height: 64px;
+    background: #161b22;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #282e38;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        spacing: 10px;
+        alignment: center;
+        Rectangle {
+            width: 34px;
+            height: 34px;
+            background: #292340;
+            border-radius: 7px;
+            Text {
+                text: "▶";
+                color: #b7a7ff;
+                font-size: 13px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+        VerticalLayout {
+            spacing: 3px;
+            vertical-stretch: 1;
+            Text {
+                text: root.episode.title;
+                color: #e6edf3;
+                font-size: 13px;
+                font-weight: 700;
+                overflow: elide;
+            }
+            Text {
+                text: root.episode.details;
+                color: #8b949e;
+                font-size: 10px;
+                overflow: elide;
+            }
+        }
+        Text {
+            text: "›";
+            color: #8b949e;
+            font-size: 23px;
+        }
+    }
+
+    TouchArea {
+        clicked => { root.chosen(root.episode.id); }
+    }
+}
+
+export component MainWindow inherits Window {
+    title: "Zenime";
+    width: 400px;
+    height: 850px;
+    background: #0d1117;
+
+    in-out property <[AnimeCardData]> anime-cards: [];
+    in-out property <[EpisodeRowData]> episodes: [];
+    in-out property <[AnimeCardData]> saved-cards: [];
+    in-out property <string> active-page: "home";
+    in-out property <string> active-category: "trending";
+    in-out property <string> status: "Starting Zenime…";
+    in-out property <string> search-query: "";
+    in-out property <string> api-url: "";
+    in-out property <string> selected-title: "";
+    in-out property <string> selected-id: "";
+    in-out property <string> selected-description: "";
+    in-out property <image> selected-poster;
+    in-out property <string> selected-meta: "";
+
+    callback category-selected(string);
+    callback search-requested(string);
+    callback anime-selected(string, string, image);
+    callback episode-selected(string);
+    callback navigate(string);
+    callback save-selected();
+    callback save-api-url(string);
+    callback refresh-requested();
+
+    VerticalLayout {
+        spacing: 0px;
+
+        Rectangle {
+            height: 58px;
+            background: #0d1117;
+            border-width: 0px;
+            HorizontalLayout {
+                padding-left: 17px;
+                padding-right: 15px;
+                spacing: 9px;
+                alignment: center;
+                Text {
+                    text: "zenime";
+                    color: #f0f2f5;
+                    font-size: 28px;
+                    font-weight: 800;
+                    letter-spacing: -1px;
+                }
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    background: #a78bfa;
+                    border-radius: 3px;
+                }
+                Text {
+                    text: "NATIVE";
+                    color: #a78bfa;
+                    font-size: 9px;
+                    font-weight: 800;
+                    letter-spacing: 1px;
+                }
+                Rectangle { horizontal-stretch: 1; }
+                TouchArea {
+                    width: 36px;
+                    height: 36px;
+                    clicked => { root.navigate("settings"); }
+                    Text {
+                        text: "⚙";
+                        color: #c9d1d9;
+                        font-size: 19px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        Rectangle { height: 1px; background: #21262d; }
+
+        if root.active-page == "home" : ScrollView {
+            mouse-drag-pan-enabled: true;
+            VerticalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                padding-top: 14px;
+                padding-bottom: 18px;
+                spacing: 14px;
+
+                Rectangle {
+                    height: 132px;
+                    background: #171626;
+                    border-radius: 12px;
+                    clip: true;
+                    Rectangle {
+                        x: parent.width - 92px;
+                        y: -35px;
+                        width: 165px;
+                        height: 165px;
+                        background: #292347;
+                        border-radius: 82px;
+                        opacity: 0.8;
+                    }
+                    Rectangle {
+                        x: parent.width - 52px;
+                        y: 50px;
+                        width: 90px;
+                        height: 90px;
+                        background: #44366d;
+                        border-radius: 45px;
+                        opacity: 0.65;
+                    }
+                    VerticalLayout {
+                        padding: 15px;
+                        spacing: 7px;
+                        Text {
+                            text: "YOUR NEXT FAVORITE";
+                            color: #b7a7ff;
+                            font-size: 10px;
+                            font-weight: 800;
+                            letter-spacing: 1px;
+                        }
+                        Text {
+                            text: "Find your anime.";
+                            color: #ffffff;
+                            font-size: 24px;
+                            font-weight: 800;
+                        }
+                        Text {
+                            text: "Explore stories worth staying up for.";
+                            color: #c6c0df;
+                            font-size: 11px;
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        height: 42px;
+                        text <=> root.search-query;
+                        placeholder-text: "Search anime…";
+                        accepted => { root.search-requested(root.search-query); }
+                    }
+                    Rectangle {
+                        width: 47px;
+                        height: 42px;
+                        background: #8b79d9;
+                        border-radius: 7px;
+                        Text {
+                            text: "⌕";
+                            color: #ffffff;
+                            font-size: 24px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea {
+                            clicked => { root.search-requested(root.search-query); }
+                        }
+                    }
+                }
+
+                Text {
+                    text: "Discover";
+                    color: #f0f2f5;
+                    font-size: 21px;
+                    font-weight: 800;
+                }
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    CategoryChip { label: "Trending"; active: root.active-category == "trending"; chosen => { root.active-category = "trending"; root.category-selected("trending"); } }
+                    CategoryChip { label: "Popular"; active: root.active-category == "popular"; chosen => { root.active-category = "popular"; root.category-selected("popular"); } }
+                    CategoryChip { label: "Top rated"; active: root.active-category == "top-rated"; chosen => { root.active-category = "top-rated"; root.category-selected("top-rated"); } }
+                    CategoryChip { label: "Latest"; active: root.active-category == "latest"; chosen => { root.active-category = "latest"; root.category-selected("latest"); } }
+                }
+
+                Text {
+                    text: root.status;
+                    color: #9da7b3;
+                    font-size: 11px;
+                    wrap: word;
+                }
+
+                GridLayout {
+                    columns: 2;
+                    spacing: 11px;
+                    for anime in root.anime-cards: AnimeTile {
+                        anime: anime;
+                        chosen(id, title, poster) => { root.anime-selected(id, title, poster); }
+                    }
+                }
+            }
+        }
+
+        if root.active-page == "search" : ScrollView {
+            mouse-drag-pan-enabled: true;
+            VerticalLayout {
+                padding: 14px;
+                spacing: 13px;
+                Text {
+                    text: "Search anime";
+                    color: #f0f2f5;
+                    font-size: 23px;
+                    font-weight: 800;
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    LineEdit {
+                        horizontal-stretch: 1;
+                        height: 42px;
+                        text <=> root.search-query;
+                        placeholder-text: "Title, genre, or keyword";
+                        accepted => { root.search-requested(root.search-query); }
+                    }
+                    Rectangle {
+                        width: 48px;
+                        height: 42px;
+                        background: #8b79d9;
+                        border-radius: 7px;
+                        Text {
+                            text: "⌕";
+                            color: #ffffff;
+                            font-size: 23px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        TouchArea {
+                            clicked => { root.search-requested(root.search-query); }
+                        }
+                    }
+                }
+                Text {
+                    text: root.status;
+                    color: #9da7b3;
+                    font-size: 11px;
+                    wrap: word;
+                }
+                GridLayout {
+                    columns: 2;
+                    spacing: 11px;
+                    for anime in root.anime-cards: AnimeTile {
+                        anime: anime;
+                        chosen(id, title, poster) => { root.anime-selected(id, title, poster); }
+                    }
+                }
+            }
+        }
+
+        if root.active-page == "detail" : ScrollView {
+            mouse-drag-pan-enabled: true;
+            VerticalLayout {
+                padding: 14px;
+                spacing: 12px;
+                TouchArea {
+                    height: 27px;
+                    clicked => { root.navigate("home"); }
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text { text: "‹"; color: #b7a7ff; font-size: 23px; }
+                        Text { text: "Back to discover"; color: #b7a7ff; font-size: 12px; vertical-alignment: center; }
+                    }
+                }
+                Rectangle {
+                    height: 220px;
+                    background: #161b22;
+                    border-radius: 10px;
+                    clip: true;
+                    Image {
+                        source: root.selected-poster;
+                        image-fit: cover;
+                        width: parent.width;
+                        height: parent.height;
+                    }
+                }
+                Text {
+                    text: root.selected-title;
+                    color: #f0f2f5;
+                    font-size: 23px;
+                    font-weight: 800;
+                    wrap: word;
+                }
+                Text {
+                    text: root.selected-meta;
+                    color: #b7a7ff;
+                    font-size: 11px;
+                }
+                Text {
+                    text: root.selected-description;
+                    color: #aeb8c4;
+                    font-size: 12px;
+                    wrap: word;
+                }
+                Rectangle {
+                    height: 42px;
+                    background: #292340;
+                    border-radius: 8px;
+                    Text {
+                        text: "♡   Save to library";
+                        color: #d7ceff;
+                        font-size: 12px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea { clicked => { root.save-selected(); } }
+                }
+                Text {
+                    text: "Episodes";
+                    color: #f0f2f5;
+                    font-size: 19px;
+                    font-weight: 800;
+                }
+                Text {
+                    text: root.status;
+                    color: #9da7b3;
+                    font-size: 11px;
+                    wrap: word;
+                }
+                for episode in root.episodes: EpisodeTile {
+                    episode: episode;
+                    chosen(id) => { root.episode-selected(id); }
+                }
+            }
+        }
+
+        if root.active-page == "saved" : ScrollView {
+            mouse-drag-pan-enabled: true;
+            VerticalLayout {
+                padding: 14px;
+                spacing: 13px;
+                Text {
+                    text: "Your library";
+                    color: #f0f2f5;
+                    font-size: 23px;
+                    font-weight: 800;
+                }
+                Text {
+                    text: root.status;
+                    color: #9da7b3;
+                    font-size: 11px;
+                    wrap: word;
+                }
+                GridLayout {
+                    columns: 2;
+                    spacing: 11px;
+                    for anime in root.saved-cards: AnimeTile {
+                        anime: anime;
+                        chosen(id, title, poster) => { root.anime-selected(id, title, poster); }
+                    }
+                }
+            }
+        }
+
+        if root.active-page == "settings" : ScrollView {
+            mouse-drag-pan-enabled: true;
+            VerticalLayout {
+                padding: 16px;
+                spacing: 13px;
+                Text {
+                    text: "Settings";
+                    color: #f0f2f5;
+                    font-size: 23px;
+                    font-weight: 800;
+                }
+                Text {
+                    text: "API endpoint";
+                    color: #e6edf3;
+                    font-size: 13px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: "Use a compatible Zenime / Miruro metadata backend. The app connects directly over HTTPS.";
+                    color: #9da7b3;
+                    font-size: 11px;
+                    wrap: word;
+                }
+                LineEdit {
+                    width: parent.width;
+                    height: 44px;
+                    text <=> root.api-url;
+                    placeholder-text: "https://example.com/";
+                }
+                Rectangle {
+                    height: 43px;
+                    background: #8b79d9;
+                    border-radius: 8px;
+                    Text {
+                        text: "Save endpoint and refresh";
+                        color: #ffffff;
+                        font-size: 12px;
+                        font-weight: 800;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea { clicked => { root.save-api-url(root.api-url); } }
+                }
+                Rectangle { height: 1px; background: #30363d; }
+                Text {
+                    text: "About Zenime";
+                    color: #e6edf3;
+                    font-size: 16px;
+                    font-weight: 800;
+                }
+                Text {
+                    text: "A Rust-powered native Android client. The interface is compiled native code and the video screen uses Android Media3; this app does not embed a website or WebView.";
+                    color: #9da7b3;
+                    font-size: 12px;
+                    wrap: word;
+                }
+                Text {
+                    text: "Attribution: Zenime is a non-commercial fork derived from Miruro no Kuon. Please retain the root repository's attribution and non-commercial license when redistributing.";
+                    color: #8b949e;
+                    font-size: 10px;
+                    wrap: word;
+                }
+                Text {
+                    text: root.status;
+                    color: #9da7b3;
+                    font-size: 11px;
+                    wrap: word;
+                }
+                Rectangle {
+                    height: 38px;
+                    background: #161b22;
+                    border-radius: 8px;
+                    Text {
+                        text: "Refresh catalog";
+                        color: #e6edf3;
+                        font-size: 12px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea { clicked => { root.refresh-requested(); } }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 67px;
+            background: #0d1117;
+            border-width: 1px;
+            border-color: #21262d;
+            HorizontalLayout {
+                spacing: 0px;
+                NavItem { label: "HOME"; glyph: "⌂"; chosen => { root.navigate("home"); } }
+                NavItem { label: "SEARCH"; glyph: "⌕"; chosen => { root.navigate("search"); } }
+                NavItem { label: "SAVED"; glyph: "♡"; chosen => { root.navigate("saved"); } }
+                NavItem { label: "SETTINGS"; glyph: "⚙"; chosen => { root.navigate("settings"); } }
+            }
+        }
+    }
+}
+
+component CategoryChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> active: false;
+    callback chosen();
+
+    background: active ? #403568 : #161b22;
+    border-radius: 7px;
+    border-width: 1px;
+    border-color: active ? #8b79d9 : #30363d;
+    height: 31px;
+    horizontal-stretch: 1;
+    Text {
+        text: root.label;
+        color: root.active ? #ffffff : #aeb8c4;
+        font-size: 10px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    TouchArea { clicked => { root.chosen(); } }
+}
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <string> glyph;
+    callback chosen();
+
+    horizontal-stretch: 1;
+    background: #0d1117;
+    VerticalLayout {
+        spacing: 2px;
+        alignment: center;
+        Text {
+            text: root.glyph;
+            color: #b7a7ff;
+            font-size: 20px;
+            horizontal-alignment: center;
+        }
+        Text {
+            text: root.label;
+            color: #8b949e;
+            font-size: 9px;
+            font-weight: 800;
+            horizontal-alignment: center;
+        }
+    }
+    TouchArea { clicked => { root.chosen(); } }
+}

@@ -1,0 +1,70 @@
+name: Zenime Native Android APK
+
+on:
+  push:
+    branches:
+      - android-rust-native
+      - main
+    paths:
+      - "android-native/**"
+      - ".github/workflows/android-rust-apk.yml"
+  pull_request:
+    paths:
+      - "android-native/**"
+      - ".github/workflows/android-rust-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    name: Build arm64 Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK, NDK, and CMake
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build Rust native library
+        working-directory: android-native
+        env:
+          ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.2.12479018
+        run: cargo ndk -t arm64-v8a -o android/app/src/main/jniLibs build --release --lib
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Package native APK
+        working-directory: android-native/android
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Upload installable debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: zenime-native-debug-apk
+          path: android-native/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
