@@ -979,7 +979,7 @@ const Watch: React.FC = () => {
           const hasAnidbM3u8Sources = false; // Not needed anymore with dedicated AniDB handling
           const isKickassanimeProvider = provider === 'kickassanime';
 
-          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider && provider !== '4animo' && provider !== 'anipm') {
+          if (!isHentaiProvider && !hasAnidbM3u8Sources && !isKickassanimeProvider && provider !== '4animo' && provider !== '123anime') {
             servers.forEach((server: any) => {
               const serverName = server?.name || '';
               const serverUrl = server?.url || '';
@@ -1006,7 +1006,7 @@ const Watch: React.FC = () => {
             provider !== 'kickassanime' &&
             provider !== 'watchhentai' &&
             provider !== 'hahomoe' &&
-            provider !== 'anipm' &&
+            provider !== '123anime' &&
             !hasHentaiSources
           ) {
             const seenProviderName = new Set<string>();
@@ -1136,16 +1136,16 @@ const Watch: React.FC = () => {
                 }
               }
 
-              const isAnipmM3u8Source = provider === 'anipm' && source.isM3U8 === true;
+              const is123AnimeM3u8Source = provider === '123anime' && source.isM3U8 === true;
               const isDirectSource = isDirectMediaUrl(sourceUrl);
-              if (!isDirectSource && !isUsableHentaiUrl && !isAnipmM3u8Source) return;
+              if (!isDirectSource && !isUsableHentaiUrl && !is123AnimeM3u8Source) return;
 
               const isDub = source.isDub === true;
-              const type = isAnipmM3u8Source ? 'hls' : getDirectMediaType(sourceUrl) || 'iframe';
+              const type = is123AnimeM3u8Source ? 'hls' : getDirectMediaType(sourceUrl) || 'iframe';
               const qualityLabel = source?.quality || '';
               const matchedHentaiServerName = providerServerNames.get(sourceUrl);
-              const sourceName = provider === 'anipm'
-                ? 'APM'
+              const sourceName = provider === '123anime'
+                ? `1AM ${source?.server || source?.name || qualityLabel || 'HLS'}`
                 : provider === 'hentaimama'
                 ? matchedHentaiServerName || source?.name || source?.server || source?.label ||
                   (isDub ? `${providerPrefix}Dub${++dubCount}` : `${providerPrefix}Sub${++subCount}`)
@@ -1154,7 +1154,7 @@ const Watch: React.FC = () => {
                   : isDub
                     ? `${providerPrefix}Dub${++dubCount}`
                     : `${providerPrefix}Sub${++subCount}`;
-              const playbackUrl = isAnipmM3u8Source
+              const playbackUrl = is123AnimeM3u8Source
                 ? proxyAnimeMediaUrl(sourceUrl, provider)
                 : sourceUrl;
               addServer(

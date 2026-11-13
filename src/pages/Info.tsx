@@ -59,7 +59,7 @@ const MANGA_FORMAT_TYPES = new Set([
 ]);
 
 type MediaType = 'ANIME' | 'MANGA';
-type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | 'anipm' | 'hentaimama' | 'watchhentai' | 'hentaiplay';
+type AnimeProvider = 'animeparadies' | '4animo' | 'kickassanime' | 'animepahe' | 'anikoto' | 'reanime' | 'xanime' | 'anidb' | '123anime' | 'hentaimama' | 'watchhentai' | 'hentaiplay';
 type MangaProvider = MangaCatalogProvider;
 type Provider = AnimeProvider | MangaProvider;
 type InfoTab = 'overview' | 'characters' | 'episodes';
