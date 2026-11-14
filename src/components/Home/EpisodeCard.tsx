@@ -21,6 +21,7 @@ import {
   removeAnimeHistory,
   setAnimeAniListSyncDisabled,
 } from '../../lib/watchHistory';
+import { fetchTmdbEpisodeStill } from '../../hooks/useApi';
 
 const LOCAL_STORAGE_KEYS = {
   WATCHED_EPISODES: WATCHED_EPISODES_KEY,
@@ -231,6 +232,7 @@ export const EpisodeCard: React.FC = () => {
   );
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [tmdbStills, setTmdbStills] = useState<Record<string, string>>({});
 
   const [lastVisitedData, setLastVisitedData] = useState<LastVisitedData>(() => {
     const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
@@ -358,9 +360,6 @@ export const EpisodeCard: React.FC = () => {
 
         // Extract clean episode number from formats like "1-737" or just "1"
         const cleanEpisodeNumber = String(episode.number).split('-')[0];
-        const thumbnailSrc =
-          episode.image || lastVisitedData[animeId]?.coverImage || '';
-
         const handleRemoveAllEpisodes = async (animeId: string) => {
           if (!window.confirm('Remove this anime from Continue Watching? Its local watched episodes, cached progress, and playback progress will be deleted. AniList autosync will be disabled for this anime.')) {
             setToastMessage('Deletion cancelled. Your history was not changed.');
@@ -397,6 +396,13 @@ export const EpisodeCard: React.FC = () => {
           (isHentai && settings.blurHentai) ||
             (!isHentai && isNsfw && settings.blurNSFW),
         );
+        const saveTmdbStill = (image: string | null) => {
+          if (image) {
+            setTmdbStills((previous) =>
+              previous[episode.id] ? previous : { ...previous, [episode.id]: image },
+            );
+          }
+        };
 
         return (
           <StyledSwiperSlide key={episode.id}>
@@ -406,8 +412,24 @@ export const EpisodeCard: React.FC = () => {
               title={`Continue Watching ${displayTitle}`}
             >
               <EpisodeCardImage
-                src={thumbnailSrc}
-                alt={`Cover for ${animeTitle}`}
+                ref={(element) => {
+                  if (element && !tmdbStills[episode.id]) {
+                    fetchTmdbEpisodeStill(
+                      [
+                        lastVisitedData[animeId]?.titleEnglish || animeTitle,
+                        lastVisitedData[animeId]?.titleRomaji || '',
+                      ],
+                      cleanEpisodeNumber,
+                    ).then(saveTmdbStill);
+                  }
+                }}
+                src={
+                  tmdbStills[episode.id] ||
+                  episode.image ||
+                  lastVisitedData[animeId]?.coverImage ||
+                  ''
+                }
+                alt={`Episode ${cleanEpisodeNumber} still for ${animeTitle}`}
                 $blurred={shouldBlur}
               />
               {(isHentai || isNsfw) && (
@@ -425,8 +447,8 @@ export const EpisodeCard: React.FC = () => {
               />
               <CloseButton
                 onClick={(e) => {
-                  e.preventDefault(); // Prevents the default action of the event
-                  e.stopPropagation(); // Prevents the event from bubbling up to any parent elements
+                  e.preventDefault();
+                  e.stopPropagation();
                   handleRemoveAllEpisodes(animeId);
                 }}
               >

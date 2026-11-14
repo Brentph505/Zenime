@@ -4,12 +4,13 @@ import { Link } from 'react-router-dom';
 import { FaPlay } from 'react-icons/fa';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
 import { useSettings } from '../Profile/SettingsProvider';
+import { fetchTmdbEpisodeStill } from '../../hooks/useApi';
 
 interface HistoryAnimeCardProps {
   animeId: string;
   titleEnglish?: string;
   titleRomaji?: string;
-  coverImage?: string;
+  fallbackImage?: string;
   lastEpisodeNumber: string | number;
   lastEpisodeTitle?: string;
   playbackPercentage: number;
@@ -159,7 +160,7 @@ export const HistoryAnimeCard: React.FC<HistoryAnimeCardProps> = ({
   animeId,
   titleEnglish,
   titleRomaji,
-  coverImage,
+  fallbackImage,
   lastEpisodeNumber,
   lastEpisodeTitle,
   playbackPercentage,
@@ -168,10 +169,25 @@ export const HistoryAnimeCard: React.FC<HistoryAnimeCardProps> = ({
   onDelete,
 }) => {
   const { settings } = useSettings();
+  const [tmdbStill, setTmdbStill] = React.useState<string | null>(null);
 
   const animeTitle = String(titleEnglish || titleRomaji || 'Unknown Anime');
   const cleanEpisodeNumber = String(lastEpisodeNumber || 1).split('-')[0];
   const displayTitle = `${animeTitle}${lastEpisodeTitle ? ` - ${lastEpisodeTitle}` : ''}`;
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setTmdbStill(null);
+    fetchTmdbEpisodeStill(
+      [titleEnglish || '', titleRomaji || ''],
+      cleanEpisodeNumber,
+    ).then((image) => {
+      if (!cancelled) setTmdbStill(image);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [animeTitle, cleanEpisodeNumber, titleEnglish, titleRomaji]);
 
   const normalizedGenres = genres?.map((genre) => genre?.toLowerCase()) ?? [];
   const isHentai = normalizedGenres.some((genre) => genre === 'hentai');
@@ -187,8 +203,8 @@ export const HistoryAnimeCard: React.FC<HistoryAnimeCardProps> = ({
       title={`Continue watching ${animeTitle}`}
     >
       <HistoryCardImage
-        src={coverImage || ''}
-        alt={`Cover for ${animeTitle}`}
+        src={tmdbStill || fallbackImage || ''}
+        alt={`Episode ${cleanEpisodeNumber} still for ${animeTitle}`}
         data-title={animeTitle}
         $blurred={shouldBlur}
         onError={(e) => {

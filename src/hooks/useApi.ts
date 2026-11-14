@@ -67,6 +67,8 @@ if (PROXY_URL) {
 }
 
 const API_KEY = import.meta.env.VITE_API_KEY as string;
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY as string;
+const TMDB_API_URL = 'https://api.themoviedb.org/3';
 
 // Official AniList GraphQL endpoint
 const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co';
@@ -472,6 +474,111 @@ async function fetchFromProxy(
     handleError(error, 'data');
     throw error;
   }
+}
+
+const pendingTmdbStillRequests = new Map<string, Promise<string | null>>();
+const tmdbStillCache = new Map<string, string | null>();
+
+function normalizeTmdbTitle(title: string): string {
+  return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+export function fetchTmdbEpisodeStill(
+  title: string | string[],
+  episodeNumber: number | string,
+): Promise<string | null> {
+  const titles = (Array.isArray(title) ? title : [title])
+    .map((candidate) => candidate.trim())
+    .filter((candidate, index, candidates) =>
+      candidate && candidates.findIndex(
+        (value) => normalizeTmdbTitle(value) === normalizeTmdbTitle(candidate),
+      ) === index,
+    );
+  const episode = Number(episodeNumber);
+  if (titles.length === 0 || !Number.isInteger(episode) || episode < 1) {
+    return Promise.resolve(null);
+  }
+
+  const requestKey = `${titles.map(normalizeTmdbTitle).join('|')}-${episode}`;
+  if (tmdbStillCache.has(requestKey)) {
+    return Promise.resolve(tmdbStillCache.get(requestKey) ?? null);
+  }
+  const pendingRequest = pendingTmdbStillRequests.get(requestKey);
+  if (pendingRequest) return pendingRequest;
+
+  const request = (async (): Promise<string | null> => {
+    try {
+      if (!TMDB_API_KEY) return null;
+
+      const tmdbRequest = async <T,>(path: string): Promise<T> => {
+        const response = await fetch(`${TMDB_API_URL}${path}`);
+        if (!response.ok) throw new Error(`TMDB request failed: HTTP ${response.status}`);
+        return response.json() as Promise<T>;
+      };
+
+      let match: { id: number; name?: string; original_name?: string } | undefined;
+      for (const candidate of titles) {
+        const searchParams = new URLSearchParams({
+          api_key: TMDB_API_KEY,
+          query: candidate,
+          include_adult: 'false',
+        });
+        const search = await tmdbRequest<{
+          results?: Array<{ id: number; name?: string; original_name?: string }>;
+        }>(`/search/tv?${searchParams.toString()}`);
+
+        const targetTitle = normalizeTmdbTitle(candidate);
+        match = search?.results?.find(
+          (result) =>
+            normalizeTmdbTitle(result.name ?? '') === targetTitle ||
+            normalizeTmdbTitle(result.original_name ?? '') === targetTitle,
+        );
+        if (match) break;
+      }
+
+      if (!match) {
+        console.info(`No exact TMDB series match for AniList title(s): ${titles.join(' / ')}`);
+      }
+      if (!match) return null;
+
+      const apiKeyParam = `api_key=${encodeURIComponent(TMDB_API_KEY)}`;
+      const series = await tmdbRequest<{
+        seasons?: Array<{ season_number: number; episode_count?: number }>;
+      }>(`/tv/${match.id}?${apiKeyParam}`);
+      const seasons = (series.seasons ?? [])
+        .filter((season) => season.season_number > 0)
+        .sort((a, b) => a.season_number - b.season_number);
+
+      let episodesBeforeSeason = 0;
+      for (const season of seasons) {
+        const seasonData = await tmdbRequest<{
+          episodes?: Array<{ episode_number: number; still_path: string | null }>;
+        }>(`/tv/${match.id}/season/${season.season_number}?${apiKeyParam}`);
+        const seasonEpisodes = seasonData.episodes ?? [];
+        const episodeIndex = episode - episodesBeforeSeason - 1;
+
+        if (episodeIndex >= 0 && episodeIndex < seasonEpisodes.length) {
+          const stillPath = seasonEpisodes[episodeIndex]?.still_path;
+          return stillPath ? `https://image.tmdb.org/t/p/w780${stillPath}` : null;
+        }
+
+        episodesBeforeSeason += seasonEpisodes.length;
+      }
+
+      return null;
+    } catch (error) {
+      console.warn(`TMDB episode still lookup failed for ${titles.join(' / ')} #${episode}`, error);
+      return null;
+    } finally {
+      pendingTmdbStillRequests.delete(requestKey);
+    }
+  })();
+
+  pendingTmdbStillRequests.set(requestKey, request);
+  return request.then((image) => {
+    tmdbStillCache.set(requestKey, image);
+    return image;
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

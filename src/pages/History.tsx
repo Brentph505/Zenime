@@ -972,7 +972,7 @@ const History: React.FC = () => {
         animeId={anime.animeId}
         titleEnglish={safeTitle(anime.titleEnglish, 'english')}
         titleRomaji={safeTitle(anime.titleRomaji, 'romaji')}
-        coverImage={anime.coverImage}
+        fallbackImage={anime.coverImage}
         lastEpisodeNumber={anime.lastEpisodeNumber}
         lastEpisodeTitle={anime.lastEpisodeTitle}
         playbackPercentage={anime.playbackPercentage}
