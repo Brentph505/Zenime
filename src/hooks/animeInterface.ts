@@ -96,6 +96,7 @@ export interface Anime {
   isAdult: boolean;
   countryOfOrigin: string;
   image: string;
+  bannerImage?: string | null;
   imageHash: string;
   cover: string;
   coverHash: string;

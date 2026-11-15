@@ -261,7 +261,17 @@ const STATS_PEOPLE_LIMIT = 20;
 const STATS_WORKS_PER_PERSON = 6;
 
 const MEDIA_NODES = /* GraphQL */ `
-  nodes { id type title { romaji english userPreferred } coverImage { large medium } }
+  nodes {
+    id
+    type
+    status
+    episodes
+    chapters
+    averageScore
+    startDate { year }
+    title { romaji english userPreferred }
+    coverImage { large medium }
+  }
 `;
 
 const STAFF_STATS = /* GraphQL */ `
@@ -1160,6 +1170,7 @@ export interface AnimeListEntry {
     startDate: { year: number | null; month: number | null; day: number | null };
     title: { romaji: string; english: string | null };
     coverImage: { large: string; color: string | null };
+    bannerImage: string | null;
     type: 'ANIME' | 'MANGA';
   };
 }
@@ -1189,6 +1200,7 @@ export async function fetchUserMediaList(
               startDate { year month day }
               title     { romaji english }
               coverImage { large color }
+              bannerImage
               type
             }
           }

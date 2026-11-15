@@ -85,16 +85,20 @@ const CoverSide = styled.div<{ $src: string }>`
 `;
 
 /* Mobile-only: full-width banner at the top with title overlay */
-const CoverBanner = styled.div<{ $src: string }>`
+const CoverBanner = styled.div<{ $src: string; $isBanner?: boolean }>`
   display: none;
 
   @media (max-width: 600px) {
     display: block;
     flex-shrink: 0;
     width: 100%;
-    height: 160px;
-    background: url(${({ $src }) => $src}) center/contain no-repeat;
+    /* Wide banners fill the strip edge to edge; portrait covers (fallback) stay uncropped */
+    height: ${({ $isBanner }) => ($isBanner ? '120px' : '160px')};
     background-color: var(--global-secondary-bg, #161b22);
+    background-image: url(${({ $src }) => $src});
+    background-size: ${({ $isBanner }) => ($isBanner ? 'cover' : 'contain')};
+    background-position: center;
+    background-repeat: no-repeat;
   }
 `;
 
@@ -291,8 +295,12 @@ const Footer = styled.div`
   margin-top: auto;
 
   @media (max-width: 600px) {
-    padding-top: 0.75rem;
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding: 0.75rem 0 0.25rem;
     margin-top: 0.25rem;
+    background: var(--global-primary-bg, #0d1117);
   }
 `;
 
@@ -511,7 +519,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
         <CoverSide $src={anime.image} role="img" aria-label="Cover" />
 
         {/* Mobile: top banner */}
-        <CoverBanner $src={anime.image} />
+        <CoverBanner $src={anime.bannerImage || anime.image} $isBanner={!!anime.bannerImage} />
 
         <FormContainer>
           <Header>
@@ -530,6 +538,14 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               Status        | Chapters   | Score
               Total Rereads | Start Date | End Date
               Custom Lists (span 2)      | Volumes Read
+
+            Mobile manga layout (2 columns):
+              Status (full)
+              Chapters      | Volumes Read
+              Score         | Total Rereads
+              Start Date    | End Date
+              Custom Lists (full)
+              Notes (full)
           */}
           <FormGrid>
             <FormGroup $mobileOrder={1} $mobileFullWidth={isManga}>
@@ -552,7 +568,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               </StatusSelectWrapper>
             </FormGroup>
 
-            <FormGroup $mobileOrder={isManga ? 4 : 2}>
+            <FormGroup $mobileOrder={2}>
               <Label>{progressLabel} {anime.totalEpisodes ? `/ ${anime.totalEpisodes}` : ''}</Label>
               <Input
                 type="number"
@@ -563,7 +579,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            <FormGroup $mobileOrder={isManga ? 6 : 3}>
+            <FormGroup $mobileOrder={isManga ? 4 : 3}>
               <Label>Score (0-100)</Label>
               <Input
                 type="number"
@@ -575,7 +591,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
             </FormGroup>
 
             {isManga && (
-              <FormGroup $mobileOrder={3}>
+              <FormGroup $mobileOrder={5}>
                 <Label>{repeatLabel}</Label>
                 <Input
                   type="number"
@@ -586,12 +602,12 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               </FormGroup>
             )}
 
-            <FormGroup $mobileOrder={isManga ? 7 : 5}>
+            <FormGroup $mobileOrder={isManga ? 6 : 5}>
               <Label>Start Date</Label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormGroup>
 
-            <FormGroup $mobileOrder={isManga ? 8 : 6}>
+            <FormGroup $mobileOrder={isManga ? 7 : 6}>
               <Label>End Date</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormGroup>
@@ -610,7 +626,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
 
             <FormGroup
               style={!isManga ? { gridColumn: '1 / -1' } : undefined}
-              $mobileOrder={isManga ? 9 : 7}
+              $mobileOrder={isManga ? 8 : 7}
               $mobileFullWidth={isManga}
               $desktopSpan={isManga ? 2 : undefined}
             >
@@ -621,7 +637,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
             </FormGroup>
 
             {isManga && (
-              <FormGroup $mobileOrder={5}>
+              <FormGroup $mobileOrder={3}>
                 <Label>Volumes Read</Label>
                 <Input
                   type="number"
@@ -633,7 +649,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
             )}
           </FormGrid>
 
-          <FormGroup style={{ gridColumn: '1 / -1' }} $mobileOrder={8}>
+          <FormGroup>
             <Label>Notes</Label>
             <TextArea value={notes} onChange={(e) => setNotes(e.target.value)} />
           </FormGroup>

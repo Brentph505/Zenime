@@ -217,6 +217,7 @@ export const WatchingAnilist = () => {
       id: String(entry.media.id),
       malId: null,
       image: entry.media.coverImage.large,
+      bannerImage: entry.media.bannerImage,
       color: entry.media.coverImage.color ?? undefined,
       title: {
         romaji: entry.media.title.romaji,

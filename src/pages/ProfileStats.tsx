@@ -17,6 +17,23 @@ type PastWork = {
   title: string;
   image?: string | null;
   type?: string | null;
+  status?: string | null;
+  episodes?: number | null;
+  chapters?: number | null;
+  averageScore?: number | null;
+  startYear?: number | null;
+};
+
+type PastWorkMediaNode = {
+  id?: number | null;
+  type?: string | null;
+  status?: string | null;
+  episodes?: number | null;
+  chapters?: number | null;
+  averageScore?: number | null;
+  startDate?: { year?: number | null } | null;
+  title?: AniListTitleLike | null;
+  coverImage?: { large?: string | null; medium?: string | null } | null;
 };
 
 type StatRow = {
@@ -47,12 +64,7 @@ type PersonLike = {
   name?: { full?: string | null } | null;
   image?: { large?: string | null; medium?: string | null } | null;
   media?: {
-    nodes?: Array<{
-      id?: number | null;
-      type?: string | null;
-      title?: AniListTitleLike | null;
-      coverImage?: { large?: string | null; medium?: string | null } | null;
-    }> | null;
+    nodes?: Array<PastWorkMediaNode | null> | null;
   } | null;
 };
 
@@ -1426,11 +1438,11 @@ const pastWorkToAnime = (work: PastWork, mediaType: MediaKind): Anime => ({
   cover: work.image ?? '',
   coverHash: '',
   description: '',
-  status: 'FINISHED',
-  releaseDate: 0,
-  totalEpisodes: 0,
+  status: work.status ?? 'FINISHED',
+  releaseDate: work.startYear ?? 0,
+  totalEpisodes: mediaType === 'manga' ? work.chapters ?? 0 : work.episodes ?? 0,
   currentEpisode: 0,
-  rating: 0,
+  rating: work.averageScore ?? 0,
   duration: 0,
   genres: [],
   studios: [],
@@ -1512,7 +1524,7 @@ const buildStats = (statistics: unknown, mediaType: MediaKind, scoreFormat: stri
   const score = buildScoreTools(selected, scoreFormat);
   const rowOf = makeRowFactory(mediaType);
   const byCount = (rows: StatRow[]) => rows.sort((a, b) => b.count - a.count);
-  const toWorks = (items: Array<{ id?: number | null; type?: string | null; title?: AniListTitleLike | null; coverImage?: { large?: string | null; medium?: string | null } | null } | null | undefined> | null | undefined): PastWork[] => {
+  const toWorks = (items: Array<PastWorkMediaNode | null | undefined> | null | undefined): PastWork[] => {
     if (!Array.isArray(items)) return [];
 
     const seen = new Set<string>();
@@ -1533,6 +1545,11 @@ const buildStats = (statistics: unknown, mediaType: MediaKind, scoreFormat: stri
         title: label,
         image: item.coverImage?.large ?? item.coverImage?.medium ?? null,
         type: item.type ?? null,
+        status: item.status ?? null,
+        episodes: item.episodes,
+        chapters: item.chapters,
+        averageScore: item.averageScore,
+        startYear: item.startDate?.year,
       });
 
       if (works.length >= 8) break;
@@ -2080,7 +2097,7 @@ const ProfileStatsPage: React.FC = () => {
   const activeTab = normalizeTab(searchParams.get('tab') ?? routeTab, mediaType);
   const [yearMetric, setYearMetric] = useState<Metric>('count');
   const chipRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const portraitRefreshRequested = useRef(false);
+  const statsRefreshRequested = useRef(false);
 
   const scoreFormat =
     (userData as unknown as { mediaListOptions?: { scoreFormat?: string | null } } | null)?.mediaListOptions
@@ -2092,21 +2109,40 @@ const ProfileStatsPage: React.FC = () => {
     chipRefs.current[activeTab]?.scrollIntoView?.({ inline: 'center', block: 'nearest', behavior: 'smooth' });
   }, [activeTab, mediaType]);
 
-  // Older cached Viewer data may not include the portraits added to the stats query.
-  // Refresh once on the stats page so direct navigation receives the enriched rows.
+  // Older cached Viewer data may lack portraits or past-work metadata added to
+  // the stats query. Refresh once so existing sessions receive the full fields.
   useEffect(() => {
-    if (!isLoggedIn || !userData || portraitRefreshRequested.current) return;
+    if (!isLoggedIn || !userData || statsRefreshRequested.current) return;
 
-    const animeStats = userData.statistics?.anime;
+    const selectedStats = mediaType === 'manga'
+      ? userData.statistics?.manga
+      : userData.statistics?.anime;
     const missingPortrait =
-      animeStats?.staff?.some((entry) => entry.staff && !entry.staff.image) ||
-      animeStats?.voiceActors?.some((entry) => entry.voiceActor && !entry.voiceActor.image);
+      userData.statistics?.anime?.staff?.some((entry) => entry.staff && !entry.staff.image) ||
+      userData.statistics?.anime?.voiceActors?.some((entry) => entry.voiceActor && !entry.voiceActor.image);
+    const hasMissingWorkMetadata = (person?: PersonLike | null) => {
+      const works = person?.media?.nodes;
+      if (!person) return false;
+      if (!Array.isArray(works)) return true;
+      return works.some((work) =>
+        work && (
+          !('status' in work) ||
+          !(mediaType === 'manga' ? 'chapters' in work : 'episodes' in work) ||
+          !('averageScore' in work)
+        ),
+      );
+    };
+    const missingWorkMetadata =
+      selectedStats?.staff?.some((entry) => hasMissingWorkMetadata(entry.staff)) ||
+      (mediaType === 'anime' && selectedStats?.voiceActors?.some((entry) =>
+        hasMissingWorkMetadata(entry.voiceActor),
+      ));
 
-    if (!missingPortrait) return;
+    if (!missingPortrait && !missingWorkMetadata) return;
 
-    portraitRefreshRequested.current = true;
+    statsRefreshRequested.current = true;
     void refreshUserData();
-  }, [isLoggedIn, refreshUserData, userData]);
+  }, [isLoggedIn, mediaType, refreshUserData, userData]);
 
   const favouriteMedia = useMemo<Anime[]>(() => {
     const items = mediaType === 'manga'
