@@ -52,7 +52,7 @@ const ModalContent = styled.div`
   border-radius: 14px;
   display: flex;
   align-items: stretch;
-  width: min(96%, 54rem);
+  width: min(96%, 56rem);
   max-height: 90vh;
   overflow: hidden;
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.5);
@@ -67,13 +67,17 @@ const ModalContent = styled.div`
 `;
 
 /* Desktop: tall side image. Mobile: hidden (replaced by CoverBanner) */
-const CoverImage = styled.img`
-  width: 280px;
-  height: 100%;
-  object-fit: cover;
-  object-position: center;
+const CoverSide = styled.div<{ $src: string }>`
+  width: 36%;
+  max-width: 330px;
+  min-width: 250px;
   flex-shrink: 0;
   align-self: stretch;
+  background-color: var(--global-secondary-bg, #161b22);
+  background-image: url(${({ $src }) => $src});
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
 
   @media (max-width: 600px) {
     display: none;
@@ -88,8 +92,9 @@ const CoverBanner = styled.div<{ $src: string }>`
     display: block;
     flex-shrink: 0;
     width: 100%;
-    height: 120px;
-    background: url(${({ $src }) => $src}) center/cover no-repeat;
+    height: 160px;
+    background: url(${({ $src }) => $src}) center/contain no-repeat;
+    background-color: var(--global-secondary-bg, #161b22);
   }
 `;
 
@@ -168,13 +173,19 @@ const FormGrid = styled.div`
   }
 `;
 
-const FormGroup = styled.div<{ $mobileOrder?: number }>`
+const FormGroup = styled.div<{
+  $mobileOrder?: number;
+  $mobileFullWidth?: boolean;
+  $desktopSpan?: number;
+}>`
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  ${({ $desktopSpan }) => $desktopSpan && `grid-column: span ${$desktopSpan};`}
 
   @media (max-width: 600px) {
     ${({ $mobileOrder }) => $mobileOrder !== undefined && `order: ${$mobileOrder};`}
+    ${({ $mobileFullWidth }) => $mobileFullWidth && 'grid-column: 1 / -1;'}
   }
 `;
 
@@ -497,7 +508,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
     <Overlay onClick={onClose}>
       <ModalContent onClick={(e) => e.stopPropagation()}>
         {/* Desktop: tall side cover */}
-        <CoverImage src={anime.image} alt="Cover" />
+        <CoverSide $src={anime.image} role="img" aria-label="Cover" />
 
         {/* Mobile: top banner */}
         <CoverBanner $src={anime.image} />
@@ -514,8 +525,14 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
             </HeartBtn>
           </Header>
 
+          {/*
+            Desktop manga layout (3 columns):
+              Status        | Chapters   | Score
+              Total Rereads | Start Date | End Date
+              Custom Lists (span 2)      | Volumes Read
+          */}
           <FormGrid>
-            <FormGroup $mobileOrder={1}>
+            <FormGroup $mobileOrder={1} $mobileFullWidth={isManga}>
               <Label>Status</Label>
               <StatusSelectWrapper>
                 {status && STATUS_ICONS[status] && (
@@ -535,7 +552,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               </StatusSelectWrapper>
             </FormGroup>
 
-            <FormGroup $mobileOrder={2}>
+            <FormGroup $mobileOrder={isManga ? 4 : 2}>
               <Label>{progressLabel} {anime.totalEpisodes ? `/ ${anime.totalEpisodes}` : ''}</Label>
               <Input
                 type="number"
@@ -546,19 +563,7 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            {isManga && (
-              <FormGroup $mobileOrder={3}>
-                <Label>Volumes Read</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  value={progressVolumes}
-                  onChange={(e) => setProgressVolumes(e.target.value !== '' ? Number(e.target.value) : '')}
-                />
-              </FormGroup>
-            )}
-
-            <FormGroup $mobileOrder={isManga ? 4 : 3}>
+            <FormGroup $mobileOrder={isManga ? 6 : 3}>
               <Label>Score (0-100)</Label>
               <Input
                 type="number"
@@ -569,32 +574,63 @@ export const EditEntryModal: React.FC<EditEntryModalProps> = ({ anime, isOpen, o
               />
             </FormGroup>
 
-            <FormGroup $mobileOrder={isManga ? 5 : 5}>
+            {isManga && (
+              <FormGroup $mobileOrder={3}>
+                <Label>{repeatLabel}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={repeat}
+                  onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
+                />
+              </FormGroup>
+            )}
+
+            <FormGroup $mobileOrder={isManga ? 7 : 5}>
               <Label>Start Date</Label>
               <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </FormGroup>
 
-            <FormGroup $mobileOrder={6}>
+            <FormGroup $mobileOrder={isManga ? 8 : 6}>
               <Label>End Date</Label>
               <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
             </FormGroup>
 
-            <FormGroup $mobileOrder={isManga ? 4 : 4}>
-              <Label>{repeatLabel}</Label>
-              <Input
-                type="number"
-                min="0"
-                value={repeat}
-                onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
-              />
-            </FormGroup>
+            {!isManga && (
+              <FormGroup $mobileOrder={4}>
+                <Label>{repeatLabel}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={repeat}
+                  onChange={(e) => setRepeat(e.target.value !== '' ? Number(e.target.value) : '')}
+                />
+              </FormGroup>
+            )}
 
-            <FormGroup style={{ gridColumn: '1 / -1' }} $mobileOrder={7}>
+            <FormGroup
+              style={!isManga ? { gridColumn: '1 / -1' } : undefined}
+              $mobileOrder={isManga ? 9 : 7}
+              $mobileFullWidth={isManga}
+              $desktopSpan={isManga ? 2 : undefined}
+            >
               <Label>Custom Lists</Label>
               <Select value="" disabled>
                 <option value="" disabled>Add to custom lists</option>
               </Select>
             </FormGroup>
+
+            {isManga && (
+              <FormGroup $mobileOrder={5}>
+                <Label>Volumes Read</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={progressVolumes}
+                  onChange={(e) => setProgressVolumes(e.target.value !== '' ? Number(e.target.value) : '')}
+                />
+              </FormGroup>
+            )}
           </FormGrid>
 
           <FormGroup style={{ gridColumn: '1 / -1' }} $mobileOrder={8}>
