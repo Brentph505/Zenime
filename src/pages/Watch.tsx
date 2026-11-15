@@ -754,6 +754,7 @@ const Watch: React.FC = () => {
               titleRomaji: animeInfo.title?.romaji,
               totalEpisodes: animeInfo.totalEpisodes ?? null,
               coverImage: animeInfo.image ?? animeInfo.cover ?? null,
+              bannerImage: animeInfo.bannerImage ?? null,
               genres: lvGenres.length > 0 ? lvGenres : undefined,
               isAdult: animeInfo.isAdult,
             });

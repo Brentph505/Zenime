@@ -25,6 +25,7 @@ export interface LastAnimeVisitedEntry {
   totalEpisodes?: number | null;
   total_episodes?: number | null;
   coverImage?: string | null;
+  bannerImage?: string | null;
   genres?: string[];
   isAdult?: boolean;
 }
@@ -45,6 +46,8 @@ export function saveLastAnimeVisited(
     timestamp: entry.timestamp ?? Date.now(),
     coverImage:
       entry.coverImage === undefined ? existing.coverImage : entry.coverImage,
+    bannerImage:
+      entry.bannerImage === undefined ? existing.bannerImage : entry.bannerImage,
     genres: entry.genres === undefined ? existing.genres : entry.genres,
     isAdult: entry.isAdult === undefined ? existing.isAdult : entry.isAdult,
   };

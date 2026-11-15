@@ -153,6 +153,7 @@ export function useSyncAniListHistory() {
           lastEpisodeNumber: effectiveProgress,
           totalEpisodes: entry.media?.episodes != null ? entry.media.episodes : existingVisited.totalEpisodes ?? null,
           coverImage: existingVisited.coverImage || entry.media?.coverImage?.large || entry.media?.coverImage?.medium || null,
+          bannerImage: existingVisited.bannerImage || entry.media?.bannerImage || null,
           genres: existingVisited.genres ?? genres,
           isAdult: existingVisited.isAdult ?? entry.media?.isAdult ?? false,
         };
@@ -357,6 +358,7 @@ export function useSyncAniListHistory() {
               entry.media?.coverImage?.large ||
               entry.media?.coverImage?.medium ||
               null,
+            bannerImage: existingVisited.bannerImage || entry.media?.bannerImage || null,
             genres: existingVisited.genres ?? genres,
             isAdult: existingVisited.isAdult ?? entry.media?.isAdult ?? false,
           };

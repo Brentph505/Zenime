@@ -104,6 +104,7 @@ export interface MediaListEntryResult {
     chapters: number | null;
     type: 'ANIME' | 'MANGA';
     coverImage?: { large?: string; medium?: string } | null;
+    bannerImage?: string | null;
     genres?: string[];
     isAdult?: boolean;
   };
@@ -593,6 +594,7 @@ const ENTRY_FIELDS = /* GraphQL */ `
     id episodes status nextAiringEpisode { episode } chapters type
     title { romaji english }
     coverImage { large medium }
+    bannerImage
     genres isAdult
   }
 `;

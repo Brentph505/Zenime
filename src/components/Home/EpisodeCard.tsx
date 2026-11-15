@@ -39,6 +39,7 @@ interface LastVisitedEntry {
   anilistProgress?: number;
   lastEpisodeNumber?: number;
   coverImage?: string;
+  bannerImage?: string;
   genres?: string[];
   isAdult?: boolean;
 }
@@ -154,6 +155,27 @@ const AnimeEpisodeCard = styled(Link)<{ $blurred?: boolean }>`
       color: rgba(255, 255, 255, 0.65);
       margin: 0;
     }
+  }
+`;
+
+const ViewMoreCard = styled(Link)`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 9;
+  margin: 1rem 0;
+  border: 1px dashed rgba(128, 128, 128, 0.45);
+  border-radius: var(--global-border-radius);
+  color: var(--global-text);
+  background: rgba(128, 128, 128, 0.08);
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.2s ease-in-out, border-color 0.2s ease-in-out;
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--primary-accent);
+    background: rgba(128, 128, 128, 0.16);
   }
 `;
 
@@ -426,6 +448,7 @@ export const EpisodeCard: React.FC = () => {
                 src={
                   tmdbStills[episode.id] ||
                   episode.image ||
+                  lastVisitedData[animeId]?.bannerImage ||
                   lastVisitedData[animeId]?.coverImage ||
                   ''
                 }
@@ -468,8 +491,8 @@ export const EpisodeCard: React.FC = () => {
     () => ({
       spaceBetween: 20,
       slidesPerView: calculateSlidesPerView(windowWidth),
-      loop: true,
-      freeMode: true,
+      loop: false,
+      rewind: true,
       grabCursor: true,
       keyboard: true,
       autoplay: {
@@ -491,7 +514,12 @@ export const EpisodeCard: React.FC = () => {
         </ContinueWatchingTitle>
       )}
       <StyledSwiperContainer {...swiperSettings} aria-label='Episodes carousel'>
-        {episodesToRender}
+        {episodesToRender.slice(0, 13)}
+        {episodesToRender.length > 0 && (
+          <StyledSwiperSlide key='view-more'>
+            <ViewMoreCard to='/history'>View More</ViewMoreCard>
+          </StyledSwiperSlide>
+        )}
       </StyledSwiperContainer>
       {toastMessage && (
         <ToastNotification
