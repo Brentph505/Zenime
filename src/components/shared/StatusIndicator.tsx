@@ -29,9 +29,12 @@ const DefaultIndicator = styled(IndicatorDot)`
   background-color: var(--default-indicator-color);
 `;
 
-export const StatusIndicator: React.FC<{ status: string }> = ({ status }) => {
+export const StatusIndicator: React.FC<{ status?: string | null }> = ({ status }) => {
   const handleStatusCheck = useMemo(() => {
-    const normalizedStatus = status.trim().toUpperCase().replace(/[\s-]+/g, '_');
+    const normalizedStatus = (typeof status === 'string' ? status : '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s-]+/g, '_');
 
     switch (normalizedStatus) {
       case 'ONGOING':
