@@ -45,14 +45,19 @@ const Backdrop = styled.div`
   backdrop-filter: blur(6px);
   animation: ${fadeIn} 0.18s ease both;
 
-  @media (max-width: 480px) {
+  @media (max-width: 768px) {
     padding: 0.5rem;
+  }
+
+  @media (max-width: 480px) {
+    padding: 0.25rem;
   }
 `;
 
 /* ── Modal card (opaque, owns its own header) ── */
 const Modal = styled.div`
   width: min(96%, 65rem);
+  box-sizing: border-box;
   /* Fixed height across all sections — prevents modal from resizing when
      switching tabs. Content scrolls internally if needed. */
   height: min(90vh, 42rem);
@@ -66,13 +71,13 @@ const Modal = styled.div`
   animation: ${scaleIn} 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 
   @media (max-width: 768px) {
-    width: min(98%, 100%);
+    width: 100%;
     height: min(85vh, 38rem);
     border-radius: 12px;
   }
 
   @media (max-width: 480px) {
-    width: calc(100% - 1rem);
+    width: 100%;
     height: min(90vh, 35rem);
     border-radius: 10px;
   }

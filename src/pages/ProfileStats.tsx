@@ -1263,22 +1263,18 @@ const CardStatItem = styled.div<{ $active: boolean; $isTime?: boolean }>`
 
 const FavoriteGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr));
-  gap: 2rem;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1.25rem;
   margin-top: 0.5rem;
 
-  @media (max-width: 1000px) {
-    gap: 1.5rem;
-  }
-
-  @media (max-width: 800px) {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 7rem), 1fr));
+  @media (max-width: 920px) {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
   }
 
-  @media (max-width: 450px) {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 6.5rem), 1fr));
-    gap: 0.8rem;
+  @media (max-width: 600px) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
   }
 `;
 
@@ -2234,7 +2230,7 @@ const ProfileStatsPage: React.FC = () => {
       ? userData?.favourites?.manga?.nodes
       : userData?.favourites?.anime?.nodes;
 
-    return (Array.isArray(items) ? items : []).slice(0, 4).map((item) => {
+    return (Array.isArray(items) ? items : []).map((item) => {
       const rawTitle = (item.title ?? {}) as AniListTitleLike;
       const title = {
         romaji: rawTitle.romaji ?? rawTitle.english ?? 'Untitled',

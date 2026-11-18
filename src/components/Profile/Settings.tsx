@@ -4,7 +4,6 @@ import {
   IoLanguageOutline,
   IoTextOutline,
   IoPersonOutline,
-  IoStarOutline,
   IoKeyOutline,
   IoPlayOutline,
   IoPlayForwardOutline,
@@ -25,6 +24,7 @@ import {
 } from 'react-icons/io5';
 import { useSettings } from '../../index';
 import { useAuth } from '../../client/useAuth';
+import { useTheme, type ThemeMode } from '../ThemeContext';
 import { ToastNotification } from '../shared/ToastNotification';
 
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -33,8 +33,6 @@ interface Preferences {
   defaultLanguage: string;
   titleLanguage: string;
   characterNameLanguage: string;
-  ratingSource: string;
-  openKeyboardShortcuts: string;
   autoskipIntroOutro: string;
   autoPlay: string;
   autoNext: string;
@@ -109,6 +107,26 @@ interface RowDef {
   description: string;
 }
 
+const SHORTCUT_BINDINGS: Record<string, string> = {
+  shortcutOpenHelp: 'Shift + /',
+  shortcutFocusSearch: '/',
+  shortcutToggleTheme: 'Shift + D',
+  shortcutPreviousEpisode: 'Shift + P',
+  shortcutNextEpisode: 'Shift + N',
+  shortcutPlayPause: 'K / Space',
+  shortcutSeekBack: 'J',
+  shortcutSeekForward: 'L',
+  shortcutFullscreen: 'F',
+  shortcutMute: 'M',
+  shortcutVolumeUp: '↑',
+  shortcutVolumeDown: '↓',
+  shortcutSeekForward5: '→',
+  shortcutSeekBack5: '←',
+  shortcutSpeedUp: 'Shift + ,',
+  shortcutSpeedDown: 'Shift + .',
+  shortcutJumpToPercent: '0–9',
+};
+
 const ROW_META: Record<string, RowDef> = {
   titleLanguage: {
     icon: <IoTextOutline />,
@@ -120,16 +138,28 @@ const ROW_META: Record<string, RowDef> = {
     label: 'Character name language',
     description: 'Show character names in Romaji or Native script.',
   },
-  ratingSource: {
-    icon: <IoStarOutline />,
-    label: 'Rating source',
-    description: 'Where to pull scores and ratings from.',
+  themeMode: {
+    icon: <IoColorPaletteOutline />,
+    label: 'Theme',
+    description: 'Use your system theme or choose light or dark mode.',
   },
-  openKeyboardShortcuts: {
-    icon: <IoKeyOutline />,
-    label: 'Keyboard shortcuts',
-    description: 'View the full list of keyboard shortcuts.',
-  },
+  shortcutOpenHelp: { icon: <IoKeyOutline />, label: 'Open shortcuts', description: 'Show this reference from any page.' },
+  shortcutFocusSearch: { icon: <IoKeyOutline />, label: 'Focus search', description: 'Focus the app search field.' },
+  shortcutToggleTheme: { icon: <IoKeyOutline />, label: 'Toggle theme', description: 'Switch between light and dark themes.' },
+  shortcutPreviousEpisode: { icon: <IoKeyOutline />, label: 'Previous episode', description: 'Available on the Watch page.' },
+  shortcutNextEpisode: { icon: <IoKeyOutline />, label: 'Next episode', description: 'Available on the Watch page.' },
+  shortcutPlayPause: { icon: <IoKeyOutline />, label: 'Play / pause', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutSeekBack: { icon: <IoKeyOutline />, label: 'Seek backward 10 seconds', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutSeekForward: { icon: <IoKeyOutline />, label: 'Seek forward 10 seconds', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutFullscreen: { icon: <IoKeyOutline />, label: 'Toggle fullscreen', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutMute: { icon: <IoKeyOutline />, label: 'Toggle mute', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutVolumeUp: { icon: <IoKeyOutline />, label: 'Increase volume', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutVolumeDown: { icon: <IoKeyOutline />, label: 'Decrease volume', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutSeekForward5: { icon: <IoKeyOutline />, label: 'Seek forward 5 seconds', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutSeekBack5: { icon: <IoKeyOutline />, label: 'Seek backward 5 seconds', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutSpeedUp: { icon: <IoKeyOutline />, label: 'Increase playback speed', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutSpeedDown: { icon: <IoKeyOutline />, label: 'Decrease playback speed', description: 'Works anywhere while the Watch player is loaded.' },
+  shortcutJumpToPercent: { icon: <IoKeyOutline />, label: 'Jump to percentage', description: 'Jump to 0–90% anywhere while the Watch player is loaded.' },
   defaultLanguage: {
     icon: <IoLanguageOutline />,
     label: 'Default language',
@@ -241,23 +271,18 @@ const Shell = styled.div`
 
 /* ── Sidebar ── */
 const Sidebar = styled.nav`
-  /* Mobile: horizontal icon tabs */
+  /* Mobile: search above an even icon-only section row */
   display: flex;
+  flex-direction: column;
   width: 100%;
+  box-sizing: border-box;
   flex-shrink: 0;
   border-bottom: 1px solid var(--global-border);
-  flex-direction: row;
-  overflow-x: auto;
-  overflow-y: visible;
-  padding: 0 0.3rem 0;
-  gap: 0.125rem;
-  flex-wrap: nowrap;
+  overflow: hidden;
+  padding: 0.55rem 0.65rem 0;
+  gap: 0.45rem;
   height: auto;
-  align-items: center;
-  /* No extra margin — Body padding handles the gap */
   margin-top: 0;
-
-  &::-webkit-scrollbar { height: 0; }
 
   /* Desktop: vertical sidebar */
   @media (min-width: 769px) {
@@ -273,14 +298,32 @@ const Sidebar = styled.nav`
   }
 `;
 
-const SearchWrap = styled.div`
-  position: relative;
-  flex-shrink: 0;
-  /* Hide on mobile, show on desktop */
-  display: none;
+const SectionNav = styled.div`
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  min-width: 0;
+  overflow: visible;
 
   @media (min-width: 769px) {
-    display: block;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    overflow: visible;
+  }
+`;
+
+const SearchWrap = styled.div`
+  position: relative;
+  flex: 0 0 auto;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+
+  @media (min-width: 769px) {
     margin-bottom: 0.55rem;
   }
 `;
@@ -300,6 +343,7 @@ const SearchIconSpan = styled.span`
 const SearchInput = styled.input`
   width: 100%;
   box-sizing: border-box;
+  min-width: 0;
   padding: 0.48rem 0.75rem 0.48rem 2rem;
   background: var(--global-card-bg, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--global-border);
@@ -319,24 +363,20 @@ const SearchInput = styled.input`
 `;
 
 const NavItem = styled.button<{ $active: boolean; $color: string }>`
-  /* Mobile: icon-only tabs */
+  /* Mobile: icon-only section buttons */
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0;
-  width: auto;
+  width: 100%;
   padding: 0;
   border: none;
-  border-radius: 0;
-  background: transparent;
+  border-radius: 8px;
+  background: ${({ $active }) => ($active ? 'var(--global-secondary-bg)' : 'transparent')};
   cursor: pointer;
   text-align: center;
-  border-bottom: 2.5px solid
-    ${({ $active, $color }) => ($active ? $color : 'transparent')};
-  transition: background 0.15s, border-color 0.15s;
-  flex-shrink: 0;
-  min-width: 3rem;
-  height: 3rem;
+  transition: background 0.15s, color 0.15s;
+  min-width: 0;
+  height: 2.8rem;
 
   &:hover {
     background: var(--global-tertiary-bg);
@@ -347,11 +387,11 @@ const NavItem = styled.button<{ $active: boolean; $color: string }>`
     width: 100%;
     justify-content: flex-start;
     gap: 0.6rem;
+    padding: 0.52rem 0.6rem;
     border-left: 2.5px solid
       ${({ $active, $color }) => ($active ? $color : 'transparent')};
     border-bottom: none;
     border-radius: var(--global-border-radius);
-    padding: 0.52rem 0.6rem;
     min-width: auto;
     height: auto;
     background: ${({ $active }) =>
@@ -367,12 +407,12 @@ const NavIconBadge = styled.span<{ $color: string }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 0;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 4px;
   background: transparent;
   color: ${({ $color }) => $color};
-  font-size: 1.3rem;
+  font-size: 1.25rem;
   flex-shrink: 0;
 
   @media (min-width: 769px) {
@@ -385,9 +425,8 @@ const NavIconBadge = styled.span<{ $color: string }>`
 `;
 
 const NavLabel = styled.span<{ $active: boolean }>`
-  /* Hidden on mobile */
   display: none;
-  font-size: 0.69rem;
+  font-size: 0.67rem;
   font-weight: 700;
   letter-spacing: 0.055em;
   text-transform: uppercase;
@@ -396,9 +435,9 @@ const NavLabel = styled.span<{ $active: boolean }>`
   white-space: nowrap;
   transition: color 0.15s;
 
-  /* Shown on desktop */
   @media (min-width: 769px) {
     display: inline;
+    font-size: 0.69rem;
   }
 `;
 
@@ -770,6 +809,7 @@ interface SettingsProps {
 
 export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
   const { settings, setSettings } = useSettings();
+  const { themeMode, setThemeMode } = useTheme();
   const { isLoggedIn } = useAuth();
 
   const [activeSection, setActiveSection] = useState('general');
@@ -786,8 +826,6 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
     defaultLanguage: settings.defaultLanguage ?? 'Sub',
     titleLanguage: settings.titleLanguage ?? 'English (Attack on Titan)',
     characterNameLanguage: settings.characterNameLanguage ?? 'Romaji (Zoldyck Killua)',
-    ratingSource: 'Anilist',
-    openKeyboardShortcuts: '',
     autoskipIntroOutro: settings.autoSkip ? 'Enabled' : 'Disabled',
     autoPlay: settings.autoPlay ? 'Enabled' : 'Disabled',
     autoNext: settings.autoNext ? 'Enabled' : 'Disabled',
@@ -873,8 +911,6 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
           keys: [
             'titleLanguage',
             'characterNameLanguage',
-            'ratingSource',
-            'openKeyboardShortcuts',
           ],
         },
       ],
@@ -884,7 +920,34 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       icon: <IoColorPaletteOutline />,
       label: 'Appearance',
       color: '#8b5cf6',
-      groups: [{ keys: ['hideSpoilers', 'watchOrInfo'] }],
+      groups: [{ keys: ['themeMode', 'hideSpoilers', 'watchOrInfo'] }],
+    },
+    {
+      id: 'shortcuts',
+      icon: <IoKeyOutline />,
+      label: 'Shortcuts',
+      color: '#0ea5e9',
+      groups: [
+        { title: 'Global / app', keys: ['shortcutOpenHelp', 'shortcutFocusSearch', 'shortcutToggleTheme'] },
+        { title: 'Watching / episodes', keys: ['shortcutPreviousEpisode', 'shortcutNextEpisode'] },
+        {
+          title: 'Player controls',
+          keys: [
+            'shortcutPlayPause',
+            'shortcutSeekBack',
+            'shortcutSeekForward',
+            'shortcutFullscreen',
+            'shortcutMute',
+            'shortcutVolumeUp',
+            'shortcutVolumeDown',
+            'shortcutSeekForward5',
+            'shortcutSeekBack5',
+            'shortcutSpeedUp',
+            'shortcutSpeedDown',
+            'shortcutJumpToPercent',
+          ],
+        },
+      ],
     },
     {
       id: 'media',
@@ -944,8 +1007,6 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
           'Native (キルア=ゾルディック)',
           'English (Killua Zoldyck)',
         ];
-      case 'ratingSource':
-        return ['Anilist', 'IMDb', 'MyAnimeList'];
       case 'defaultServers':
         return ['Default', 'Vidstreaming', 'Gogo'];
       default:
@@ -1013,8 +1074,6 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
       defaultLanguage: 'Sub',
       titleLanguage: DEFAULT_SETTINGS.titleLanguage,
       characterNameLanguage: DEFAULT_SETTINGS.characterNameLanguage,
-      ratingSource: 'Anilist',
-      openKeyboardShortcuts: '',
       autoskipIntroOutro: DEFAULT_SETTINGS.autoSkip ? 'Enabled' : 'Disabled',
       autoPlay: DEFAULT_SETTINGS.autoPlay ? 'Enabled' : 'Disabled',
       autoNext: DEFAULT_SETTINGS.autoNext ? 'Enabled' : 'Disabled',
@@ -1051,8 +1110,25 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
 
   /* Control renderer */
   const renderControl = (key: string) => {
-    if (key === 'openKeyboardShortcuts') {
-      return <StaticPill>Open</StaticPill>;
+    if (SHORTCUT_BINDINGS[key]) {
+      return <StaticPill>{SHORTCUT_BINDINGS[key]}</StaticPill>;
+    }
+
+    if (key === 'themeMode') {
+      return (
+        <SelectWrap>
+          <StyledSelect
+            value={themeMode}
+            onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
+            aria-label='Theme mode'
+          >
+            <option value='system'>System</option>
+            <option value='light'>Light</option>
+            <option value='dark'>Dark</option>
+          </StyledSelect>
+          <ChevronIcon />
+        </SelectWrap>
+      );
     }
 
     if (isBoolKey(key)) {
@@ -1159,19 +1235,39 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
   const filteredGroups = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return active.groups;
-    return active.groups
-      .map((g) => ({
-        ...g,
-        keys: g.keys.filter((k) => {
-          const m = ROW_META[k];
-          return (
-            m?.label.toLowerCase().includes(q) ||
-            m?.description.toLowerCase().includes(q)
-          );
-        }),
-      }))
-      .filter((g) => g.keys.length > 0);
-  }, [search, active]);
+
+    const terms = q
+      .split(/\s+/)
+      .filter((term) => !['setting', 'settings', 'option', 'options'].includes(term));
+
+    return sections.flatMap((section) =>
+      section.groups.flatMap((group) => {
+        const keys = group.keys.filter((key) => {
+          const meta = ROW_META[key];
+          const searchable = [
+            section.label,
+            group.title,
+            meta?.label,
+            meta?.description,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+
+          return terms.every((term) => searchable.includes(term));
+        });
+
+        if (keys.length === 0) return [];
+
+        return [{
+          ...group,
+          title: [section.label, group.title].filter(Boolean).join(' / '),
+          keys,
+          sectionId: section.id,
+        }];
+      }),
+    );
+  }, [search, active, sections]);
 
   const changeSection = (id: string) => {
     setActiveSection(id);
@@ -1189,30 +1285,39 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
           </SearchIconSpan>
           <SearchInput
             type="text"
-            placeholder="Search"
+            placeholder="Search settings"
+            aria-label="Search all settings"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </SearchWrap>
 
-        {sections.map((s) => (
-          <NavItem
-            key={s.id}
-            $active={activeSection === s.id}
-            $color={s.color}
-            onClick={() => changeSection(s.id)}
-          >
-            <NavIconBadge $color={s.color}>{s.icon}</NavIconBadge>
-            <NavLabel $active={activeSection === s.id}>{s.label}</NavLabel>
-          </NavItem>
-        ))}
+        <SectionNav aria-label='Settings sections'>
+          {sections.map((s) => (
+            <NavItem
+              key={s.id}
+              type='button'
+              $active={activeSection === s.id}
+              $color={s.color}
+              onClick={() => changeSection(s.id)}
+              aria-current={activeSection === s.id ? 'page' : undefined}
+              aria-label={s.label}
+              title={s.label}
+            >
+              <NavIconBadge $color={s.color}>{s.icon}</NavIconBadge>
+              <NavLabel $active={activeSection === s.id}>{s.label}</NavLabel>
+            </NavItem>
+          ))}
+        </SectionNav>
       </Sidebar>
 
       {/* Content */}
       <Content>
         <SectionHead>
-          <SectionIconBadge $color={active.color}>{active.icon}</SectionIconBadge>
-          <SectionLabel>{active.label}</SectionLabel>
+          <SectionIconBadge $color={search.trim() ? '#0ea5e9' : active.color}>
+            {search.trim() ? <IoSearchOutline /> : active.icon}
+          </SectionIconBadge>
+          <SectionLabel>{search.trim() ? 'Search results' : active.label}</SectionLabel>
         </SectionHead>
 
         {filteredGroups.length === 0 ? (
@@ -1221,7 +1326,7 @@ export const Settings: React.FC<SettingsProps> = ({ onSectionChange }) => {
           </Card>
         ) : (
           filteredGroups.map((group, gi) => (
-            <Group key={`${active.id}-${gi}`}>
+            <Group key={`${group.sectionId ?? active.id}-${gi}`}>
               {group.title && (
                 <GroupHead>
                   <GroupTitle $danger={group.danger}>

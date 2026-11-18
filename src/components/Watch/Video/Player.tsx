@@ -1620,7 +1620,7 @@ export function Player({
               posterLoad='eager'
               streamType='on-demand'
               storage='storage-key'
-              keyTarget='player'
+              keyTarget='document'
               style={{
                 '--media-user-font-weight': captionFontWeight,
                 '--media-user-text-shadow': createCaptionTextShadow(

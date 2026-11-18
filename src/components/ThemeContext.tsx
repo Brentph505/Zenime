@@ -3,11 +3,16 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from 'react';
 
+export type ThemeMode = 'system' | 'light' | 'dark';
+
 type ThemeContextType = {
   isDarkMode: boolean;
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
   toggleTheme: () => void;
 };
 
@@ -20,33 +25,48 @@ type ThemeProviderProps = {
 };
 
 export const ThemeProvider = ({ children }: ThemeProviderProps) => {
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
-    getInitialThemePreference(),
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getInitialThemeMode);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(() =>
+    getSystemThemePreference(),
   );
+  const isDarkMode = themeMode === 'system' ? systemPrefersDark : themeMode === 'dark';
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark-mode', isDarkMode);
-    localStorage.setItem('themePreference', isDarkMode ? 'dark' : 'light');
-  }, [isDarkMode]);
+    localStorage.setItem('themePreference', themeMode);
+  }, [isDarkMode, themeMode]);
 
-  const toggleTheme = () => {
-    setIsDarkMode(!isDarkMode);
-  };
+  useEffect(() => {
+    if (themeMode !== 'system' || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (event: MediaQueryListEvent) => setSystemPrefersDark(event.matches);
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [themeMode]);
+
+  const toggleTheme = useCallback(() => {
+    setThemeMode((currentMode) => {
+      const currentIsDark = currentMode === 'system' ? systemPrefersDark : currentMode === 'dark';
+      return currentIsDark ? 'light' : 'dark';
+    });
+  }, [systemPrefersDark]);
 
   return (
-    <ThemeContext.Provider value={{ isDarkMode, toggleTheme }}>
+    <ThemeContext.Provider value={{ isDarkMode, themeMode, setThemeMode, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   );
 };
 
-const getInitialThemePreference = (): boolean => {
+const getInitialThemeMode = (): ThemeMode => {
   const storedThemePreference = localStorage.getItem('themePreference');
-  if (storedThemePreference) {
-    return storedThemePreference === 'dark';
-  }
-  return (
-    window.matchMedia &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches
+  return storedThemePreference === 'dark' || storedThemePreference === 'light'
+    ? storedThemePreference
+    : 'system';
+};
+
+const getSystemThemePreference = (): boolean => {
+  return Boolean(
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches,
   );
 };

@@ -8,23 +8,26 @@ import { CardGrid, EditEntryModal } from '../../index';
 import type { Anime } from '../../index';
 
 type MediaTab = 'anime' | 'manga';
+type LibraryFilter = MediaListStatus | 'FAVORITES';
 
-const ANIME_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+const ANIME_STATUS_OPTIONS: { value: LibraryFilter; label: string }[] = [
   { value: 'CURRENT',   label: 'Watching' },
   { value: 'PLANNING',  label: 'Plan to Watch' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'REPEATING', label: 'Re-watching' },
   { value: 'PAUSED',    label: 'Paused' },
   { value: 'DROPPED',   label: 'Dropped' },
+  { value: 'FAVORITES', label: 'Favorites' },
 ];
 
-const MANGA_STATUS_OPTIONS: { value: MediaListStatus; label: string }[] = [
+const MANGA_STATUS_OPTIONS: { value: LibraryFilter; label: string }[] = [
   { value: 'CURRENT',   label: 'Reading' },
   { value: 'PLANNING',  label: 'Plan to Read' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'REPEATING', label: 'Re-reading' },
   { value: 'PAUSED',    label: 'Paused' },
   { value: 'DROPPED',   label: 'Dropped' },
+  { value: 'FAVORITES', label: 'Favorites' },
 ];
 
 const TAB_OPTIONS: { value: MediaTab; label: string }[] = [
@@ -156,11 +159,11 @@ export const WatchingAnilist = () => {
 
   const [activeTab, setActiveTab] = useState<MediaTab>('anime');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStatusAnime, setSelectedStatusAnime] = useState<MediaListStatus>(
-    () => (localStorage.getItem('selectedStatusAnime') as MediaListStatus) || 'CURRENT',
+  const [selectedStatusAnime, setSelectedStatusAnime] = useState<LibraryFilter>(
+    () => (localStorage.getItem('selectedStatusAnime') as LibraryFilter) || 'CURRENT',
   );
-  const [selectedStatusManga, setSelectedStatusManga] = useState<MediaListStatus>(
-    () => (localStorage.getItem('selectedStatusManga') as MediaListStatus) || 'CURRENT',
+  const [selectedStatusManga, setSelectedStatusManga] = useState<LibraryFilter>(
+    () => (localStorage.getItem('selectedStatusManga') as LibraryFilter) || 'CURRENT',
   );
   const [editingAnime, setEditingAnime] = useState<Anime | null>(null);
 
@@ -168,12 +171,12 @@ export const WatchingAnilist = () => {
 
   const animeList = useUserMediaList(
     isLoggedIn ? userData?.name : undefined,
-    selectedStatusAnime,
+    selectedStatusAnime === 'FAVORITES' ? 'CURRENT' : selectedStatusAnime,
     'ANIME',
   );
   const mangaList = useUserMediaList(
     isLoggedIn ? userData?.name : undefined,
-    selectedStatusManga,
+    selectedStatusManga === 'FAVORITES' ? 'CURRENT' : selectedStatusManga,
     'MANGA',
   );
 
@@ -190,7 +193,7 @@ export const WatchingAnilist = () => {
   }, [animeList.refresh, mangaList.refresh]);
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newStatus = e.target.value as MediaListStatus;
+    const newStatus = e.target.value as LibraryFilter;
     if (activeTab === 'anime') {
       setSelectedStatusAnime(newStatus);
       localStorage.setItem('selectedStatusAnime', newStatus);
@@ -206,6 +209,74 @@ export const WatchingAnilist = () => {
   };
 
   const mappedData = useMemo(() => {
+    const showingFavorites = selectedStatus === 'FAVORITES';
+    if (showingFavorites) {
+      const favorites = activeTab === 'anime'
+        ? userData?.favourites?.anime?.nodes ?? []
+        : userData?.favourites?.manga?.nodes ?? [];
+      const search = searchTerm.trim().toLowerCase();
+
+      return favorites
+        .filter((item) => {
+          const title = `${item.title?.english ?? ''} ${item.title?.romaji ?? ''}`.toLowerCase();
+          return !search || title.includes(search);
+        })
+        .map((item) => {
+          const image = item.coverImage?.large ?? item.coverImage?.medium ?? '';
+          const title = item.title?.english ?? item.title?.romaji ?? 'Untitled';
+          const type = item.type === 'MANGA' ? 'MANGA' : item.format ?? 'ANIME';
+          const year = item.startDate?.year ?? 0;
+
+          return {
+            id: String(item.id),
+            malId: String(item.id),
+            image,
+            bannerImage: null,
+            color: item.coverImage?.color ?? undefined,
+            title: {
+              romaji: item.title?.romaji ?? title,
+              english: item.title?.english ?? title,
+              native: '',
+              userPreferred: title,
+            },
+            status: ANILIST_STATUS_LABELS[item.status ?? ''] ?? item.status ?? 'UNKNOWN',
+            rating: item.averageScore ?? 0,
+            releaseDate: year,
+            totalEpisodes: item.episodes ?? item.chapters ?? 0,
+            currentEpisode: 0,
+            type,
+            description: '',
+            cover: image,
+            coverHash: '',
+            imageHash: '',
+            popularity: 0,
+            duration: item.duration ?? 0,
+            genres: item.genres ?? [],
+            studios: [],
+            studioIds: [],
+            synonyms: [],
+            isLicensed: false,
+            isAdult: item.isAdult ?? false,
+            countryOfOrigin: '',
+            subOrDub: '',
+            season: '',
+            trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
+            startDate: {
+              year,
+              month: item.startDate?.month ?? 0,
+              day: item.startDate?.day ?? 0,
+            },
+            endDate: { year: 0, month: 0, day: 0 },
+            recommendations: [],
+            characters: [],
+            relations: [],
+            mappings: [],
+            artwork: [],
+            episodes: [],
+          } satisfies Anime;
+        });
+    }
+
     const filteredEntries = activeList.entries.filter((entry: AnimeListEntry) => {
       const search = searchTerm.trim().toLowerCase();
       if (!search) return true;
@@ -258,13 +329,17 @@ export const WatchingAnilist = () => {
       artwork: [],
       episodes: [],
     }));
-  }, [activeList.entries, searchTerm]);
+  }, [activeList.entries, activeTab, searchTerm, selectedStatus, userData?.favourites]);
 
   return (
     <Container>
       <HeadingGroup>
         <SectionTitle>AniList Library</SectionTitle>
-        <SectionSubtext>Search your saved {activeTab === 'anime' ? 'anime' : 'manga'} and switch list status instantly.</SectionSubtext>
+        <SectionSubtext>
+          {selectedStatus === 'FAVORITES'
+            ? `Search your favorite ${activeTab === 'anime' ? 'anime' : 'manga'}.`
+            : `Search your saved ${activeTab === 'anime' ? 'anime' : 'manga'} and switch list status instantly.`}
+        </SectionSubtext>
       </HeadingGroup>
 
       <Toolbar>
@@ -295,20 +370,22 @@ export const WatchingAnilist = () => {
         </TabGroup>
       </Toolbar>
 
-      {activeList.loading ? (
+      {selectedStatus !== 'FAVORITES' && activeList.loading ? (
         <Message>Loading…</Message>
-      ) : activeList.error ? (
+      ) : selectedStatus !== 'FAVORITES' && activeList.error ? (
         <Message>Error: {activeList.error}</Message>
       ) : mappedData.length > 0 ? (
         <CardGrid
-          animeData={mappedData as any}
+          animeData={mappedData as Anime[]}
           hasNextPage={false}
           onLoadMore={() => {}}
-          showEditButton={true}
+          showEditButton={selectedStatus !== 'FAVORITES'}
           onEdit={(anime) => setEditingAnime(anime)}
         />
       ) : (
-        <Message>No {activeTab === 'anime' ? 'anime' : 'manga'} entries found.</Message>
+        <Message>
+          No {selectedStatus === 'FAVORITES' ? 'favorite ' : ''}{activeTab === 'anime' ? 'anime' : 'manga'} entries found.
+        </Message>
       )}
 
       {editingAnime && (

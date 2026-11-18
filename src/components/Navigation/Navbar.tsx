@@ -14,6 +14,7 @@ import { IoIosSearch } from 'react-icons/io';
 import { CgProfile } from 'react-icons/cg';
 import { NotificationsPanel } from './NotificationsPanel';
 import { SettingsOverlay } from '../Profile/SettingsOverlay';
+import { useTheme } from '../ThemeContext';
 
 const StyledNavbar = styled.div<{ $isExtended?: boolean }>`
   position: fixed;
@@ -338,32 +339,9 @@ const SlashToggleBtn = styled.div<{ $isFocused: boolean }>`
   }
 `;
 
-const detectUserTheme = () => {
-  if (
-    window.matchMedia &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-  ) {
-    return true;
-  }
-  return false;
-};
-
-const saveThemePreference = (isDarkMode: boolean) => {
-  localStorage.setItem('themePreference', isDarkMode ? 'dark' : 'light');
-};
-
-const getInitialThemePreference = () => {
-  const storedThemePreference = localStorage.getItem('themePreference');
-
-  if (storedThemePreference) {
-    return storedThemePreference === 'dark';
-  }
-
-  return detectUserTheme();
-};
-
 export const Navbar = () => {
   const { isLoggedIn, userData, unreadNotifications, logout, markNotificationsRead } = useAuth();
+  const { isDarkMode, toggleTheme } = useTheme();
   const [isPaddingExtended, setIsPaddingExtended] = useState(false);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -433,18 +411,6 @@ export const Navbar = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   });
-
-  const [isDarkMode, setIsDarkMode] = useState(getInitialThemePreference());
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark-mode', isDarkMode);
-  }, [isDarkMode]);
-
-  const toggleTheme = useCallback(() => {
-    const newIsDarkMode = !isDarkMode;
-    setIsDarkMode(newIsDarkMode);
-    saveThemePreference(newIsDarkMode);
-  }, [isDarkMode, setIsDarkMode]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
