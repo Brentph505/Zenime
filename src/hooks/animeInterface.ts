@@ -114,6 +114,7 @@ export interface Anime {
   season: string;
   popularity: number;
   type: string;
+  format?: string;
   startDate: {
     year: number;
     month: number;

@@ -16,6 +16,11 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { Episode } from '../../index';
 import { safeLocalStorageSet } from '../../lib/safeStorage';
+import {
+  getEpisodeThumbnail,
+  removeEpisodeThumbnail,
+  saveEpisodeThumbnail,
+} from '../../lib/thumbnailCache';
 import { dispatchWatchHistoryChanged, normalizeToEpisodeArray } from '../../lib/watchHistory';
 import { useSettings } from '../Profile/SettingsProvider';
 
@@ -339,6 +344,7 @@ export const EpisodeList: React.FC<Props> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [watchedEpisodes, setWatchedEpisodes] = useState<Episode[]>([]);
   const [loadedImages, setLoadedImages] = useState<Record<string, boolean>>({});
+  const [failedCachedImages, setFailedCachedImages] = useState<Record<string, boolean>>({});
   const defaultLayoutMode = episodes.every((episode) => episode.title)
     ? 'list'
     : 'grid';
@@ -413,7 +419,7 @@ export const EpisodeList: React.FC<Props> = ({
         }
       }
     }
-  }, [animeId]);
+  }, [animeId, displayMode]);
 
   // Function to handle episode selection
   // Function to mark an episode as watched
@@ -632,6 +638,12 @@ export const EpisodeList: React.FC<Props> = ({
         {displayedEpisodes.map((episode) => {
           const $isSelected = episode.id === selectedEpisodeId;
           const $isWatched = watchedEpisodes.some((e) => e.id === episode.id);
+          const cachedEpisodeImage = animeId
+            ? getEpisodeThumbnail(animeId, episode.number, 'episode')
+            : null;
+          const episodeImage = failedCachedImages[episode.id]
+            ? episode.image
+            : cachedEpisodeImage || episode.image;
 
           return (
             <ListItem
@@ -661,12 +673,40 @@ export const EpisodeList: React.FC<Props> = ({
                     <EpisodeImageWrapper>
                       {!loadedImages[episode.id] && <EpisodeImageSkeleton />}
                       <EpisodeImage
-                        src={episode.image}
+                        src={episodeImage}
                         alt={`Episode ${episode.number} - ${episode.title}`}
                         $loaded={!!loadedImages[episode.id]}
                         $blurred={shouldBlurEpisodes}
-                        onLoad={() => handleImageLoad(episode.id)}
-                        onError={() => handleImageLoad(episode.id)}
+                        onLoad={(event) => {
+                          handleImageLoad(episode.id);
+                          if (animeId) {
+                            saveEpisodeThumbnail(
+                              animeId,
+                              episode.number,
+                              'episode',
+                              event.currentTarget.currentSrc || event.currentTarget.src,
+                            );
+                          }
+                        }}
+                        onError={() => {
+                          if (cachedEpisodeImage && !failedCachedImages[episode.id]) {
+                            removeEpisodeThumbnail(
+                              animeId!,
+                              episode.number,
+                              'episode',
+                              cachedEpisodeImage,
+                            );
+                            setFailedCachedImages((previous) => ({
+                              ...previous,
+                              [episode.id]: true,
+                            }));
+                            return;
+                          }
+                          setLoadedImages((previous) => ({
+                            ...previous,
+                            [episode.id]: true,
+                          }));
+                        }}
                       />
                     </EpisodeImageWrapper>
                     <div style={{ minWidth: 0, overflow: 'hidden' }}>

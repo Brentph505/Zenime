@@ -163,7 +163,10 @@ const Title = styled.h5<{ $isHovered: boolean; color?: string }>`
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: ${(props) => (props.$isHovered ? props.color : 'var(--title-color)')};
+  color: ${(props) =>
+    props.$isHovered
+      ? props.color || 'var(--primary-accent)'
+      : 'var(--global-text)'};
   transition: 0.2s ease-in-out;
 
   @media (max-width: 500px) {
@@ -271,10 +274,10 @@ export const CardItem: React.FC<{ anime: Anime; isLatestTab?: boolean; showEditB
   const displayDetail = useMemo(() => {
     return (
       <ImgDetail $isHovered={isHovered} color={anime.color}>
-        {anime.type}
+        {anime.format || anime.type}
       </ImgDetail>
     );
-  }, [isHovered, anime.color, anime.type]);
+  }, [isHovered, anime.color, anime.type, anime.format]);
 
   return (
     <StyledCardWrapper

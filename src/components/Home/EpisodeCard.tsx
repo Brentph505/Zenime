@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import styled from 'styled-components';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaPlay } from 'react-icons/fa';
@@ -22,6 +22,11 @@ import {
   setAnimeAniListSyncDisabled,
 } from '../../lib/watchHistory';
 import { fetchTmdbEpisodeStill } from '../../hooks/useApi';
+import {
+  getEpisodeThumbnail,
+  removeEpisodeThumbnail,
+  saveEpisodeThumbnail,
+} from '../../lib/thumbnailCache';
 
 const LOCAL_STORAGE_KEYS = {
   WATCHED_EPISODES: WATCHED_EPISODES_KEY,
@@ -255,6 +260,9 @@ export const EpisodeCard: React.FC = () => {
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [tmdbStills, setTmdbStills] = useState<Record<string, string>>({});
+  const [failedStillIds, setFailedStillIds] = useState<Record<string, boolean>>({});
+  const [failedEpisodeImageIds, setFailedEpisodeImageIds] = useState<Record<string, boolean>>({});
+  const requestedStillIds = useRef(new Set<string>());
 
   const [lastVisitedData, setLastVisitedData] = useState<LastVisitedData>(() => {
     const data = localStorage.getItem(LOCAL_STORAGE_KEYS.LAST_ANIME_VISITED);
@@ -418,13 +426,22 @@ export const EpisodeCard: React.FC = () => {
           (isHentai && settings.blurHentai) ||
             (!isHentai && isNsfw && settings.blurNSFW),
         );
-        const saveTmdbStill = (image: string | null) => {
-          if (image) {
-            setTmdbStills((previous) =>
-              previous[episode.id] ? previous : { ...previous, [episode.id]: image },
-            );
-          }
-        };
+        const cachedTmdbStill = getEpisodeThumbnail(
+          animeId,
+          cleanEpisodeNumber,
+          'tmdb',
+        );
+        const cachedEpisodeImage = getEpisodeThumbnail(
+          animeId,
+          cleanEpisodeNumber,
+          'episode',
+        );
+        const usableEpisodeImage = failedEpisodeImageIds[episode.id]
+          ? null
+          : cachedEpisodeImage;
+        const thumbnailStill = failedStillIds[episode.id]
+          ? null
+          : tmdbStills[episode.id] || cachedTmdbStill;
 
         return (
           <StyledSwiperSlide key={episode.id}>
@@ -435,18 +452,38 @@ export const EpisodeCard: React.FC = () => {
             >
               <EpisodeCardImage
                 ref={(element) => {
-                  if (element && !tmdbStills[episode.id]) {
+                  if (
+                    element &&
+                    !thumbnailStill &&
+                    !requestedStillIds.current.has(episode.id)
+                  ) {
+                    requestedStillIds.current.add(episode.id);
                     fetchTmdbEpisodeStill(
                       [
                         lastVisitedData[animeId]?.titleEnglish || animeTitle,
                         lastVisitedData[animeId]?.titleRomaji || '',
                       ],
                       cleanEpisodeNumber,
-                    ).then(saveTmdbStill);
+                    ).then((image) => {
+                      if (image) {
+                        setFailedStillIds((previous) => {
+                          if (!previous[episode.id]) return previous;
+                          const next = { ...previous };
+                          delete next[episode.id];
+                          return next;
+                        });
+                        setTmdbStills((previous) =>
+                          previous[episode.id]
+                            ? previous
+                            : { ...previous, [episode.id]: image },
+                        );
+                      }
+                    }).catch(() => {});
                   }
                 }}
                 src={
-                  tmdbStills[episode.id] ||
+                  thumbnailStill ||
+                  usableEpisodeImage ||
                   episode.image ||
                   lastVisitedData[animeId]?.bannerImage ||
                   lastVisitedData[animeId]?.coverImage ||
@@ -454,6 +491,51 @@ export const EpisodeCard: React.FC = () => {
                 }
                 alt={`Episode ${cleanEpisodeNumber} still for ${animeTitle}`}
                 $blurred={shouldBlur}
+                onLoad={(event) => {
+                  const source = thumbnailStill ? 'tmdb' : 'episode';
+                  saveEpisodeThumbnail(
+                    animeId,
+                    cleanEpisodeNumber,
+                    source,
+                    event.currentTarget.currentSrc || event.currentTarget.src,
+                  );
+                }}
+                onError={(event) => {
+                  const failedStill = thumbnailStill;
+                  if (failedStill) {
+                    removeEpisodeThumbnail(
+                      animeId,
+                      cleanEpisodeNumber,
+                      'tmdb',
+                      failedStill,
+                    );
+                    setTmdbStills((previous) => {
+                      if (previous[episode.id] !== failedStill) return previous;
+                      const next = { ...previous };
+                      delete next[episode.id];
+                      return next;
+                    });
+                    setFailedStillIds((previous) => ({
+                      ...previous,
+                      [episode.id]: true,
+                    }));
+                  } else {
+                    if (usableEpisodeImage) {
+                      removeEpisodeThumbnail(
+                        animeId,
+                        cleanEpisodeNumber,
+                        'episode',
+                        usableEpisodeImage,
+                      );
+                      setFailedEpisodeImageIds((previous) => ({
+                        ...previous,
+                        [episode.id]: true,
+                      }));
+                    } else {
+                      event.currentTarget.style.visibility = 'hidden';
+                    }
+                  }
+                }}
               />
               {(isHentai || isNsfw) && (
                 <AdultBadge>{isHentai ? '+18 Hentai' : '+18 NSFW'}</AdultBadge>
@@ -485,7 +567,15 @@ export const EpisodeCard: React.FC = () => {
       console.error('Failed to parse watched episodes data:', error);
       return [];
     }
-  }, [watchedEpisodesData, lastVisitedData, settings.blurHentai, settings.blurNSFW]);
+  }, [
+    watchedEpisodesData,
+    lastVisitedData,
+    tmdbStills,
+    failedStillIds,
+    failedEpisodeImageIds,
+    settings.blurHentai,
+    settings.blurNSFW,
+  ]);
 
   const swiperSettings = useMemo(
     () => ({

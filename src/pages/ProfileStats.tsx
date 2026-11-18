@@ -16,24 +16,31 @@ type PastWork = {
   id: string;
   title: string;
   image?: string | null;
+  color?: string | null;
   type?: string | null;
+  format?: string | null;
   status?: string | null;
   episodes?: number | null;
   chapters?: number | null;
   averageScore?: number | null;
   startYear?: number | null;
+  genres?: string[] | null;
+  isAdult?: boolean | null;
 };
 
 type PastWorkMediaNode = {
   id?: number | null;
   type?: string | null;
+  format?: string | null;
   status?: string | null;
   episodes?: number | null;
   chapters?: number | null;
   averageScore?: number | null;
+  genres?: string[] | null;
+  isAdult?: boolean | null;
   startDate?: { year?: number | null } | null;
   title?: AniListTitleLike | null;
-  coverImage?: { large?: string | null; medium?: string | null } | null;
+  coverImage?: { large?: string | null; medium?: string | null; color?: string | null } | null;
 };
 
 type StatRow = {
@@ -144,11 +151,7 @@ const Page = styled.div`
   margin: 0 auto;
   box-sizing: border-box;
   overflow-x: hidden;
-  padding: 0.25rem 0.25rem 2.5rem;
-
-  @media (min-width: 768px) {
-    padding: 0.5rem 0.5rem 2.5rem;
-  }
+  padding: 0 0 2.5rem;
 `;
 
 const SectionStack = styled.div`
@@ -615,19 +618,16 @@ const SummaryStrip = styled.div`
 
   @media (max-width: 600px) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-
-    & > :last-child {
-      grid-column: 1 / -1;
-    }
   }
 `;
 
-const SummaryCell = styled.div`
+const SummaryCell = styled.div<{ $mobileHidden?: boolean }>`
   padding: 0.95rem 1rem 1rem;
   background: var(--global-secondary-bg);
   min-width: 0;
 
   @media (max-width: 600px) {
+    display: ${({ $mobileHidden }) => ($mobileHidden ? 'none' : 'block')};
     padding: 0.8rem 0.85rem 0.85rem;
   }
 `;
@@ -637,6 +637,20 @@ const CellValue = styled.div`
   font-weight: 800;
   letter-spacing: -0.04em;
   line-height: 1.15;
+`;
+
+const DeviationInline = styled.span`
+  display: none;
+
+  @media (max-width: 600px) {
+    display: inline;
+    margin-left: 0.4rem;
+    color: var(--global-text-muted);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
 `;
 
 const CellLabel = styled.div`
@@ -1176,11 +1190,12 @@ const CardStatsRow = styled.div`
   gap: 0.5rem;
 
   @media (max-width: 599px) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.35rem;
   }
 `;
 
-const CardStatItem = styled.div<{ $active: boolean }>`
+const CardStatItem = styled.div<{ $active: boolean; $isTime?: boolean }>`
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -1208,6 +1223,10 @@ const CardStatItem = styled.div<{ $active: boolean }>`
     text-overflow: ellipsis;
   }
 
+  .compact-label {
+    display: none;
+  }
+
   @media (min-width: 600px) {
     padding: 0.45rem 0.6rem;
 
@@ -1217,6 +1236,27 @@ const CardStatItem = styled.div<{ $active: boolean }>`
 
     small {
       font-size: 0.7rem;
+    }
+  }
+
+  @media (max-width: 599px) {
+    padding: 0.35rem 0.4rem;
+    border-radius: 6px;
+
+    b {
+      font-size: 0.82rem;
+    }
+
+    small {
+      font-size: 0.56rem;
+    }
+
+    .full-label {
+      display: none;
+    }
+
+    .compact-label {
+      display: block;
     }
   }
 `;
@@ -1431,7 +1471,7 @@ const pastWorkToAnime = (work: PastWork, mediaType: MediaKind): Anime => ({
   trailer: { id: '', site: '', thumbnail: '', thumbnailHash: '' },
   synonyms: [],
   isLicensed: false,
-  isAdult: false,
+  isAdult: work.isAdult ?? false,
   countryOfOrigin: '',
   image: work.image ?? '',
   imageHash: '',
@@ -1444,13 +1484,14 @@ const pastWorkToAnime = (work: PastWork, mediaType: MediaKind): Anime => ({
   currentEpisode: 0,
   rating: work.averageScore ?? 0,
   duration: 0,
-  genres: [],
+  genres: work.genres ?? [],
   studios: [],
   studioIds: [],
   subOrDub: '',
   season: '',
   popularity: 0,
   type: work.type ?? (mediaType === 'manga' ? 'MANGA' : 'ANIME'),
+  format: work.format ?? undefined,
   startDate: { year: 0, month: 0, day: 0 },
   endDate: { year: 0, month: 0, day: 0 },
   recommendations: [],
@@ -1459,7 +1500,7 @@ const pastWorkToAnime = (work: PastWork, mediaType: MediaKind): Anime => ({
   mappings: [],
   artwork: [],
   episodes: [],
-  color: '',
+  color: work.color ?? '',
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -1544,12 +1585,16 @@ const buildStats = (statistics: unknown, mediaType: MediaKind, scoreFormat: stri
         id,
         title: label,
         image: item.coverImage?.large ?? item.coverImage?.medium ?? null,
+        color: item.coverImage?.color ?? null,
         type: item.type ?? null,
+        format: item.format ?? null,
         status: item.status ?? null,
         episodes: item.episodes,
         chapters: item.chapters,
         averageScore: item.averageScore,
         startYear: item.startDate?.year,
+        genres: item.genres,
+        isAdult: item.isAdult,
       });
 
       if (works.length >= 8) break;
@@ -1984,12 +2029,20 @@ const RankTable: React.FC<{
                   </CardStatItem>
                   <CardStatItem $active={activeMetric === 'mean'}>
                     <b>{fmtMean(row.mean)}</b>
-                    <small>Mean Score</small>
+                    <small>
+                      <span className='full-label'>Mean Score</span>
+                      <span className='compact-label'>Mean</span>
+                    </small>
                   </CardStatItem>
                   {showTime ? (
                     <CardStatItem $active={activeMetric === 'time'}>
                       <b>{formatTimeValue(row.time, mediaType)}</b>
-                      <small>{timeMetricLabel(mediaType)}</small>
+                      <small>
+                        <span className='full-label'>{timeMetricLabel(mediaType)}</span>
+                        <span className='compact-label'>
+                          {mediaType === 'manga' ? 'Chapters' : 'Watched'}
+                        </span>
+                      </small>
                     </CardStatItem>
                   ) : null}
                 </CardStatsRow>
@@ -2109,8 +2162,8 @@ const ProfileStatsPage: React.FC = () => {
     chipRefs.current[activeTab]?.scrollIntoView?.({ inline: 'center', block: 'nearest', behavior: 'smooth' });
   }, [activeTab, mediaType]);
 
-  // Older cached Viewer data may lack portraits or past-work metadata added to
-  // the stats query. Refresh once so existing sessions receive the full fields.
+  // Older cached Viewer data may lack portraits, media formats, or breakdown
+  // metadata added to the query. Refresh once so existing sessions receive them.
   useEffect(() => {
     if (!isLoggedIn || !userData || statsRefreshRequested.current) return;
 
@@ -2128,17 +2181,49 @@ const ProfileStatsPage: React.FC = () => {
         work && (
           !('status' in work) ||
           !(mediaType === 'manga' ? 'chapters' in work : 'episodes' in work) ||
-          !('averageScore' in work)
+          !('format' in work) ||
+          !('averageScore' in work) ||
+          !('genres' in work) ||
+          !('isAdult' in work)
         ),
       );
     };
+    const hasMissingMetric = (
+      entries: Array<StatBase | null> | null | undefined,
+      field: 'minutesWatched' | 'chaptersRead',
+    ) => Array.isArray(entries) && entries.some((entry) =>
+      entry !== null && typeof entry[field] !== 'number',
+    );
+    const rawSelectedStats = selectedStats as unknown as RawStatistics | undefined;
+    const favouriteItems = mediaType === 'manga'
+      ? userData.favourites?.manga?.nodes
+      : userData.favourites?.anime?.nodes;
+    const missingFavouriteFormat = Array.isArray(favouriteItems) &&
+      favouriteItems.some((item) => item && !('format' in item));
+    const missingBreakdownMetrics = Boolean(
+      rawSelectedStats && (
+        hasMissingMetric(rawSelectedStats.formats, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.statuses, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.scores, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.lengths, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.releaseYears, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.startYears, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.genres, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.tags, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.countries, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.staff, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        hasMissingMetric(rawSelectedStats.studios, mediaType === 'manga' ? 'chaptersRead' : 'minutesWatched') ||
+        (mediaType === 'anime' && hasMissingMetric(rawSelectedStats.voiceActors, 'minutesWatched'))
+      ),
+    );
     const missingWorkMetadata =
       selectedStats?.staff?.some((entry) => hasMissingWorkMetadata(entry.staff)) ||
       (mediaType === 'anime' && selectedStats?.voiceActors?.some((entry) =>
         hasMissingWorkMetadata(entry.voiceActor),
-      ));
+      )) ||
+      missingBreakdownMetrics;
 
-    if (!missingPortrait && !missingWorkMetadata) return;
+    if (!missingPortrait && !missingWorkMetadata && !missingFavouriteFormat) return;
 
     statsRefreshRequested.current = true;
     void refreshUserData();
@@ -2185,6 +2270,7 @@ const ProfileStatsPage: React.FC = () => {
         season: '',
         popularity: 0,
         type: item.type ?? (mediaType === 'manga' ? 'MANGA' : 'ANIME'),
+        format: item.format ?? undefined,
         startDate: {
           year: item.startDate?.year ?? 0,
           month: item.startDate?.month ?? 0,
@@ -2197,7 +2283,7 @@ const ProfileStatsPage: React.FC = () => {
         mappings: [],
         artwork: [],
         episodes: [],
-        color: '',
+        color: item.coverImage?.color ?? '',
       };
     });
   }, [mediaType, userData]);
@@ -2675,8 +2761,16 @@ const ProfileStatsPage: React.FC = () => {
         <Main>
           <SummaryStrip>
             {stats.topStats.map((item) => (
-              <SummaryCell key={item.label}>
-                <CellValue>{item.value}</CellValue>
+              <SummaryCell
+                key={item.label}
+                $mobileHidden={item.label === 'Standard deviation'}
+              >
+                <CellValue>
+                  {item.value}
+                  {item.label === 'Mean score' ? (
+                    <DeviationInline>SD {stats.deviation}</DeviationInline>
+                  ) : null}
+                </CellValue>
                 <CellLabel>{item.label}</CellLabel>
                 {item.note ? <CellNote>{item.note}</CellNote> : null}
               </SummaryCell>

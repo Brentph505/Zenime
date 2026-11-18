@@ -5,6 +5,11 @@ import { FaPlay } from 'react-icons/fa';
 import { IoIosCloseCircleOutline } from 'react-icons/io';
 import { useSettings } from '../Profile/SettingsProvider';
 import { fetchTmdbEpisodeStill } from '../../hooks/useApi';
+import {
+  getEpisodeThumbnail,
+  removeEpisodeThumbnail,
+  saveEpisodeThumbnail,
+} from '../../lib/thumbnailCache';
 
 interface HistoryAnimeCardProps {
   animeId: string;
@@ -169,7 +174,10 @@ export const HistoryAnimeCard: React.FC<HistoryAnimeCardProps> = ({
   onDelete,
 }) => {
   const { settings } = useSettings();
-  const [tmdbStill, setTmdbStill] = React.useState<string | null>(null);
+  const [tmdbStill, setTmdbStill] = React.useState<string | null>(() =>
+    getEpisodeThumbnail(animeId, String(lastEpisodeNumber || 1).split('-')[0], 'tmdb'),
+  );
+  const [stillUnavailable, setStillUnavailable] = React.useState(false);
 
   const animeTitle = String(titleEnglish || titleRomaji || 'Unknown Anime');
   const cleanEpisodeNumber = String(lastEpisodeNumber || 1).split('-')[0];
@@ -177,17 +185,28 @@ export const HistoryAnimeCard: React.FC<HistoryAnimeCardProps> = ({
 
   React.useEffect(() => {
     let cancelled = false;
-    setTmdbStill(null);
+    const cachedStill = getEpisodeThumbnail(animeId, cleanEpisodeNumber, 'tmdb');
+    setTmdbStill(cachedStill);
+    setStillUnavailable(false);
+    if (cachedStill) return () => { cancelled = true; };
+
     fetchTmdbEpisodeStill(
       [titleEnglish || '', titleRomaji || ''],
       cleanEpisodeNumber,
     ).then((image) => {
       if (!cancelled) setTmdbStill(image);
+    }).catch(() => {
+      if (!cancelled) setTmdbStill(null);
     });
     return () => {
       cancelled = true;
     };
-  }, [animeTitle, cleanEpisodeNumber, titleEnglish, titleRomaji]);
+  }, [animeId, animeTitle, cleanEpisodeNumber, titleEnglish, titleRomaji]);
+
+  const cachedStill = getEpisodeThumbnail(animeId, cleanEpisodeNumber, 'tmdb');
+  const imageSource = stillUnavailable
+    ? fallbackImage || ''
+    : tmdbStill || cachedStill || fallbackImage || '';
 
   const normalizedGenres = genres?.map((genre) => genre?.toLowerCase()) ?? [];
   const isHentai = normalizedGenres.some((genre) => genre === 'hentai');
@@ -203,15 +222,34 @@ export const HistoryAnimeCard: React.FC<HistoryAnimeCardProps> = ({
       title={`Continue watching ${animeTitle}`}
     >
       <HistoryCardImage
-        src={tmdbStill || fallbackImage || ''}
+        src={imageSource}
         alt={`Episode ${cleanEpisodeNumber} still for ${animeTitle}`}
         data-title={animeTitle}
         $blurred={shouldBlur}
         onError={(e) => {
-          e.currentTarget.style.visibility = 'hidden';
+          if (tmdbStill || cachedStill) {
+            removeEpisodeThumbnail(
+              animeId,
+              cleanEpisodeNumber,
+              'tmdb',
+              tmdbStill || cachedStill || undefined,
+            );
+            setTmdbStill(null);
+            setStillUnavailable(true);
+          } else {
+            e.currentTarget.style.visibility = 'hidden';
+          }
         }}
         onLoad={(e) => {
           e.currentTarget.style.visibility = '';
+          if (!stillUnavailable && (tmdbStill || cachedStill)) {
+            saveEpisodeThumbnail(
+              animeId,
+              cleanEpisodeNumber,
+              'tmdb',
+              e.currentTarget.currentSrc || e.currentTarget.src,
+            );
+          }
         }}
       />
 

@@ -31,14 +31,21 @@ const DefaultIndicator = styled(IndicatorDot)`
 
 export const StatusIndicator: React.FC<{ status: string }> = ({ status }) => {
   const handleStatusCheck = useMemo(() => {
-    switch (status) {
-      case 'Ongoing':
+    const normalizedStatus = status.trim().toUpperCase().replace(/[\s-]+/g, '_');
+
+    switch (normalizedStatus) {
+      case 'ONGOING':
+      case 'RELEASING':
         return <OngoingIndicator />;
-      case 'Completed':
+      case 'COMPLETED':
+      case 'FINISHED':
         return <CompletedIndicator />;
-      case 'Cancelled':
+      case 'CANCELLED':
+      case 'CANCELED':
         return <CancelledIndicator />;
-      case 'Not yet aired':
+      case 'NOT_YET_AIRED':
+      case 'NOT_YET_RELEASED':
+      case 'UPCOMING':
         return <NotYetAiredIndicator />;
       default:
         return <DefaultIndicator />;

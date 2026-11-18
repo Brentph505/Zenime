@@ -102,9 +102,7 @@ const Page = styled.div`
   margin: 0 auto;
   box-sizing: border-box;
   overflow-x: hidden;
-  padding: 0.25rem 0.25rem 2.5rem;
-
-  @media (min-width: 768px) { padding: 0.5rem 0.5rem 2.5rem; }
+  padding: 0 0 2.5rem;
 `;
 
 /* ── Hero banner: short + wide on mobile, grows more cinematic as the

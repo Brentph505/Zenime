@@ -68,7 +68,8 @@ export interface UserData {
       nodes?: Array<{
         id: number;
         title?: { romaji?: string; english?: string | null };
-        coverImage?: { large?: string; medium?: string } | null;
+        format?: string | null;
+        coverImage?: { large?: string; medium?: string; color?: string | null } | null;
         type?: string | null;
         status?: string | null;
         episodes?: number | null;
@@ -84,7 +85,8 @@ export interface UserData {
       nodes?: Array<{
         id: number;
         title?: { romaji?: string; english?: string | null };
-        coverImage?: { large?: string; medium?: string } | null;
+        format?: string | null;
+        coverImage?: { large?: string; medium?: string; color?: string | null } | null;
         type?: string | null;
         status?: string | null;
         episodes?: number | null;

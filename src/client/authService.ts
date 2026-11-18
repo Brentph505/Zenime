@@ -264,13 +264,16 @@ const MEDIA_NODES = /* GraphQL */ `
   nodes {
     id
     type
+    format
     status
     episodes
     chapters
     averageScore
+    genres
+    isAdult
     startDate { year }
     title { romaji english userPreferred }
-    coverImage { large medium }
+    coverImage { large medium color }
   }
 `;
 
@@ -284,6 +287,8 @@ const STAFF_STATS = /* GraphQL */ `
     }
     count
     meanScore
+    minutesWatched
+    chaptersRead
   }
 `;
 
@@ -298,6 +303,8 @@ const VOICE_ACTOR_STATS = /* GraphQL */ `
     }
     count
     meanScore
+    minutesWatched
+    chaptersRead
   }
 `;
 
@@ -333,17 +340,17 @@ const VIEWER_QUERY = /* GraphQL */ `
           standardDeviation
           minutesWatched
           episodesWatched
-          formats { format count meanScore }
-          statuses { status count meanScore }
-          scores { score count meanScore }
-          lengths { length count meanScore }
-          releaseYears { releaseYear count meanScore }
-          startYears { startYear count meanScore }
-          genres { genre count meanScore }
-          tags { tag { id name } count meanScore }
-          countries { country count meanScore }
+          formats { format count meanScore minutesWatched chaptersRead }
+          statuses { status count meanScore minutesWatched chaptersRead }
+          scores { score count meanScore minutesWatched chaptersRead }
+          lengths { length count meanScore minutesWatched chaptersRead }
+          releaseYears { releaseYear count meanScore minutesWatched chaptersRead }
+          startYears { startYear count meanScore minutesWatched chaptersRead }
+          genres { genre count meanScore minutesWatched chaptersRead }
+          tags { tag { id name } count meanScore minutesWatched chaptersRead }
+          countries { country count meanScore minutesWatched chaptersRead }
           ${STAFF_STATS}
-          studios { studio { id name } count meanScore }
+          studios { studio { id name } count meanScore minutesWatched chaptersRead }
           ${VOICE_ACTOR_STATS}
         }
         manga {
@@ -352,22 +359,22 @@ const VIEWER_QUERY = /* GraphQL */ `
           standardDeviation
           chaptersRead
           volumesRead
-          formats { format count meanScore }
-          statuses { status count meanScore }
-          scores { score count meanScore }
-          lengths { length count meanScore }
-          releaseYears { releaseYear count meanScore }
-          startYears { startYear count meanScore }
-          genres { genre count meanScore }
-          tags { tag { id name } count meanScore }
-          countries { country count meanScore }
+          formats { format count meanScore minutesWatched chaptersRead }
+          statuses { status count meanScore minutesWatched chaptersRead }
+          scores { score count meanScore minutesWatched chaptersRead }
+          lengths { length count meanScore minutesWatched chaptersRead }
+          releaseYears { releaseYear count meanScore minutesWatched chaptersRead }
+          startYears { startYear count meanScore minutesWatched chaptersRead }
+          genres { genre count meanScore minutesWatched chaptersRead }
+          tags { tag { id name } count meanScore minutesWatched chaptersRead }
+          countries { country count meanScore minutesWatched chaptersRead }
           ${STAFF_STATS}
-          studios { studio { id name } count meanScore }
+          studios { studio { id name } count meanScore minutesWatched chaptersRead }
         }
       }
       favourites {
-        anime { nodes { id type status episodes chapters averageScore duration genres isAdult startDate { year month day } title { romaji english } coverImage { large medium } } }
-        manga { nodes { id type status episodes chapters averageScore duration genres isAdult startDate { year month day } title { romaji english } coverImage { large medium } } }
+        anime { nodes { id type format status episodes chapters averageScore duration genres isAdult startDate { year month day } title { romaji english } coverImage { large medium color } } }
+        manga { nodes { id type format status episodes chapters averageScore duration genres isAdult startDate { year month day } title { romaji english } coverImage { large medium color } } }
         characters { nodes { id name { full } } }
         staff { nodes { id name { full } image { large medium } } }
         studios { nodes { id name } }
